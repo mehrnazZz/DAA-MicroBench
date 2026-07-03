@@ -108,8 +108,10 @@ Lower is better. A method with any collisions should rank below a collision-free
 
 Results should be grouped, not blended:
 
+- `official_alpha`: generated pre-v1 suite with planar and 3D scenarios
+- `official_3d_stress`: generated volumetric/vertical 3D stress suite
 - `primary`: official planar suite
-- `three_d`: 3D development suite
+- `three_d`: hand-written 3D development suite
 - `perception_stress`: partial observation and fused-observation suite
 - custom suites: must be labeled separately
 
@@ -120,6 +122,7 @@ Do not compare methods across different suites as if they share one ranking.
 Submitted results must:
 
 - use unmodified official scenario files unless explicitly marked custom
+- include the generated `suite_manifest.yaml` for generated official suites
 - use official comm profiles unless explicitly marked custom
 - use the same `N`, seeds, and comm matrix for all methods in a comparison
 - include failed runs instead of silently dropping them

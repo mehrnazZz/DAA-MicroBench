@@ -278,7 +278,42 @@ intent:
 
 Note: `intent.tx_rate_hz` is independent from odometry `tx_rate_hz`. Delay/loss still follows the active comm profile.
 
-## 6) Official Evaluation Protocol (Sweep Suite v1.0)
+## 6) Official Evaluation Protocol (Pre-v1)
+
+Generated official suites are the preferred path for new comparisons because they carry scenario metadata, recommended run matrices, and both 2D and 3D coverage.
+
+Materialize an official suite without running it:
+
+```bash
+python -m microbench.cli materialize-suite \
+  --suite official_alpha \
+  --out-dir generated_official_alpha \
+  --print-plan
+```
+
+Run the generated mixed 2D/3D alpha suite:
+
+```bash
+python -m microbench.cli canonical-sweep \
+  --suite official_alpha \
+  --methods baseline_goal,orca_expert \
+  --out-dir runs_official_alpha \
+  --max-runs 6
+```
+
+Run the generated 3D stress suite:
+
+```bash
+python -m microbench.cli canonical-sweep \
+  --suite official_3d_stress \
+  --methods orca_expert \
+  --out-dir runs_official_3d_stress \
+  --max-runs 3
+```
+
+Generated scenario files and `suite_manifest.yaml` are saved under `<out-dir>/_generated_scenarios/<suite>/` so result folders are self-describing.
+
+Legacy hand-written canonical suites remain available while the official generator matures.
 
 Required scenarios:
 - `corridor.yaml`
@@ -338,14 +373,14 @@ This suite exercises sensor-only and fused V2V+sensor observations with FOV limi
 
 ## 7) 3D Guide
 
-Use this section for non-planar planner work. The official leaderboard suite above remains planar; the 3D material below is for  development, debugging, and non-planar comparisons.
+Use this section for non-planar planner work. 3D is first-class in DAA Microbench: `official_alpha` includes 3D cases, and `official_3d_stress` focuses on volumetric, vertical, and partial-sensing stress tests.
 
 Quick navigation:
 
 | If You Want To... | Go Here |
 |---|---|
 | run one 3D episode | Section `7.2 Quick 3D Run` |
-| benchmark a planner in 3D | Section `7.3 Canonical 3D Suite` |
+| benchmark a planner in generated 3D stress cases | Section `7.3 Official 3D Stress Suite` |
 | inspect a 3D replay/trace | Section `7.4 3D Replay and Traces` |
 | profile 3D planner runtime | Section `7.5 3D Profiling Notes` |
 | generate 3D diffusion data | Section `7.6 3D Diffusion Data` |
@@ -358,6 +393,11 @@ Built-in 3D scenarios:
 - `config/scenarios/layered_intersection_3d.yaml`
 - `config/scenarios/weather_vertical_event_3d.yaml`
 - `config/scenarios/vertical_crossing_obstacles_3d.yaml`
+
+Generated 3D family scenarios:
+- `sphere_swap_3d_medium`: true volumetric antipodal swap through shared airspace
+- `vertical_crossing_3d_hard`: layer-changing crossing around a central obstruction
+- `sensor_volume_3d_hard`: volumetric fused-perception stress case with stale local tracks
 
 What they are for:
 - `stacked_swap_3d`: simple non-planar swap through shared volume
@@ -378,9 +418,29 @@ python -m microbench.cli run \
   --out-dir runs_3d_example
 ```
 
-### 7.3 Canonical 3D Suite
+### 7.3 Official 3D Stress Suite
 
-Use the built-in 3D suite for comparisons:
+Use this generated suite for serious non-planar comparisons:
+
+```bash
+python -m microbench.cli canonical-sweep \
+  --suite official_3d_stress \
+  --methods your_method \
+  --out-dir runs_official_3d_stress
+```
+
+Defaults:
+- scenarios: generated `sphere_swap_3d_medium`, `vertical_crossing_3d_hard`, and `sensor_volume_3d_hard`
+- `N = [6, 10]`
+- seeds `0..9`
+- comm: `ideal_50hz`, `realistic_v2v_50hz`, `degraded_20hz`
+
+Stretch mode:
+- adds `N = 20`
+- extends seeds to `0..29`
+
+The older built-in 3D suite is still useful for development:
+
 
 ```bash
 python -m microbench.cli canonical-sweep \

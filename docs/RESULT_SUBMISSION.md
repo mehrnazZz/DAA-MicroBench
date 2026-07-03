@@ -26,6 +26,7 @@ Attach or link:
 
 - `results.csv`
 - `summary.csv`
+- `_generated_scenarios/<suite>/suite_manifest.yaml` when using a generated official suite
 - any changed scenario/config files
 - any planner source or package version needed to reproduce
 - representative failure traces for nonzero collision or near-miss-heavy results
@@ -36,9 +37,9 @@ Paste the exact command. Example:
 
 ```bash
 python -m microbench.cli canonical-sweep \
-  --suite perception_stress \
-  --methods priority_yield \
-  --out-dir runs_priority_yield_perception_stress
+  --suite official_alpha \
+  --methods your_method \
+  --out-dir runs_your_method_official_alpha
 ```
 
 ## Result Tables

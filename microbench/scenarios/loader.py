@@ -76,6 +76,37 @@ def _circle_swap(cfg: dict, n_agents: int, rng: np.random.Generator) -> tuple[np
     return spawns, goals
 
 
+def _sphere_swap(cfg: dict, n_agents: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
+    center = np.asarray(cfg.get("center", [0.0, 0.0, 0.0]), dtype=float)
+    radius = float(cfg.get("radius_m", 30.0))
+    jitter = float(cfg.get("jitter_m", 1.0))
+    vertical_scale = float(cfg.get("vertical_scale", 1.0))
+    min_abs_y_component = float(cfg.get("min_abs_y_component", 0.0))
+
+    spawns = np.zeros((n_agents, 3), dtype=float)
+    goals = np.zeros((n_agents, 3), dtype=float)
+    for i in range(n_agents):
+        direction = np.zeros(3, dtype=float)
+        for _ in range(128):
+            candidate = rng.normal(0.0, 1.0, size=3)
+            candidate[1] *= vertical_scale
+            n = float(np.linalg.norm(candidate))
+            if n < 1e-9:
+                continue
+            candidate = candidate / n
+            if abs(float(candidate[1])) >= min_abs_y_component:
+                direction = candidate
+                break
+        if float(np.linalg.norm(direction)) < 1e-9:
+            direction = np.array([0.0, 1.0, 0.0], dtype=float)
+
+        rs = radius + rng.normal(0.0, jitter)
+        rg = radius + rng.normal(0.0, jitter)
+        spawns[i] = center + direction * rs
+        goals[i] = center - direction * rg
+    return spawns, goals
+
+
 def _four_way(cfg: dict, n_agents: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
     extent = float(cfg.get("extent_m", 40.0))
     lane_hw = float(cfg.get("lane_half_width_m", 5.0))
@@ -114,6 +145,8 @@ def generate_spawns_goals(cfg: dict, n_agents: int, rng: np.random.Generator) ->
         raw_spawns, raw_goals = _rect_to_rect(spawn_cfg, n_agents, rng)
     elif stype == "circle_swap":
         raw_spawns, raw_goals = _circle_swap(spawn_cfg, n_agents, rng)
+    elif stype == "sphere_swap":
+        raw_spawns, raw_goals = _sphere_swap(spawn_cfg, n_agents, rng)
     elif stype == "four_way":
         raw_spawns, raw_goals = _four_way(spawn_cfg, n_agents, rng)
     else:
@@ -131,6 +164,9 @@ def generate_spawns_goals(cfg: dict, n_agents: int, rng: np.random.Generator) ->
                 candidate = retry_goals[0]
             elif stype == "circle_swap":
                 _, retry_goals = _circle_swap(spawn_cfg, 1, rng)
+                candidate = retry_goals[0]
+            elif stype == "sphere_swap":
+                _, retry_goals = _sphere_swap(spawn_cfg, 1, rng)
                 candidate = retry_goals[0]
             else:
                 _, retry_goals = _four_way(spawn_cfg, 1, rng)

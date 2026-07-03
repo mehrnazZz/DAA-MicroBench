@@ -17,6 +17,7 @@ from microbench.replay import render_interactive_trace, render_trace
 from microbench.dataset import generate_dataset, expand_scenarios, expand_list, sanity_check_shard
 from microbench.logging import wandb_logger
 from microbench.tools import mine_worst_cases
+from microbench.scenarios import list_official_suites, materialize_official_suite, suite_defaults
 
 CANONICAL_SCENARIOS = [
     "config/scenarios/corridor.yaml",
@@ -243,7 +244,17 @@ def _run_canonical_sweep(args) -> None:
     stretch = bool(args.stretch)
     include_bursty = bool(args.include_bursty)
 
-    if suite == "primary":
+    official_suite_names = set(list_official_suites())
+    if suite in official_suite_names:
+        generated_dir = Path(out_dir) / "_generated_scenarios" / suite
+        generated = materialize_official_suite(suite, generated_dir, overwrite=True, stretch=stretch)
+        scenarios = [str(p) for p in generated["scenario_paths"]]
+        defaults_for_suite = suite_defaults(suite, stretch=stretch)
+        methods = _parse_str_list(args.methods) if args.methods else list(defaults_for_suite["default_methods"])
+        n_agents = [int(x) for x in defaults_for_suite["n_agents"]]
+        seeds = [int(x) for x in defaults_for_suite["seeds"]]
+        comm_profiles = [str(x) for x in defaults_for_suite["comm_profiles"]]
+    elif suite == "primary":
         scenarios = CANONICAL_SCENARIOS
         methods = _parse_str_list(args.methods or "")
         if not methods:
@@ -412,7 +423,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_sc.add_argument("--out-plot", default=None, help="Optional histogram path")
 
     p_cs = sub.add_parser("canonical-sweep", help="Run a canonical benchmark suite")
-    p_cs.add_argument("--suite", required=True, choices=["primary", "baseline_sanity", "three_d", "perception_stress"])
+    p_cs.add_argument(
+        "--suite",
+        required=True,
+        choices=["primary", "baseline_sanity", "three_d", "perception_stress"] + list_official_suites(),
+    )
     p_cs.add_argument("--methods", default=None, help="Comma-separated methods (required for primary; defaults to orca_expert for three_d)")
     p_cs.add_argument("--out-dir", default=None)
     p_cs.add_argument("--stretch", action="store_true", help="Enable stretch settings (N=100 and more seeds)")
@@ -421,6 +436,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_cs.add_argument("--no-run", action="store_true", help="Only print matrix; do not execute")
     p_cs.add_argument("--max-runs", type=int, default=None, help="Optional cap for debugging/smoke tests")
     _add_wandb_flags(p_cs)
+
+    p_ms = sub.add_parser("materialize-suite", help="Write generated official suite scenarios and manifest")
+    p_ms.add_argument("--suite", required=True, choices=list_official_suites())
+    p_ms.add_argument("--out-dir", required=True)
+    p_ms.add_argument("--overwrite", action="store_true")
+    p_ms.add_argument("--stretch", action="store_true", help="Write stretch run-matrix recommendations into manifest")
+    p_ms.add_argument("--print-plan", action="store_true")
 
     p_hc = sub.add_parser("mine-hard-cases", help="Collect trace artifacts for worst episodes")
     p_hc.add_argument("--results", required=True, help="Path to runs/<id>/results.csv")
@@ -503,6 +525,25 @@ def main() -> None:
         _run_canonical_sweep(args)
         if not args.no_run:
             print("done: canonical sweep complete")
+        return
+    if args.cmd == "materialize-suite":
+        generated = materialize_official_suite(
+            args.suite,
+            args.out_dir,
+            overwrite=bool(args.overwrite),
+            stretch=bool(args.stretch),
+        )
+        manifest = generated["manifest"]
+        dims = sorted({s["dimension"] for s in manifest["scenarios"]})
+        print(
+            f"done: materialized suite={args.suite} scenarios={len(generated['scenario_paths'])} "
+            f"dimensions={','.join(dims)} manifest={generated['manifest_path']}"
+        )
+        if args.print_plan:
+            print(f"  methods: {','.join(manifest['default_methods'])}")
+            print(f"  N: {','.join(str(x) for x in manifest['n_agents'])}")
+            print(f"  seeds: {','.join(str(x) for x in manifest['seeds'])}")
+            print(f"  comm: {','.join(manifest['comm_profiles'])}")
         return
     if args.cmd == "mine-hard-cases":
         out = mine_worst_cases(results_csv=args.results, top_k=args.top_k)
