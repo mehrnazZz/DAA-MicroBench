@@ -4,13 +4,22 @@ from microbench.config import load_defaults
 from microbench.planners.base import ILocalPlanner
 from microbench.planners.baseline_goal import BaselineGoalPlanner
 from microbench.planners.intent_dummy import IntentDummyPlanner
+from microbench.planners.negotiation_yield import NegotiationYieldPlanner
 from microbench.planners.orca_expert import OrcaExpertPlanner
 from microbench.planners.priority_yield import PriorityYieldPlanner
 from microbench.planners.template_planner import TemplatePlanner
 
 
 def list_methods() -> list[str]:
-    return ["baseline_goal", "orca_expert", "template", "template_planner", "intent_dummy", "priority_yield"]
+    return [
+        "baseline_goal",
+        "orca_expert",
+        "template",
+        "template_planner",
+        "intent_dummy",
+        "priority_yield",
+        "negotiation_yield",
+    ]
 
 
 def make_planner(name: str) -> ILocalPlanner:
@@ -26,6 +35,8 @@ def make_planner(name: str) -> ILocalPlanner:
         return IntentDummyPlanner()
     if key == "priority_yield":
         return PriorityYieldPlanner()
+    if key == "negotiation_yield":
+        return NegotiationYieldPlanner()
     if key == "template":
         return TemplatePlanner()
     if key == "template_planner":

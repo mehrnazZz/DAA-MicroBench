@@ -42,6 +42,10 @@ class EpisodeMetrics:
     comm_agent_msg_bandwidth_Bps: float
     comm_agent_msg_drop_fraction: float
     comm_agent_msg_delivery_fraction: float
+    comm_negotiation_proposals: int
+    comm_negotiation_acks: int
+    comm_negotiation_correlations_acked: int
+    comm_negotiation_rejections: int
     episode_runtime_s: float
 
 
@@ -161,6 +165,10 @@ class EpisodeRecorder:
         msg_expired = int(comm.get("agent_msg_expired", 0))
         bytes_scheduled = int(comm.get("agent_msg_bytes_scheduled", 0))
         bytes_delivered = int(comm.get("agent_msg_bytes_delivered", 0))
+        negotiation_proposals = int(comm.get("agent_msg_negotiation_proposals", 0))
+        negotiation_acks = int(comm.get("agent_msg_negotiation_acks", 0))
+        negotiation_correlations_acked = int(comm.get("agent_msg_negotiation_correlations_acked", 0))
+        negotiation_rejections = int(comm.get("agent_msg_negotiation_rejections", 0))
         sim_time_s = max(self.dt, (self.total_ticks / max(1, self.n_agents)) * self.dt)
 
         return EpisodeMetrics(
@@ -201,5 +209,9 @@ class EpisodeRecorder:
             comm_agent_msg_bandwidth_Bps=float(bytes_scheduled / sim_time_s),
             comm_agent_msg_drop_fraction=float(msg_dropped / max(1, msg_attempted)),
             comm_agent_msg_delivery_fraction=float(msg_delivered / max(1, msg_scheduled)),
+            comm_negotiation_proposals=negotiation_proposals,
+            comm_negotiation_acks=negotiation_acks,
+            comm_negotiation_correlations_acked=negotiation_correlations_acked,
+            comm_negotiation_rejections=negotiation_rejections,
             episode_runtime_s=float(episode_runtime_s),
         )

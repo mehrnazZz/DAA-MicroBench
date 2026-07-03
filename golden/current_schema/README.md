@@ -3,7 +3,7 @@
 This folder freezes a tiny deterministic smoke reference for the current leaderboard CSV schema.
 
 ## Contents
-- `results.csv`: per-episode outputs with explicit collision and communication semantics.
+- `results.csv`: per-episode outputs with explicit collision, communication, and negotiation semantics.
 - `summary.csv`: grouped leaderboard summary.
 
 ## Source Commands
@@ -29,6 +29,6 @@ python -m microbench.cli run \
 ## Purpose
 - Exercises the current result and summary schemas.
 - Exercises both single-method and heterogeneous-agent method labels.
-- Exercises zero-traffic communication metric columns for schema stability.
+- Exercises zero-traffic communication and negotiation metric columns for schema stability.
 - Stays fast enough to regenerate during normal development.
 - Timing columns are useful for smoke checks but should not be compared bit-for-bit across machines.

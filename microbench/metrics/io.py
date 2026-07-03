@@ -54,6 +54,10 @@ RESULT_FIELDS = [
     "comm_agent_msg_bandwidth_Bps",
     "comm_agent_msg_drop_fraction",
     "comm_agent_msg_delivery_fraction",
+    "comm_negotiation_proposals",
+    "comm_negotiation_acks",
+    "comm_negotiation_correlations_acked",
+    "comm_negotiation_rejections",
     "episode_runtime_s",
 ]
 
@@ -94,6 +98,10 @@ SUMMARY_FIELDS = [
     "comm_agent_msg_bandwidth_Bps_mean",
     "comm_agent_msg_drop_fraction_mean",
     "comm_agent_msg_delivery_fraction_mean",
+    "comm_negotiation_proposals_mean",
+    "comm_negotiation_acks_mean",
+    "comm_negotiation_correlations_acked_mean",
+    "comm_negotiation_rejections_mean",
 ]
 
 
@@ -214,6 +222,14 @@ def write_summary(out_dir: str | Path) -> Path:
             msg_drop_fraction = [x for x in msg_drop_fraction if x is not None]
             msg_delivery_fraction = [_to_float(x.get("comm_agent_msg_delivery_fraction")) for x in items]
             msg_delivery_fraction = [x for x in msg_delivery_fraction if x is not None]
+            negotiation_proposals = [_to_float(x.get("comm_negotiation_proposals")) for x in items]
+            negotiation_proposals = [x for x in negotiation_proposals if x is not None]
+            negotiation_acks = [_to_float(x.get("comm_negotiation_acks")) for x in items]
+            negotiation_acks = [x for x in negotiation_acks if x is not None]
+            negotiation_correlations_acked = [_to_float(x.get("comm_negotiation_correlations_acked")) for x in items]
+            negotiation_correlations_acked = [x for x in negotiation_correlations_acked if x is not None]
+            negotiation_rejections = [_to_float(x.get("comm_negotiation_rejections")) for x in items]
+            negotiation_rejections = [x for x in negotiation_rejections if x is not None]
 
             collision_rate = (
                 sum(1 for x in coll if x > 0.0) / len(coll)
@@ -258,6 +274,10 @@ def write_summary(out_dir: str | Path) -> Path:
                 "comm_agent_msg_bandwidth_Bps_mean": _mean(msg_bandwidth),
                 "comm_agent_msg_drop_fraction_mean": _mean(msg_drop_fraction),
                 "comm_agent_msg_delivery_fraction_mean": _mean(msg_delivery_fraction),
+                "comm_negotiation_proposals_mean": _mean(negotiation_proposals),
+                "comm_negotiation_acks_mean": _mean(negotiation_acks),
+                "comm_negotiation_correlations_acked_mean": _mean(negotiation_correlations_acked),
+                "comm_negotiation_rejections_mean": _mean(negotiation_rejections),
             }
             writer.writerow(row)
 

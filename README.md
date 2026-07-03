@@ -84,6 +84,18 @@ python -m microbench.cli run \
   --out-dir runs_priority_yield_example
 ```
 
+Run the structured proposal/ACK negotiation baseline:
+
+```bash
+python -m microbench.cli run \
+  --scenario config/scenarios/corridor.yaml \
+  --method negotiation_yield \
+  --n 10 \
+  --seed 0 \
+  --comm ideal_50hz \
+  --out-dir runs_negotiation_yield_example
+```
+
 Set `perception.mode: "sensor"` or `"fused"` in the scenario YAML to switch from V2V-only planner observations.
 
 Optional install tracks (manual extras):
@@ -118,7 +130,10 @@ In addition to odometry and intent messages, planners can send lightweight agent
 - Delivery uses the same delay/loss model as the active comm profile.
 - Messages are delivered once via `PlannerInput.messages`; planners should store persistent beliefs in `agent_context.memory`.
 - Messages can be directed to `recipient_id` or broadcast when `recipient_id=None`.
+- Standard DAA message kinds include negotiation proposals, ACKs, emergency/abort notices, stale-belief notices, priority/yield advisories, and intent trajectories.
+- Standard messages carry replay metadata such as `message_id`, `correlation_id`, `seq`, `channel`, `priority`, and `size_bytes`.
 - The built-in `priority_yield` planner demonstrates a simple advisory `YIELD` message.
+- The built-in `negotiation_yield` planner demonstrates structured `NEGOTIATION_PROPOSAL` and `ACK` exchange.
 
 ### 3.0.2 Perception Modes
 
@@ -164,7 +179,7 @@ When trace logging is enabled, `selected_obs[*].source` is `v2v` or `sensor`.
 - `obstacles`: `list[AABBObs]` for static world obstacles from scenario geometry
 - `neighbor_intents`: optional `list[IntentObs]` for same selected neighbors
 - `messages`: optional `list[AgentMessageObs]` delivered to this agent on the current tick
-- `agent_context`: optional `AgentContext` with `agent_id`, method name, seed, priority, and persistent `memory`
+- `agent_context`: optional `AgentContext` with `agent_id`, method name, seed, role, priority, capabilities, mission, failure modes, and persistent `memory`
 - `dt`: tick duration in seconds
 - `t`: simulation time in seconds
 

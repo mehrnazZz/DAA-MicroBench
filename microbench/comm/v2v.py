@@ -5,6 +5,7 @@ import heapq
 import json
 import numpy as np
 
+from microbench.comm.messages import validate_agent_message
 from microbench.types import AgentMessage, AgentMessageObs, IntentMsg
 
 
@@ -113,6 +114,7 @@ class V2VEmulator:
         self.agent_message_events: list[dict] = []
         self.agent_msg_stats: dict[str, int] = {}
         self.agent_msg_seq_by_sender: list[int] = []
+        self.agent_msg_acked_correlations: set[str] = set()
         self._seq = 0
 
     def reset(self, n_agents: int) -> None:
@@ -137,8 +139,13 @@ class V2VEmulator:
             "agent_msg_expired": 0,
             "agent_msg_bytes_scheduled": 0,
             "agent_msg_bytes_delivered": 0,
+            "agent_msg_negotiation_proposals": 0,
+            "agent_msg_negotiation_acks": 0,
+            "agent_msg_negotiation_correlations_acked": 0,
+            "agent_msg_negotiation_rejections": 0,
         }
         self.agent_msg_seq_by_sender = [0 for _ in range(n_agents)]
+        self.agent_msg_acked_correlations = set()
         self._seq = 0
 
     def step(self, t: float, states: list) -> None:
@@ -315,8 +322,12 @@ class V2VEmulator:
             priority=int(msg.priority),
             size_bytes=size_bytes,
         )
+        valid_payload, invalid_reason = validate_agent_message(msg)
         for receiver in receivers:
             self.agent_msg_stats["agent_msg_attempted"] += 1
+            if not valid_payload:
+                self._drop_agent_message(now_s, sender, receiver, delivered, reason=invalid_reason or "invalid_payload")
+                continue
             if self.agent_msg_max_bytes > 0 and size_bytes > self.agent_msg_max_bytes:
                 self._drop_agent_message(now_s, sender, receiver, delivered, reason="max_message_bytes")
                 continue
@@ -338,6 +349,8 @@ class V2VEmulator:
             )
             self.agent_msg_stats["agent_msg_scheduled"] += 1
             self.agent_msg_stats["agent_msg_bytes_scheduled"] += int(size_bytes)
+            if str(delivered.kind) == "NEGOTIATION_PROPOSAL":
+                self.agent_msg_stats["agent_msg_negotiation_proposals"] += 1
             self._record_agent_event(
                 {
                     "event": "scheduled",
@@ -565,6 +578,16 @@ class V2VEmulator:
                         "ttl_s": float(msg.ttl_s),
                     }
                 )
+            elif str(msg.kind) == "ACK":
+                self.agent_msg_stats["agent_msg_negotiation_acks"] += 1
+                status = str(msg.payload.get("status", ""))
+                correlation = str(msg.correlation_id or msg.payload.get("ack_message_id", ""))
+                if status == "accepted" and correlation:
+                    if correlation not in self.agent_msg_acked_correlations:
+                        self.agent_msg_acked_correlations.add(correlation)
+                        self.agent_msg_stats["agent_msg_negotiation_correlations_acked"] += 1
+                elif status == "rejected":
+                    self.agent_msg_stats["agent_msg_negotiation_rejections"] += 1
         return out
 
     def drain_agent_message_events(self) -> list[dict]:
