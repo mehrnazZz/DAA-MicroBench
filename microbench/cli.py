@@ -38,6 +38,7 @@ CANONICAL_3D_SCENARIOS = [
 CANONICAL_PERCEPTION_SCENARIOS = [
     "config/scenarios/perception_sensor_occlusion.yaml",
     "config/scenarios/perception_fused_degraded.yaml",
+    "config/scenarios/perception_stale_tracks.yaml",
 ]
 
 

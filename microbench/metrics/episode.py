@@ -31,6 +31,10 @@ class EpisodeMetrics:
     obs_v2v_fraction: float
     obs_sensor_fraction: float
     obs_stale_fraction: float
+    obs_sensor_track_stale_fraction: float
+    obs_sensor_track_age_mean_s: float
+    obs_sensor_track_age_p95_s: float
+    obs_occluded_fraction: float
     obs_empty_fraction: float
     comm_agent_msg_attempted: int
     comm_agent_msg_scheduled: int
@@ -68,6 +72,9 @@ class EpisodeRecorder:
         self.obs_sensor_count = 0
         self.obs_total_count = 0
         self.obs_stale_count = 0
+        self.obs_sensor_track_stale_count = 0
+        self.obs_sensor_track_ages_s: list[float] = []
+        self.obs_occluded_count = 0
         self.obs_empty_agent_ticks = 0
         self.obs_agent_ticks = 0
 
@@ -120,8 +127,16 @@ class EpisodeRecorder:
                     self.obs_sensor_count += 1
                 elif source == "v2v":
                     self.obs_v2v_count += 1
-                if float(obs.get("msg_age_sec", 0.0)) >= float(stale_age_s):
+                is_track_stale = bool(obs.get("stale", False))
+                if float(obs.get("msg_age_sec", 0.0)) >= float(stale_age_s) or is_track_stale:
                     self.obs_stale_count += 1
+                if source == "sensor":
+                    age_s = float(obs.get("track_age_sec", obs.get("msg_age_sec", 0.0)))
+                    self.obs_sensor_track_ages_s.append(age_s)
+                    if is_track_stale:
+                        self.obs_sensor_track_stale_count += 1
+                if bool(obs.get("occluded", False)):
+                    self.obs_occluded_count += 1
 
     def finalize(
         self,
@@ -157,6 +172,7 @@ class EpisodeRecorder:
         obs_neighbors_mean = float(np.mean(self.obs_neighbor_counts)) if self.obs_neighbor_counts else 0.0
         obs_total = max(1, self.obs_total_count)
         obs_agent_ticks = max(1, self.obs_agent_ticks)
+        track_ages = np.asarray(self.obs_sensor_track_ages_s, dtype=float)
         comm = comm_stats or {}
         msg_attempted = int(comm.get("agent_msg_attempted", 0))
         msg_scheduled = int(comm.get("agent_msg_scheduled", 0))
@@ -198,6 +214,10 @@ class EpisodeRecorder:
             obs_v2v_fraction=float(self.obs_v2v_count / obs_total),
             obs_sensor_fraction=float(self.obs_sensor_count / obs_total),
             obs_stale_fraction=float(self.obs_stale_count / obs_total),
+            obs_sensor_track_stale_fraction=float(self.obs_sensor_track_stale_count / obs_total),
+            obs_sensor_track_age_mean_s=float(np.mean(track_ages)) if track_ages.size else 0.0,
+            obs_sensor_track_age_p95_s=float(np.percentile(track_ages, 95)) if track_ages.size else 0.0,
+            obs_occluded_fraction=float(self.obs_occluded_count / obs_total),
             obs_empty_fraction=float(self.obs_empty_agent_ticks / obs_agent_ticks),
             comm_agent_msg_attempted=msg_attempted,
             comm_agent_msg_scheduled=msg_scheduled,

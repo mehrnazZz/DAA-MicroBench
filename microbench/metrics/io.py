@@ -43,6 +43,10 @@ RESULT_FIELDS = [
     "obs_v2v_fraction",
     "obs_sensor_fraction",
     "obs_stale_fraction",
+    "obs_sensor_track_stale_fraction",
+    "obs_sensor_track_age_mean_s",
+    "obs_sensor_track_age_p95_s",
+    "obs_occluded_fraction",
     "obs_empty_fraction",
     "comm_agent_msg_attempted",
     "comm_agent_msg_scheduled",
@@ -89,6 +93,10 @@ SUMMARY_FIELDS = [
     "obs_v2v_fraction_mean",
     "obs_sensor_fraction_mean",
     "obs_stale_fraction_mean",
+    "obs_sensor_track_stale_fraction_mean",
+    "obs_sensor_track_age_mean_s_mean",
+    "obs_sensor_track_age_p95_s_mean",
+    "obs_occluded_fraction_mean",
     "obs_empty_fraction_mean",
     "comm_agent_msg_attempted_mean",
     "comm_agent_msg_scheduled_mean",
@@ -204,6 +212,14 @@ def write_summary(out_dir: str | Path) -> Path:
             obs_sensor = [x for x in obs_sensor if x is not None]
             obs_stale = [_to_float(x.get("obs_stale_fraction")) for x in items]
             obs_stale = [x for x in obs_stale if x is not None]
+            obs_sensor_track_stale = [_to_float(x.get("obs_sensor_track_stale_fraction")) for x in items]
+            obs_sensor_track_stale = [x for x in obs_sensor_track_stale if x is not None]
+            obs_sensor_track_age_mean = [_to_float(x.get("obs_sensor_track_age_mean_s")) for x in items]
+            obs_sensor_track_age_mean = [x for x in obs_sensor_track_age_mean if x is not None]
+            obs_sensor_track_age_p95 = [_to_float(x.get("obs_sensor_track_age_p95_s")) for x in items]
+            obs_sensor_track_age_p95 = [x for x in obs_sensor_track_age_p95 if x is not None]
+            obs_occluded = [_to_float(x.get("obs_occluded_fraction")) for x in items]
+            obs_occluded = [x for x in obs_occluded if x is not None]
             obs_empty = [_to_float(x.get("obs_empty_fraction")) for x in items]
             obs_empty = [x for x in obs_empty if x is not None]
             msg_attempted = [_to_float(x.get("comm_agent_msg_attempted")) for x in items]
@@ -265,6 +281,10 @@ def write_summary(out_dir: str | Path) -> Path:
                 "obs_v2v_fraction_mean": _mean(obs_v2v),
                 "obs_sensor_fraction_mean": _mean(obs_sensor),
                 "obs_stale_fraction_mean": _mean(obs_stale),
+                "obs_sensor_track_stale_fraction_mean": _mean(obs_sensor_track_stale),
+                "obs_sensor_track_age_mean_s_mean": _mean(obs_sensor_track_age_mean),
+                "obs_sensor_track_age_p95_s_mean": _mean(obs_sensor_track_age_p95),
+                "obs_occluded_fraction_mean": _mean(obs_occluded),
                 "obs_empty_fraction_mean": _mean(obs_empty),
                 "comm_agent_msg_attempted_mean": _mean(msg_attempted),
                 "comm_agent_msg_scheduled_mean": _mean(msg_scheduled),

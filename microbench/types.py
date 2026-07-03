@@ -40,6 +40,10 @@ class NeighborObs:
     msg_age_sec: float
     valid: bool
     source: str = "v2v"
+    track_age_sec: float = 0.0
+    last_seen_s: float | None = None
+    stale: bool = False
+    occluded: bool = False
 
 
 @dataclass

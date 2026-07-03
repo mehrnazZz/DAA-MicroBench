@@ -1,0 +1,49 @@
+scenario:
+  name: "perception_stale_tracks"
+  description: "Sensor-only four-way encounter with intermittent local dropouts and short-lived stale tracks."
+  duration_s: 45.0
+
+world:
+  planar: true
+  fixed_y_m: 0.0
+
+agent_params:
+  radius_m: 0.45
+  v_max_mps: 3.0
+  a_max_mps2: 2.0
+  goal_tolerance_m: 1.0
+
+goals:
+  min_goal_distance_m: 50.0
+
+spawn:
+  type: "four_way"
+  extent_m: 36.0
+  lane_half_width_m: 5.0
+  y_m: 0.0
+
+perception:
+  mode: "sensor"
+  sensor:
+    range_m: 24.0
+    fov_deg: 170.0
+    occlusion: false
+    false_negative_p: 0.04
+    noise_sigma_pos_m: 0.04
+    noise_sigma_vel_mps: 0.04
+    track_ttl_s: 0.35
+
+agents:
+  defaults:
+    failure_modes:
+      sensor_dropout:
+        enabled: true
+        start_s: 8.0
+        duration_s: 18.0
+        p: 0.2
+  by_id:
+    0:
+      capabilities:
+        sensor:
+          range_m: 16.0
+          fov_deg: 120.0

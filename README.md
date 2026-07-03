@@ -156,9 +156,25 @@ perception:
     false_negative_p: 0.0
     noise_sigma_pos_m: 0.0
     noise_sigma_vel_mps: 0.0
+    track_ttl_s: 0.25
 ```
 
-When trace logging is enabled, `selected_obs[*].source` is `v2v` or `sensor`.
+Sensor tracks are agent-local. When `track_ttl_s > 0`, a missed detection can remain visible as a stale sensor track until the TTL expires. Stale tracks carry `source: sensor`, `stale: true`, `track_age_sec`, and `last_seen_s`.
+
+Per-agent capability overrides can specialize sensors without changing the global scenario:
+
+```yaml
+agents:
+  by_id:
+    0:
+      capabilities:
+        sensor:
+          range_m: 12.0
+          fov_deg: 90.0
+          false_negative_p: 0.1
+```
+
+When trace logging is enabled, `selected_obs[*].source` is `v2v` or `sensor`; sensor observations also include `stale`, `track_age_sec`, `last_seen_s`, and `occluded` diagnostics.
 
 ### 3.1 Coordinate Conventions
 

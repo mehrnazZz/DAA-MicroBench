@@ -57,6 +57,7 @@ class EpisodeStep:
     collision_pairs: set[tuple[int, int]]
     near_miss_pairs: set[tuple[int, int]]
     planner_debug: list[dict]
+    perception_debug: list[dict]
     agent_failures: list[list[str]]
     message_events: list[dict]
     comm_stats: dict[str, int]
@@ -76,6 +77,7 @@ class EpisodeStep:
             "speed_saturated": [bool(x) for x in self.speed_saturated],
             "accel_saturated": [bool(x) for x in self.accel_saturated],
             "planner_debug": self.planner_debug,
+            "perception_debug": self.perception_debug,
             "agent_failures": self.agent_failures,
             "message_events": self.message_events,
             "comm_stats": self.comm_stats,
@@ -137,6 +139,32 @@ def _copy_state(s: AgentState) -> AgentState:
         done=bool(s.done),
         done_time_s=float(s.done_time_s) if s.done_time_s is not None else None,
         path_length_m=float(s.path_length_m),
+    )
+
+
+def _copy_neighbor_obs(
+    n: NeighborObs,
+    *,
+    msg_age_sec: float | None = None,
+    valid: bool | None = None,
+    source: str | None = None,
+    track_age_sec: float | None = None,
+    last_seen_s: float | None = None,
+    stale: bool | None = None,
+    occluded: bool | None = None,
+) -> NeighborObs:
+    return NeighborObs(
+        idx=int(n.idx),
+        pos=np.asarray(n.pos, dtype=float).copy(),
+        vel=np.asarray(n.vel, dtype=float).copy(),
+        radius=float(n.radius),
+        msg_age_sec=float(n.msg_age_sec if msg_age_sec is None else msg_age_sec),
+        valid=bool(n.valid if valid is None else valid),
+        source=str(n.source if source is None else source),
+        track_age_sec=float(n.track_age_sec if track_age_sec is None else track_age_sec),
+        last_seen_s=n.last_seen_s if last_seen_s is None else float(last_seen_s),
+        stale=bool(n.stale if stale is None else stale),
+        occluded=bool(n.occluded if occluded is None else occluded),
     )
 
 
@@ -229,6 +257,8 @@ class EpisodeEngine:
         self.agent_profiles = [self._build_agent_profile(i) for i in range(self.n_agents)]
         self.agent_rngs = [np.random.default_rng(_agent_seed(seed + 17_171, i)) for i in range(self.n_agents)]
         self.command_delay_buffers: list[list[np.ndarray]] = [[] for _ in range(self.n_agents)]
+        self.sensor_tracks: list[dict[int, NeighborObs]] = [dict() for _ in range(self.n_agents)]
+        self.sensor_track_last_seen_s: list[dict[int, float]] = [dict() for _ in range(self.n_agents)]
 
         self.states = []
         for i, profile in enumerate(self.agent_profiles):
@@ -355,7 +385,20 @@ class EpisodeEngine:
 
         merged = deep_merge(default_cfg, override_cfg)
         capabilities = dict(merged.get("capabilities", {}) or {})
-        for key in ("radius_m", "v_max_mps", "a_max_mps2", "sensor_range_m", "comm_range_m"):
+        for key in (
+            "radius_m",
+            "v_max_mps",
+            "a_max_mps2",
+            "sensor_range_m",
+            "sensor_fov_deg",
+            "sensor_false_negative_p",
+            "sensor_noise_sigma_pos_m",
+            "sensor_noise_sigma_vel_mps",
+            "sensor_occlusion",
+            "sensor_occlusion_margin_m",
+            "sensor_track_ttl_s",
+            "comm_range_m",
+        ):
             if key in merged:
                 capabilities.setdefault(key, merged[key])
 
@@ -456,6 +499,119 @@ class EpisodeEngine:
         else:
             finalize()
 
+    def _perception_config_for_agent(self, agent_id: int) -> dict:
+        cfg = deep_merge({}, self.perception_cfg)
+        caps = self.agent_profiles[agent_id].capabilities
+
+        perception_caps = caps.get("perception")
+        if isinstance(perception_caps, dict):
+            cfg = deep_merge(cfg, perception_caps)
+
+        sensor_override: dict = {}
+        sensor_caps = caps.get("sensor")
+        if isinstance(sensor_caps, dict):
+            sensor_override = deep_merge(sensor_override, sensor_caps)
+
+        cap_to_sensor_key = {
+            "sensor_range_m": "range_m",
+            "sensor_fov_deg": "fov_deg",
+            "sensor_false_negative_p": "false_negative_p",
+            "sensor_noise_sigma_pos_m": "noise_sigma_pos_m",
+            "sensor_noise_sigma_vel_mps": "noise_sigma_vel_mps",
+            "sensor_occlusion": "occlusion",
+            "sensor_occlusion_margin_m": "occlusion_margin_m",
+            "sensor_track_ttl_s": "track_ttl_s",
+        }
+        for cap_key, sensor_key in cap_to_sensor_key.items():
+            if cap_key in caps:
+                sensor_override[sensor_key] = caps[cap_key]
+
+        if sensor_override:
+            cfg["sensor"] = deep_merge(cfg.get("sensor", {}), sensor_override)
+        return cfg
+
+    @staticmethod
+    def _sensor_track_ttl_s(perception_cfg: dict) -> float:
+        sensor_cfg = perception_cfg.get("sensor", perception_cfg)
+        value = sensor_cfg.get(
+            "track_ttl_s",
+            sensor_cfg.get("stale_track_ttl_s", perception_cfg.get("track_ttl_s", 0.0)),
+        )
+        return max(0.0, float(value))
+
+    def _sensor_observations_with_tracks(
+        self,
+        *,
+        agent_id: int,
+        t: float,
+        detected_obs: list[NeighborObs],
+        perception_cfg: dict,
+    ) -> list[NeighborObs]:
+        ttl_s = self._sensor_track_ttl_s(perception_cfg)
+        tracks = self.sensor_tracks[agent_id]
+        last_seen = self.sensor_track_last_seen_s[agent_id]
+
+        current: dict[int, NeighborObs] = {}
+        for obs in detected_obs:
+            live = _copy_neighbor_obs(
+                obs,
+                msg_age_sec=0.0,
+                track_age_sec=0.0,
+                last_seen_s=t,
+                stale=False,
+                source="sensor",
+            )
+            current[live.idx] = live
+            tracks[live.idx] = _copy_neighbor_obs(live)
+            last_seen[live.idx] = float(t)
+
+        if ttl_s <= 0.0:
+            return [current[k] for k in sorted(current)]
+
+        expired: list[int] = []
+        for idx, cached in list(tracks.items()):
+            if idx in current:
+                continue
+            seen_s = last_seen.get(idx)
+            if seen_s is None:
+                expired.append(idx)
+                continue
+            age_s = max(0.0, float(t) - float(seen_s))
+            if age_s <= ttl_s + 1e-12:
+                current[idx] = _copy_neighbor_obs(
+                    cached,
+                    msg_age_sec=age_s,
+                    track_age_sec=age_s,
+                    last_seen_s=seen_s,
+                    stale=True,
+                    valid=True,
+                    source="sensor",
+                )
+            else:
+                expired.append(idx)
+
+        for idx in expired:
+            tracks.pop(idx, None)
+            last_seen.pop(idx, None)
+
+        return [current[k] for k in sorted(current)]
+
+    @staticmethod
+    def _neighbor_obs_trace(n: NeighborObs) -> dict:
+        return {
+            "idx": int(n.idx),
+            "msg_age_sec": float(n.msg_age_sec),
+            "valid": bool(n.valid),
+            "source": str(n.source),
+            "radius": float(n.radius),
+            "pos": np.asarray(n.pos, dtype=float).tolist(),
+            "vel": np.asarray(n.vel, dtype=float).tolist(),
+            "track_age_sec": float(n.track_age_sec),
+            "last_seen_s": float(n.last_seen_s) if n.last_seen_s is not None else None,
+            "stale": bool(n.stale),
+            "occluded": bool(n.occluded),
+        }
+
     def close(self) -> None:
         if self._closed:
             return
@@ -488,6 +644,7 @@ class EpisodeEngine:
         pending_messages_out: list[list] = [[] for _ in self.states]
         active_for_sampling = np.zeros(self.n_agents, dtype=bool)
         planner_debug: list[dict] = [{} for _ in self.states]
+        perception_debug: list[dict] = [{} for _ in self.states]
         agent_failures: list[list[str]] = [[] for _ in self.states]
         command_delay_steps = [0 for _ in self.states]
 
@@ -526,20 +683,29 @@ class EpisodeEngine:
             if self._has_failure(active_failures, "comm_dropout", "communication_dropout", "noncooperative"):
                 v2v_obs = []
 
-            perception_mode = str(self.perception_cfg.get("mode", "v2v")).lower()
+            agent_perception_cfg = self._perception_config_for_agent(i)
+            perception_mode = str(agent_perception_cfg.get("mode", "v2v")).lower()
             sensor_obs: list[NeighborObs] = []
+            sensor_detections: list[NeighborObs] = []
             if perception_mode in {"sensor", "fused"}:
-                sensor_obs = sense_neighbors(
+                sensor_detections = sense_neighbors(
                     ego=s,
                     states=self.states,
                     goal_dir=goal_dir,
                     obstacles=self.obstacles,
-                    perception_cfg=self.perception_cfg,
+                    perception_cfg=agent_perception_cfg,
                     planar=self.planar,
                     rng=self.rng,
                 )
             if self._has_failure(active_failures, "sensor_dropout", "perception_dropout"):
-                sensor_obs = []
+                sensor_detections = []
+            if perception_mode in {"sensor", "fused"}:
+                sensor_obs = self._sensor_observations_with_tracks(
+                    agent_id=i,
+                    t=t,
+                    detected_obs=sensor_detections,
+                    perception_cfg=agent_perception_cfg,
+                )
             if perception_mode == "sensor":
                 all_obs = sensor_obs
             elif perception_mode == "fused":
@@ -562,18 +728,19 @@ class EpisodeEngine:
 
             selected_neighbors[i] = [n.idx for n in selected]
             selected_neighbor_obs[i] = selected
-            selected_obs[i] = [
-                {
-                    "idx": n.idx,
-                    "msg_age_sec": float(n.msg_age_sec),
-                    "valid": bool(n.valid),
-                    "source": str(n.source),
-                    "radius": float(n.radius),
-                    "pos": n.pos.tolist(),
-                    "vel": n.vel.tolist(),
-                }
-                for n in selected
-            ]
+            selected_obs[i] = [self._neighbor_obs_trace(n) for n in selected]
+            perception_debug[i] = {
+                "mode": perception_mode,
+                "v2v_obs": int(len(v2v_obs)),
+                "sensor_detections": int(len(sensor_detections)),
+                "sensor_tracks": int(len(sensor_obs)),
+                "sensor_stale_tracks": int(sum(1 for obs in sensor_obs if obs.stale)),
+                "candidate_obs": int(len(all_obs)),
+                "selected_obs": int(len(selected)),
+                "track_ttl_s": float(self._sensor_track_ttl_s(agent_perception_cfg))
+                if perception_mode in {"sensor", "fused"}
+                else 0.0,
+            }
 
             selected_intent_obs: list[IntentObs] = []
             for n in selected:
@@ -711,6 +878,7 @@ class EpisodeEngine:
             collision_pairs=collision_pairs_step,
             near_miss_pairs=near_miss_pairs_step,
             planner_debug=planner_debug,
+            perception_debug=perception_debug,
             agent_failures=agent_failures,
             message_events=message_events,
             comm_stats=comm_stats,

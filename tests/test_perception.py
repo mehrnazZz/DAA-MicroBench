@@ -7,6 +7,7 @@ import unittest
 
 import numpy as np
 
+from microbench.core import EpisodeEngine
 from microbench.core.perception import sense_neighbors
 from microbench.runner import run_episode
 from microbench.types import AgentState, RunSpec
@@ -179,6 +180,196 @@ logging:
         self.assertGreater(float(row["obs_neighbors_mean"]), 0.0)
         self.assertEqual(float(row["obs_sensor_fraction"]), 1.0)
         self.assertEqual(float(row["obs_v2v_fraction"]), 0.0)
+
+    def test_agent_sensor_capability_overrides_global_sensor(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            scenario = tmp / "agent_sensor_caps.yaml"
+            scenario.write_text(
+                """
+scenario:
+  name: "agent_sensor_caps"
+  duration_s: 0.04
+world:
+  planar: true
+  fixed_y_m: 0.0
+agent_params:
+  radius_m: 0.2
+  v_max_mps: 1.0
+  a_max_mps2: 1.0
+  goal_tolerance_m: 0.1
+goals:
+  min_goal_distance_m: 8.0
+spawn:
+  type: "circle_swap"
+  center: [0.0, 0.0, 0.0]
+  radius_m: 5.0
+  jitter_m: 0.0
+perception:
+  mode: "sensor"
+  sensor:
+    range_m: 20.0
+    fov_deg: 360.0
+neighbors:
+  range_m: 30.0
+  top_k: 4
+  threat_metric: "distance"
+agents:
+  by_id:
+    0:
+      capabilities:
+        sensor:
+          range_m: 1.0
+logging:
+  save_events: false
+  save_trace: false
+""".strip(),
+                encoding="utf-8",
+            )
+
+            engine = EpisodeEngine(
+                scenario_path=str(scenario),
+                method="baseline_goal",
+                n_agents=2,
+                seed=0,
+                comm_profile="ideal_50hz",
+            )
+            step = engine.step()
+            engine.close()
+
+        assert step is not None
+        self.assertEqual(step.selected_neighbor_obs[0], [])
+        self.assertEqual([n.idx for n in step.selected_neighbor_obs[1]], [0])
+        self.assertEqual(step.perception_debug[0]["sensor_detections"], 0)
+        self.assertEqual(step.perception_debug[1]["sensor_detections"], 1)
+
+    def test_sensor_only_mode_does_not_leak_v2v_observations(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            scenario = tmp / "sensor_no_v2v_leak.yaml"
+            scenario.write_text(
+                """
+scenario:
+  name: "sensor_no_v2v_leak"
+  duration_s: 0.04
+world:
+  planar: true
+  fixed_y_m: 0.0
+agent_params:
+  radius_m: 0.2
+  v_max_mps: 1.0
+  a_max_mps2: 1.0
+  goal_tolerance_m: 0.1
+goals:
+  min_goal_distance_m: 8.0
+spawn:
+  type: "circle_swap"
+  center: [0.0, 0.0, 0.0]
+  radius_m: 5.0
+  jitter_m: 0.0
+perception:
+  mode: "sensor"
+  sensor:
+    range_m: 1.0
+    fov_deg: 360.0
+neighbors:
+  range_m: 30.0
+  top_k: 4
+  threat_metric: "distance"
+logging:
+  save_events: false
+  save_trace: false
+""".strip(),
+                encoding="utf-8",
+            )
+
+            engine = EpisodeEngine(
+                scenario_path=str(scenario),
+                method="baseline_goal",
+                n_agents=2,
+                seed=0,
+                comm_profile="ideal_50hz",
+            )
+            step = engine.step()
+            engine.close()
+
+        assert step is not None
+        self.assertEqual(step.selected_neighbor_obs[0], [])
+        self.assertEqual(step.selected_neighbor_obs[1], [])
+        self.assertEqual(step.perception_debug[0]["v2v_obs"], 1)
+        self.assertEqual(step.perception_debug[0]["candidate_obs"], 0)
+
+    def test_sensor_dropout_emits_stale_track_with_ttl(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            scenario = tmp / "stale_tracks.yaml"
+            scenario.write_text(
+                """
+scenario:
+  name: "stale_tracks"
+  duration_s: 0.08
+world:
+  planar: true
+  fixed_y_m: 0.0
+agent_params:
+  radius_m: 0.2
+  v_max_mps: 1.0
+  a_max_mps2: 1.0
+  goal_tolerance_m: 0.1
+goals:
+  min_goal_distance_m: 8.0
+spawn:
+  type: "circle_swap"
+  center: [0.0, 0.0, 0.0]
+  radius_m: 5.0
+  jitter_m: 0.0
+perception:
+  mode: "sensor"
+  sensor:
+    range_m: 20.0
+    fov_deg: 360.0
+    track_ttl_s: 0.08
+neighbors:
+  range_m: 30.0
+  top_k: 4
+  threat_metric: "distance"
+agents:
+  by_id:
+    0:
+      failure_modes:
+        sensor_dropout:
+          enabled: true
+          start_s: 0.02
+          duration_s: 0.02
+logging:
+  save_events: false
+  save_trace: false
+""".strip(),
+                encoding="utf-8",
+            )
+
+            engine = EpisodeEngine(
+                scenario_path=str(scenario),
+                method="baseline_goal",
+                n_agents=2,
+                seed=0,
+                comm_profile="ideal_50hz",
+            )
+            first = engine.step()
+            second = engine.step()
+            engine.close()
+
+        assert first is not None
+        assert second is not None
+        self.assertEqual([n.idx for n in first.selected_neighbor_obs[0]], [1])
+        self.assertFalse(first.selected_neighbor_obs[0][0].stale)
+        self.assertEqual([n.idx for n in second.selected_neighbor_obs[0]], [1])
+        self.assertTrue(second.selected_neighbor_obs[0][0].stale)
+        self.assertGreater(second.selected_neighbor_obs[0][0].track_age_sec, 0.0)
+        self.assertEqual(second.selected_obs[0][0]["source"], "sensor")
+        self.assertTrue(second.selected_obs[0][0]["stale"])
+        self.assertEqual(second.perception_debug[0]["sensor_detections"], 0)
+        self.assertEqual(second.perception_debug[0]["sensor_stale_tracks"], 1)
 
 
 if __name__ == "__main__":

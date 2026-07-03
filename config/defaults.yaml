@@ -33,6 +33,7 @@ perception:
     false_negative_p: 0.0
     noise_sigma_pos_m: 0.0
     noise_sigma_vel_mps: 0.0
+    track_ttl_s: 0.0       # hold last-seen local sensor tracks for this long after missed detections
 
 comm:
   profile: "ideal_50hz"     # name in comm_profiles.yaml
