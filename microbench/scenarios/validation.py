@@ -7,12 +7,16 @@ from typing import Any
 import numpy as np
 
 from microbench.config import load_yaml
+from microbench.metrics.io import RESULT_FIELDS, SUMMARY_FIELDS
 
 
 AXES = (("x", 0), ("y", 1), ("z", 2))
 BOUND_KEYS = ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax")
 PERCEPTION_MODES = {"v2v", "sensor", "fused"}
 SPAWN_TYPES = {"rect_to_rect", "circle_swap", "sphere_swap", "four_way"}
+ACCEPTANCE_OPERATORS = {"<=", "<", ">=", ">", "==", "!="}
+ACCEPTANCE_SCOPES = {"summary", "results"}
+ACCEPTANCE_SEVERITIES = {"smoke", "required", "warning", "informational"}
 
 
 @dataclass
@@ -357,6 +361,63 @@ def _nonempty_list(report: ValidationReport, value: Any, loc: str) -> list:
     return value
 
 
+def _validate_acceptance(report: ValidationReport, acceptance: Any, loc: str) -> None:
+    if acceptance is None:
+        return
+    if not isinstance(acceptance, dict):
+        report.add_error(loc, "must be a mapping")
+        return
+
+    schema_version = acceptance.get("schema_version")
+    if not isinstance(schema_version, str) or not schema_version.strip():
+        report.add_error(f"{loc}.schema_version", "must be a non-empty string")
+
+    rules = acceptance.get("rules")
+    if not isinstance(rules, list):
+        report.add_error(f"{loc}.rules", "must be a list")
+        return
+
+    summary_fields = set(SUMMARY_FIELDS)
+    result_fields = set(RESULT_FIELDS)
+    for idx, rule in enumerate(rules):
+        rloc = f"{loc}.rules[{idx}]"
+        if not isinstance(rule, dict):
+            report.add_error(rloc, "must be a mapping")
+            continue
+
+        for key in ("name", "scope", "method", "metric", "operator", "value", "severity", "description"):
+            if key not in rule:
+                report.add_error(f"{rloc}.{key}", "is required")
+
+        for key in ("name", "method", "metric", "operator", "severity", "description"):
+            if key in rule and (not isinstance(rule[key], str) or not rule[key].strip()):
+                report.add_error(f"{rloc}.{key}", "must be a non-empty string")
+
+        scope = str(rule.get("scope", "")).lower()
+        if scope not in ACCEPTANCE_SCOPES:
+            report.add_error(f"{rloc}.scope", f"must be one of {sorted(ACCEPTANCE_SCOPES)}")
+
+        operator = str(rule.get("operator", ""))
+        if operator not in ACCEPTANCE_OPERATORS:
+            report.add_error(f"{rloc}.operator", f"must be one of {sorted(ACCEPTANCE_OPERATORS)}")
+
+        severity = str(rule.get("severity", "")).lower()
+        if severity not in ACCEPTANCE_SEVERITIES:
+            report.add_error(f"{rloc}.severity", f"must be one of {sorted(ACCEPTANCE_SEVERITIES)}")
+
+        metric = str(rule.get("metric", ""))
+        if scope == "summary" and metric not in summary_fields:
+            report.add_error(f"{rloc}.metric", f"unknown summary metric {metric!r}")
+        if scope == "results" and metric not in result_fields:
+            report.add_error(f"{rloc}.metric", f"unknown results metric {metric!r}")
+
+        _num(report, rule.get("value"), f"{rloc}.value")
+
+        n_agents = rule.get("n_agents", "*")
+        if not (n_agents == "*" or (isinstance(n_agents, int) and not isinstance(n_agents, bool) and n_agents > 0)):
+            report.add_error(f"{rloc}.n_agents", "must be '*' or a positive integer")
+
+
 def _resolve_manifest_path(base_dir: Path, raw_path: str) -> Path:
     path = Path(raw_path)
     if path.is_absolute():
@@ -396,6 +457,9 @@ def validate_suite_manifest_config(
     for i, profile in enumerate(comm_profiles):
         if not str(profile).strip():
             report.add_error(f"comm_profiles[{i}]", "must not be empty")
+    _positive(report, manifest, "duration_override_s", "root")
+
+    _validate_acceptance(report, manifest.get("acceptance"), "acceptance")
 
     scenarios = _nonempty_list(report, manifest.get("scenarios"), "scenarios")
     base = Path(base_dir) if base_dir is not None else Path(path).parent

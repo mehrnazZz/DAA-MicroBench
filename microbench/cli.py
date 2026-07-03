@@ -421,7 +421,7 @@ def _list_suites(args) -> None:
         print(json.dumps(entries, indent=2, sort_keys=True))
         return
 
-    print("suite,status,source,dimensions,scenario_count,default_methods,description")
+    print("suite,status,source,dimensions,scenario_count,acceptance_rules,default_methods,description")
     for entry in entries:
         print(
             ",".join(
@@ -431,6 +431,7 @@ def _list_suites(args) -> None:
                     entry["source"],
                     "+".join(entry["dimensions"]),
                     str(len(entry["scenarios"])),
+                    str(entry["acceptance_rule_count"]),
                     "+".join(entry["default_methods"]) if entry["default_methods"] else "-",
                     entry["description"],
                 ]

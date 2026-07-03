@@ -119,6 +119,7 @@ Results should be grouped, not blended:
 Do not compare methods across different suites as if they share one ranking.
 
 See [SCENARIO_SUITES.md](SCENARIO_SUITES.md) or `python -m microbench.cli list-suites` for the current suite registry.
+Use `python -m microbench.cli list-suites --json` to inspect pre-v1 acceptance metadata for generated suites.
 
 ## Reproducibility Rules
 

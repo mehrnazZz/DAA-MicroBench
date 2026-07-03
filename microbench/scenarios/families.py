@@ -7,6 +7,9 @@ import copy
 import yaml
 
 
+ACCEPTANCE_SCHEMA_VERSION = "0.1"
+
+
 @dataclass(frozen=True)
 class ScenarioFamily:
     scenario_id: str
@@ -35,6 +38,8 @@ class OfficialSuite:
     status: str = "pre_v1_official"
     source: str = "generated"
     dimensions: tuple[str, ...] = ("2d", "3d")
+    baseline_acceptance: tuple[dict, ...] = ()
+    duration_override_s: float | None = None
 
 
 @dataclass(frozen=True)
@@ -49,6 +54,128 @@ class SuiteRegistryEntry:
     n_agents: tuple[int, ...]
     seeds: tuple[int, ...]
     comm_profiles: tuple[str, ...]
+    baseline_acceptance: tuple[dict, ...] = ()
+    duration_override_s: float | None = None
+
+
+def _acceptance_rule(
+    *,
+    name: str,
+    method: str,
+    metric: str,
+    operator: str,
+    value: float,
+    severity: str,
+    description: str,
+    scope: str = "summary",
+    scenario: str = "*",
+    comm_profile: str = "*",
+    n_agents: str = "*",
+    band: str = "pre_v1",
+) -> dict:
+    return {
+        "name": name,
+        "scope": scope,
+        "method": method,
+        "scenario": scenario,
+        "comm_profile": comm_profile,
+        "n_agents": n_agents,
+        "metric": metric,
+        "operator": operator,
+        "value": float(value),
+        "severity": severity,
+        "band": band,
+        "description": description,
+    }
+
+
+SMOKE_BASELINE_ACCEPTANCE: tuple[dict, ...] = (
+    _acceptance_rule(
+        name="baseline_goal_completion_metric_present",
+        method="baseline_goal",
+        metric="completion_rate_mean",
+        operator=">=",
+        value=0.0,
+        severity="smoke",
+        band="generated_smoke",
+        description="Goal-only baseline must run and emit finite completion metrics on the generated smoke suite.",
+    ),
+    _acceptance_rule(
+        name="baseline_goal_collision_metric_bounded",
+        method="baseline_goal",
+        metric="collision_episode_rate",
+        operator="<=",
+        value=1.0,
+        severity="smoke",
+        band="generated_smoke",
+        description="Goal-only baseline may collide, but collision episode rate must remain a valid probability.",
+    ),
+    _acceptance_rule(
+        name="orca_expert_smoke_runtime",
+        method="orca_expert",
+        metric="planner_ms_p95",
+        operator="<=",
+        value=100.0,
+        severity="smoke",
+        band="generated_smoke",
+        description="ORCA heuristic should stay comfortably below real-time cost in the tiny generated smoke matrix.",
+    ),
+    _acceptance_rule(
+        name="priority_yield_message_metric_present",
+        method="priority_yield",
+        metric="comm_agent_msg_attempted_mean",
+        operator=">=",
+        value=0.0,
+        severity="smoke",
+        band="generated_smoke",
+        description="Priority-yield baseline must run through agent-message accounting in the generated smoke matrix.",
+    ),
+    _acceptance_rule(
+        name="priority_yield_smoke_runtime",
+        method="priority_yield",
+        metric="planner_ms_p95",
+        operator="<=",
+        value=100.0,
+        severity="smoke",
+        band="generated_smoke",
+        description="Priority-yield baseline should remain cheap enough for CI smoke coverage.",
+    ),
+)
+
+
+PRE_V1_REFERENCE_ACCEPTANCE: tuple[dict, ...] = (
+    _acceptance_rule(
+        name="collision_rate_is_probability",
+        method="*",
+        metric="collision_episode_rate",
+        operator="<=",
+        value=1.0,
+        severity="informational",
+        description="Pre-v1 generated suite rows should expose collision episode rate as a probability.",
+    ),
+    _acceptance_rule(
+        name="completion_rate_is_probability",
+        method="*",
+        metric="completion_rate_mean",
+        operator=">=",
+        value=0.0,
+        severity="informational",
+        description="Pre-v1 generated suite rows should expose completion rate as a probability.",
+    ),
+)
+
+
+AGENTIC_REFERENCE_ACCEPTANCE: tuple[dict, ...] = (
+    _acceptance_rule(
+        name="agent_message_accounting_present",
+        method="*",
+        metric="comm_agent_msg_attempted_mean",
+        operator=">=",
+        value=0.0,
+        severity="informational",
+        description="Agentic suites should preserve message accounting fields even for planners that send no messages.",
+    ),
+)
 
 
 def _benchmark_meta(
@@ -557,6 +684,25 @@ SCENARIO_FAMILIES: dict[str, ScenarioFamily] = {
 
 
 OFFICIAL_SUITES: dict[str, OfficialSuite] = {
+    "official_smoke_generated": OfficialSuite(
+        suite_id="official_smoke_generated",
+        description="Fast generated smoke suite covering planar, volumetric 3D, and agentic-priority scenarios.",
+        scenario_ids=(
+            "head_on_2d_easy",
+            "sphere_swap_3d_medium",
+            "heterogeneous_priority_crossing_3d_medium",
+        ),
+        default_methods=("baseline_goal", "orca_expert", "priority_yield"),
+        n_agents=(4,),
+        stretch_n_agents=(4, 6),
+        seeds=(0,),
+        stretch_seeds=(0, 1),
+        comm_profiles=("ideal_50hz",),
+        status="smoke",
+        dimensions=("2d", "3d"),
+        baseline_acceptance=SMOKE_BASELINE_ACCEPTANCE,
+        duration_override_s=8.0,
+    ),
     "official_alpha": OfficialSuite(
         suite_id="official_alpha",
         description="Pre-v1 official alpha suite mixing planar and 3D DAA families.",
@@ -576,6 +722,7 @@ OFFICIAL_SUITES: dict[str, OfficialSuite] = {
         seeds=tuple(range(5)),
         stretch_seeds=tuple(range(20)),
         comm_profiles=("ideal_50hz", "realistic_v2v_50hz", "degraded_20hz"),
+        baseline_acceptance=PRE_V1_REFERENCE_ACCEPTANCE,
     ),
     "official_3d_stress": OfficialSuite(
         suite_id="official_3d_stress",
@@ -596,6 +743,7 @@ OFFICIAL_SUITES: dict[str, OfficialSuite] = {
         stretch_seeds=tuple(range(30)),
         comm_profiles=("ideal_50hz", "realistic_v2v_50hz", "degraded_20hz"),
         dimensions=("3d",),
+        baseline_acceptance=PRE_V1_REFERENCE_ACCEPTANCE,
     ),
     "official_agentic_stress": OfficialSuite(
         suite_id="official_agentic_stress",
@@ -613,6 +761,7 @@ OFFICIAL_SUITES: dict[str, OfficialSuite] = {
         stretch_seeds=tuple(range(20)),
         comm_profiles=("ideal_50hz", "realistic_v2v_50hz", "degraded_20hz"),
         dimensions=("3d",),
+        baseline_acceptance=AGENTIC_REFERENCE_ACCEPTANCE + PRE_V1_REFERENCE_ACCEPTANCE,
     ),
 }
 
@@ -696,10 +845,19 @@ def suite_registry_entries() -> list[SuiteRegistryEntry]:
             n_agents=suite.n_agents,
             seeds=suite.seeds,
             comm_profiles=suite.comm_profiles,
+            baseline_acceptance=suite.baseline_acceptance,
+            duration_override_s=suite.duration_override_s,
         )
         for suite in OFFICIAL_SUITES.values()
     ]
     return sorted([*generated, *HANDWRITTEN_SUITE_REGISTRY], key=lambda x: x.suite_id)
+
+
+def _acceptance_payload(rules: tuple[dict, ...]) -> dict:
+    return {
+        "schema_version": ACCEPTANCE_SCHEMA_VERSION,
+        "rules": copy.deepcopy(list(rules)),
+    }
 
 
 def suite_registry_dicts() -> list[dict]:
@@ -719,6 +877,9 @@ def suite_registry_dicts() -> list[dict]:
                 "seed_min": min(entry.seeds) if entry.seeds else None,
                 "seed_max": max(entry.seeds) if entry.seeds else None,
                 "comm_profiles": list(entry.comm_profiles),
+                "duration_override_s": entry.duration_override_s,
+                "acceptance_rule_count": len(entry.baseline_acceptance),
+                "acceptance": _acceptance_payload(entry.baseline_acceptance),
             }
         )
     return out
@@ -762,14 +923,21 @@ def validate_scenario_family(family: ScenarioFamily) -> None:
 
 def suite_defaults(suite_id: str, *, stretch: bool = False) -> dict:
     suite = OFFICIAL_SUITES[suite_id]
-    return {
+    out = {
         "suite": suite.suite_id,
         "description": suite.description,
+        "status": suite.status,
+        "source": suite.source,
+        "dimensions": list(suite.dimensions),
         "default_methods": list(suite.default_methods),
         "n_agents": list(suite.stretch_n_agents if stretch else suite.n_agents),
         "seeds": list(suite.stretch_seeds if stretch else suite.seeds),
         "comm_profiles": list(suite.comm_profiles),
+        "acceptance": _acceptance_payload(suite.baseline_acceptance),
     }
+    if suite.duration_override_s is not None:
+        out["duration_override_s"] = float(suite.duration_override_s)
+    return out
 
 
 def build_suite_manifest(suite_id: str, scenario_paths: list[Path] | None = None, *, stretch: bool = False) -> dict:
@@ -819,11 +987,14 @@ def materialize_official_suite(
     for scenario_id in suite.scenario_ids:
         family = SCENARIO_FAMILIES[scenario_id]
         validate_scenario_family(family)
+        cfg = copy.deepcopy(family.config)
+        if suite.duration_override_s is not None:
+            cfg.setdefault("scenario", {})["duration_s"] = float(suite.duration_override_s)
         path = out / f"{scenario_id}.yaml"
         if path.exists() and not overwrite:
             raise FileExistsError(f"{path} already exists; pass overwrite=True to replace generated scenarios")
         with path.open("w", encoding="utf-8") as f:
-            yaml.safe_dump(family.config, f, sort_keys=False)
+            yaml.safe_dump(cfg, f, sort_keys=False)
         scenario_paths.append(path)
 
     manifest = build_suite_manifest(suite_id, [Path(p.name) for p in scenario_paths], stretch=stretch)

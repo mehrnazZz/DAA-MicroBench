@@ -2,23 +2,16 @@
 set -euo pipefail
 
 OUT_DIR="${1:-runs/ci_sanity}"
-SCENARIO="config/scenarios/corridor.yaml"
 METHOD="baseline_goal"
-COMM="ideal_50hz"
-N="10"
-SEEDS="0:2"
 
-python -m microbench.cli sweep \
-  --scenarios "${SCENARIO}" \
+python -m microbench.cli canonical-sweep \
+  --suite official_smoke_generated \
   --methods "${METHOD}" \
-  --seeds "${SEEDS}" \
-  --n "${N}" \
-  --comm "${COMM}" \
   --out-dir "${OUT_DIR}"
 
 python -m microbench.cli validate-scenarios \
   --all-builtins \
-  --generated-suite official_3d_stress \
+  --all-generated-suites \
   --quiet
 
 export OUT_DIR
@@ -35,7 +28,7 @@ if not results.exists() or not summary.exists():
 
 rows = list(csv.DictReader(results.open()))
 if len(rows) != 3:
-    raise SystemExit(f"Expected 3 episodes (seeds 0..2), got {len(rows)}")
+    raise SystemExit(f"Expected 3 generated smoke episodes, got {len(rows)}")
 
 print("ci_sanity: PASS")
 print(f"results: {results}")

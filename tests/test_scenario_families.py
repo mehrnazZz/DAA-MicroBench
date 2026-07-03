@@ -10,7 +10,7 @@ import numpy as np
 
 from microbench.config import load_yaml
 from microbench.core import EpisodeEngine
-from microbench.scenarios import generate_spawns_goals, materialize_official_suite
+from microbench.scenarios import generate_spawns_goals, materialize_official_suite, suite_defaults
 from microbench.scenarios.families import SCENARIO_FAMILIES, suite_registry_dicts
 
 
@@ -96,6 +96,10 @@ class TestScenarioFamilies(unittest.TestCase):
     def test_suite_registry_lists_generated_and_handwritten_statuses(self):
         registry = {entry["suite"]: entry for entry in suite_registry_dicts()}
 
+        self.assertEqual(registry["official_smoke_generated"]["status"], "smoke")
+        self.assertEqual(registry["official_smoke_generated"]["source"], "generated")
+        self.assertEqual(registry["official_smoke_generated"]["acceptance_rule_count"], 5)
+        self.assertIn("heterogeneous_priority_crossing_3d_medium", registry["official_smoke_generated"]["scenarios"])
         self.assertEqual(registry["official_3d_stress"]["status"], "pre_v1_official")
         self.assertEqual(registry["official_3d_stress"]["source"], "generated")
         self.assertIn("merge_3d_hard", registry["official_3d_stress"]["scenarios"])
@@ -128,6 +132,24 @@ class TestScenarioFamilies(unittest.TestCase):
             self.assertTrue((out_dir / "suite_manifest.yaml").exists())
             self.assertEqual(len(list(out_dir.glob("*.yaml"))), 8)
 
+    def test_generated_smoke_suite_manifest_carries_acceptance_rules(self):
+        with tempfile.TemporaryDirectory() as td:
+            generated = materialize_official_suite("official_smoke_generated", Path(td), overwrite=True)
+            manifest = generated["manifest"]
+
+            self.assertEqual(len(generated["scenario_paths"]), 3)
+            self.assertEqual(manifest["status"], "smoke")
+            self.assertEqual(manifest["dimensions"], ["2d", "3d"])
+            self.assertEqual(manifest["default_methods"], ["baseline_goal", "orca_expert", "priority_yield"])
+            self.assertEqual(manifest["n_agents"], [4])
+            self.assertEqual(manifest["seeds"], [0])
+            self.assertEqual(manifest["duration_override_s"], 8.0)
+            self.assertEqual(manifest["acceptance"]["schema_version"], "0.1")
+            self.assertEqual(len(manifest["acceptance"]["rules"]), 5)
+            self.assertEqual(suite_defaults("official_smoke_generated")["acceptance"]["schema_version"], "0.1")
+            cfg = load_yaml(generated["scenario_paths"][0])
+            self.assertEqual(cfg["scenario"]["duration_s"], 8.0)
+
     def test_list_suites_cli_reports_registry(self):
         proc = subprocess.run(
             [sys.executable, "-m", "microbench.cli", "list-suites"],
@@ -138,7 +160,32 @@ class TestScenarioFamilies(unittest.TestCase):
         )
 
         self.assertIn("official_agentic_stress,pre_v1_official,generated,3d", proc.stdout)
+        self.assertIn("official_smoke_generated,smoke,generated,2d+3d,3,5", proc.stdout)
         self.assertIn("three_d,development,hand_written,3d", proc.stdout)
+
+    def test_generated_smoke_suite_canonical_plan_is_tiny(self):
+        with tempfile.TemporaryDirectory() as td:
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "microbench.cli",
+                    "canonical-sweep",
+                    "--suite",
+                    "official_smoke_generated",
+                    "--out-dir",
+                    td,
+                    "--print-plan",
+                    "--no-run",
+                ],
+                cwd=Path(__file__).resolve().parents[1],
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+        self.assertIn("suite: official_smoke_generated", proc.stdout)
+        self.assertIn("total_runs: 9", proc.stdout)
 
 
 if __name__ == "__main__":

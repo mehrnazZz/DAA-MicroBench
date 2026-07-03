@@ -7,6 +7,8 @@ python -m microbench.cli list-suites
 python -m microbench.cli list-suites --json
 ```
 
+The JSON form includes machine-readable `acceptance` metadata for generated suites.
+
 ## Registry Status
 
 | Status | Meaning |
@@ -18,6 +20,22 @@ python -m microbench.cli list-suites --json
 | `custom` | User-defined scenarios or modified official scenarios. Label results clearly. |
 
 ## Generated Official Suites
+
+### `official_smoke_generated`
+
+Fast generated smoke suite for CI, local install checks, and public examples. It intentionally covers one planar case, one true 3D volumetric case, and one agentic heterogeneous-priority case with a tiny default run matrix.
+
+Families:
+- `head_on_2d_easy`
+- `sphere_swap_3d_medium`
+- `heterogeneous_priority_crossing_3d_medium`
+
+Default matrix:
+- methods: `baseline_goal`, `orca_expert`, `priority_yield`
+- N: `4`
+- seeds: `0`
+- comm: `ideal_50hz`
+- generated scenario duration override: `8.0s`
 
 ### `official_alpha`
 
@@ -65,6 +83,25 @@ Families:
 | `three_d` | `development` | Hand-written 3D scenarios for non-planar debugging. |
 | `perception_stress` | `development` | Sensor-only and fused-perception stress tests. |
 
+## Acceptance Metadata
+
+Generated suite manifests include:
+
+```yaml
+acceptance:
+  schema_version: "0.1"
+  rules:
+    - name: orca_expert_smoke_runtime
+      scope: summary
+      method: orca_expert
+      metric: planner_ms_p95
+      operator: <=
+      value: 100.0
+      severity: smoke
+```
+
+The validator checks rule schema, operator names, and metric names against `summary.csv` / `results.csv` fields. These rules are pre-v1 metadata, not a final leaderboard gate.
+
 ## Validation
 
 Validate built-in and generated suites before submitting results:
@@ -79,8 +116,8 @@ Generated suites write portable scenario YAMLs and `suite_manifest.yaml`:
 
 ```bash
 python -m microbench.cli materialize-suite \
-  --suite official_3d_stress \
-  --out-dir generated_official_3d_stress \
+  --suite official_smoke_generated \
+  --out-dir generated_official_smoke \
   --print-plan
 ```
 

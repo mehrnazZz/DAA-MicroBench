@@ -33,19 +33,18 @@ python -m microbench.cli run \
   --out-dir runs_readme_quickstart
 ```
 
-3. Run a small baseline sanity smoke sweep.
+3. Run the generated 2D/3D/agentic smoke sweep.
 
 ```bash
 python -m microbench.cli canonical-sweep \
-  --suite baseline_sanity \
-  --out-dir runs_readme_baseline \
-  --max-runs 4
+  --suite official_smoke_generated \
+  --out-dir runs_readme_smoke
 ```
 
 4. Inspect outputs.
 
 ```bash
-ls runs_readme_baseline
+ls runs_readme_smoke
 # results.csv, summary.csv, episodes/, worst_cases/ (if mined)
 ```
 
@@ -286,6 +285,15 @@ See [docs/SCENARIO_SUITES.md](docs/SCENARIO_SUITES.md) or run:
 
 ```bash
 python -m microbench.cli list-suites
+python -m microbench.cli list-suites --json
+```
+
+Run the fast generated smoke suite:
+
+```bash
+python -m microbench.cli canonical-sweep \
+  --suite official_smoke_generated \
+  --out-dir runs_official_smoke_generated
 ```
 
 Materialize an official suite without running it:
@@ -328,6 +336,8 @@ python -m microbench.cli canonical-sweep \
 ```
 
 Generated scenario files and `suite_manifest.yaml` are saved under `<out-dir>/_generated_scenarios/<suite>/` so result folders are self-describing.
+
+Generated manifests include an `acceptance` block with pre-v1 baseline rule metadata. These rules are currently a transparent contract for smoke/reference expectations; future releases can enforce them directly.
 
 Validate built-in and generated suites:
 

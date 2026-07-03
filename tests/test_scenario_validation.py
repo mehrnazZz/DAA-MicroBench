@@ -11,6 +11,7 @@ from microbench.scenarios import materialize_official_suite
 from microbench.scenarios.validation import (
     validate_scenario_config,
     validate_scenario_file,
+    validate_suite_manifest_config,
     validate_suite_manifest_file,
 )
 
@@ -119,7 +120,21 @@ class TestScenarioValidation(unittest.TestCase):
         )
 
         self.assertIn("validation: PASS", proc.stdout)
-        self.assertIn("suite_manifests=3", proc.stdout)
+        self.assertIn("suite_manifests=4", proc.stdout)
+
+    def test_suite_manifest_validation_rejects_bad_acceptance_metric(self):
+        with tempfile.TemporaryDirectory() as td:
+            generated = materialize_official_suite("official_smoke_generated", Path(td), overwrite=True)
+            manifest = generated["manifest"]
+            manifest["acceptance"]["rules"][0]["metric"] = "not_a_summary_metric"
+            report = validate_suite_manifest_config(
+                manifest,
+                base_dir=Path(td),
+                validate_scenarios=False,
+            )
+
+        self.assertFalse(report.ok)
+        self.assertTrue(any("not_a_summary_metric" in err for err in report.errors))
 
 
 if __name__ == "__main__":
