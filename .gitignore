@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environments
+.venv/
+venv/
+env/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Local benchmark outputs
+runs/
+runs_*/
+datasets/
+datasets_*/
+wandb/
+
+# Media/replay outputs
+*.gif
+*.mp4
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/

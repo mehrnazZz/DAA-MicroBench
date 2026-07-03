@@ -1,0 +1,37 @@
+scenario:
+  name: "perception_fused_degraded"
+  description: "Fused V2V and sensor crossing with noisy local sensing and lossy V2V."
+  duration_s: 45.0
+
+world:
+  planar: true
+  fixed_y_m: 0.0
+
+agent_params:
+  radius_m: 0.5
+  v_max_mps: 3.0
+  a_max_mps2: 2.0
+  goal_tolerance_m: 1.0
+
+goals:
+  min_goal_distance_m: 50.0
+
+spawn:
+  type: "four_way"
+  extent_m: 38.0
+  lane_half_width_m: 6.0
+  y_m: 0.0
+
+perception:
+  mode: "fused"
+  sensor:
+    range_m: 22.0
+    fov_deg: 160.0
+    occlusion: false
+    false_negative_p: 0.05
+    noise_sigma_pos_m: 0.08
+    noise_sigma_vel_mps: 0.08
+
+comm:
+  noise_sigma_pos_m: 0.05
+  noise_sigma_vel_mps: 0.05

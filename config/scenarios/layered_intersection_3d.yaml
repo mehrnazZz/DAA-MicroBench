@@ -1,0 +1,31 @@
+scenario:
+  name: "layered_intersection_3d"
+  description: "Four-way crossing with mixed target altitude layers."
+  duration_s: 45.0
+
+world:
+  planar: false
+  bounds:
+    xmin: -45.0
+    xmax: 45.0
+    ymin: -4.0
+    ymax: 10.0
+    zmin: -45.0
+    zmax: 45.0
+
+agent_params:
+  radius_m: 0.55
+  v_max_mps: 3.0
+  a_max_mps2: 2.0
+  goal_tolerance_m: 1.0
+
+goals:
+  min_goal_distance_m: 50.0
+
+spawn:
+  type: "four_way"
+  extent_m: 45.0
+  lane_half_width_m: 8.0
+  y_m: 0.0
+  start_layers_m: [0.0, 0.0, 6.0, 6.0]
+  goal_layers_m: [6.0, 6.0, 0.0, 0.0]

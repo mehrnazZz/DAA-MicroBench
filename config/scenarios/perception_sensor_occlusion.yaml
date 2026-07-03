@@ -1,0 +1,49 @@
+scenario:
+  name: "perception_sensor_occlusion"
+  description: "Sensor-only corridor with limited FOV and a central obstacle that creates line-of-sight gaps."
+  duration_s: 45.0
+
+world:
+  planar: true
+  fixed_y_m: 0.0
+  bounds:
+    xmin: -50.0
+    xmax: 50.0
+    ymin: -2.0
+    ymax: 2.0
+    zmin: -18.0
+    zmax: 18.0
+
+agent_params:
+  radius_m: 0.45
+  v_max_mps: 3.0
+  a_max_mps2: 2.0
+  goal_tolerance_m: 1.0
+
+goals:
+  min_goal_distance_m: 70.0
+
+spawn:
+  type: "rect_to_rect"
+  start_region:
+    center: [-42.0, 0.0, 0.0]
+    half: [1.0, 0.0, 10.0]
+  goal_region:
+    center: [42.0, 0.0, 0.0]
+    half: [1.0, 0.0, 10.0]
+
+obstacles:
+  - aabb:
+      center: [0.0, 0.0, 0.0]
+      half: [2.0, 1.0, 4.0]
+
+perception:
+  mode: "sensor"
+  sensor:
+    range_m: 24.0
+    fov_deg: 140.0
+    occlusion: true
+    occlusion_margin_m: 0.2
+    false_negative_p: 0.02
+    noise_sigma_pos_m: 0.03
+    noise_sigma_vel_mps: 0.03

@@ -1,0 +1,520 @@
+from __future__ import annotations
+
+import argparse
+import glob
+import platform
+from pathlib import Path
+import subprocess
+import sys
+from tqdm import tqdm
+
+from microbench.config import load_defaults
+from microbench.planners import list_methods
+from microbench.types import RunSpec
+from microbench.runner import run_episode
+from microbench.metrics import append_result, write_summary
+from microbench.replay import render_interactive_trace, render_trace
+from microbench.dataset import generate_dataset, expand_scenarios, expand_list, sanity_check_shard
+from microbench.logging import wandb_logger
+from microbench.tools import mine_worst_cases
+
+CANONICAL_SCENARIOS = [
+    "config/scenarios/corridor.yaml",
+    "config/scenarios/intersection.yaml",
+    "config/scenarios/funnel.yaml",
+    "config/scenarios/ring.yaml",
+    "config/scenarios/crowd_swap.yaml",
+    "config/scenarios/weather_event.yaml",
+]
+
+CANONICAL_3D_SCENARIOS = [
+    "config/scenarios/stacked_swap_3d.yaml",
+    "config/scenarios/layered_funnel_3d.yaml",
+    "config/scenarios/layered_intersection_3d.yaml",
+    "config/scenarios/weather_vertical_event_3d.yaml",
+    "config/scenarios/vertical_crossing_obstacles_3d.yaml",
+]
+
+CANONICAL_PERCEPTION_SCENARIOS = [
+    "config/scenarios/perception_sensor_occlusion.yaml",
+    "config/scenarios/perception_fused_degraded.yaml",
+]
+
+
+def _parse_int_list(spec: str) -> list[int]:
+    out: list[int] = []
+    for part in spec.split(","):
+        p = part.strip()
+        if not p:
+            continue
+        if ":" in p:
+            a, b = p.split(":", 1)
+            start = int(a)
+            end = int(b)
+            step = 1 if end >= start else -1
+            out.extend(list(range(start, end + step, step)))
+        else:
+            out.append(int(p))
+    return out
+
+
+def _parse_str_list(spec: str) -> list[str]:
+    return [x.strip() for x in spec.split(",") if x.strip()]
+
+
+def _expand_scenarios(spec: str) -> list[str]:
+    scenarios: list[str] = []
+    for token in _parse_str_list(spec):
+        matches = sorted(glob.glob(token))
+        if matches:
+            scenarios.extend(matches)
+        else:
+            scenarios.append(token)
+    return scenarios
+
+
+def _git_commit() -> str | None:
+    try:
+        out = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL).strip()
+        return out if out else None
+    except Exception:
+        return None
+
+
+def _add_wandb_flags(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--wandb", action="store_true", help="Enable Weights & Biases logging")
+    p.add_argument("--wandb-project", default="daa-microbench")
+    p.add_argument("--wandb-entity", default=None)
+    p.add_argument("--wandb-group", default=None)
+    p.add_argument("--wandb-name", default=None)
+    p.add_argument("--wandb-tags", default=None, help="Comma-separated list of tags")
+    p.add_argument("--wandb-mode", choices=["online", "offline", "disabled"], default=None)
+    p.add_argument("--wandb-upload-results", action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument("--wandb-upload-traces", action=argparse.BooleanOptionalAction, default=False)
+    p.add_argument("--wandb-upload-replays", action=argparse.BooleanOptionalAction, default=False)
+    p.add_argument("--wandb-upload-dataset", action=argparse.BooleanOptionalAction, default=False)
+
+
+def _build_run_config(
+    *,
+    out_dir: str,
+    suite: str,
+    methods: list[str],
+    scenarios: list[str],
+    n_agents: list[int],
+    seeds: list[int],
+    comm_profiles: list[str],
+    defaults: dict,
+) -> dict:
+    ncfg = defaults.get("neighbors", {})
+    dcfg = defaults.get("dynamics", {})
+    run_id = Path(out_dir).name
+    git_commit = _git_commit()
+    method_name = methods[0] if len(methods) == 1 else "multi"
+    cfg = {
+        "run_id": run_id,
+        "suite": suite,
+        "method_name": method_name,
+        "method_version": git_commit,
+        "methods": methods,
+        "scenarios": [Path(s).stem for s in scenarios],
+        "N_list": n_agents,
+        "seed_min": min(seeds) if seeds else None,
+        "seed_max": max(seeds) if seeds else None,
+        "seed_count": len(seeds),
+        "comm_profiles": comm_profiles,
+        "dt_s": float(defaults.get("sim", {}).get("dt_s", 0.02)),
+        "duration_s_default": float(defaults.get("sim", {}).get("duration_s", 60.0)),
+        "top_k": int(ncfg.get("top_k", 8)),
+        "range_m": float(ncfg.get("range_m", 30.0)),
+        "threat_metric": str(ncfg.get("threat_metric", "ttc")),
+        "ttc_horizon_s": float(ncfg.get("ttc_horizon_s", 6.0)),
+        "v_max_mps_default": float(dcfg.get("v_max_mps", 3.0)),
+        "a_max_mps2_default": float(dcfg.get("a_max_mps2", 2.0)),
+        "python_version": sys.version.split()[0],
+        "platform": platform.platform(),
+        "cpu_model": platform.processor() or None,
+        "git_commit": git_commit,
+    }
+    return cfg
+
+
+def _run_once(args) -> dict:
+    defaults = load_defaults()
+    comm = args.comm or defaults.get("comm", {}).get("profile", "ideal_50hz")
+    out_dir = args.out_dir or defaults.get("logging", {}).get("out_dir", "runs")
+    save_trace = bool(defaults.get("logging", {}).get("save_trace", False))
+    spec = RunSpec(
+        scenario_path=args.scenario,
+        method=args.method,
+        n_agents=int(args.n),
+        seed=int(args.seed),
+        comm_profile=comm,
+        out_dir=out_dir,
+        save_trace=save_trace,
+        agent_methods=_parse_str_list(args.agent_methods) if args.agent_methods else None,
+    )
+    row = run_episode(spec)
+    append_result(out_dir, row)
+    write_summary(out_dir)
+    return row
+
+
+def _run_sweep(args) -> None:
+    defaults = load_defaults()
+    comm_default = defaults.get("comm", {}).get("profile", "ideal_50hz")
+    comm_profiles = _parse_str_list(args.comm) if args.comm else [comm_default]
+    out_dir = args.out_dir or defaults.get("logging", {}).get("out_dir", "runs")
+    save_trace = bool(defaults.get("logging", {}).get("save_trace", False))
+
+    scenarios = _expand_scenarios(args.scenarios)
+    methods = _parse_str_list(args.methods)
+    seeds = _parse_int_list(args.seeds)
+    n_agents_list = _parse_int_list(args.n)
+
+    specs: list[RunSpec] = []
+    for scenario in scenarios:
+        for method in methods:
+            for comm in comm_profiles:
+                for n_agents in n_agents_list:
+                    for seed in seeds:
+                        specs.append(
+                            RunSpec(
+                                scenario_path=scenario,
+                                method=method,
+                                n_agents=n_agents,
+                                seed=seed,
+                                comm_profile=comm,
+                                out_dir=out_dir,
+                                save_trace=save_trace,
+                            )
+                        )
+
+    run_cfg = _build_run_config(
+        out_dir=out_dir,
+        suite="custom_sweep",
+        methods=methods,
+        scenarios=scenarios,
+        n_agents=n_agents_list,
+        seeds=seeds,
+        comm_profiles=comm_profiles,
+        defaults=defaults,
+    )
+    wb_run = wandb_logger.init_run(args, run_cfg)
+    try:
+        for spec in tqdm(specs, desc="sweep", unit="run"):
+            row = run_episode(spec)
+            append_result(out_dir, row)
+
+        summary_path = write_summary(out_dir)
+        run_dir = Path(out_dir)
+        wandb_logger.log_summary(
+            wb_run,
+            summary_csv_path=summary_path,
+            results_csv_path=run_dir / "results.csv",
+            extra_artifacts_paths={
+                "upload_results": bool(args.wandb_upload_results),
+                "upload_traces": bool(args.wandb_upload_traces),
+                "upload_replays": bool(args.wandb_upload_replays),
+                "traces_dir": run_dir / "worst_cases",
+                "replays_dir": run_dir / "worst_cases",
+                "worst_cases_index": run_dir / "worst_cases" / "index.csv",
+            },
+            metrics_dict=None,
+        )
+    finally:
+        wandb_logger.finish(wb_run)
+
+
+def _run_specs(specs: list[RunSpec], out_dir: str) -> None:
+    for spec in tqdm(specs, desc="sweep", unit="run"):
+        row = run_episode(spec)
+        append_result(out_dir, row)
+    write_summary(out_dir)
+
+
+def _run_canonical_sweep(args) -> None:
+    defaults = load_defaults()
+    out_dir = args.out_dir or defaults.get("logging", {}).get("out_dir", "runs")
+    save_trace = bool(defaults.get("logging", {}).get("save_trace", False))
+
+    suite = args.suite
+    stretch = bool(args.stretch)
+    include_bursty = bool(args.include_bursty)
+
+    if suite == "primary":
+        scenarios = CANONICAL_SCENARIOS
+        methods = _parse_str_list(args.methods or "")
+        if not methods:
+            raise ValueError("canonical-sweep --suite primary requires --methods")
+        n_agents = [10, 20, 50] + ([100] if stretch else [])
+        seeds = list(range(0, 100 if stretch else 50))
+        comm_profiles = ["ideal_50hz", "realistic_v2v_50hz", "degraded_20hz"]
+    elif suite == "baseline_sanity":
+        scenarios = CANONICAL_SCENARIOS
+        methods = _parse_str_list(args.methods) if args.methods else ["baseline_goal", "orca_expert"]
+        n_agents = [10, 20] + ([100] if stretch else [])
+        seeds = list(range(0, 100 if stretch else 20))
+        comm_profiles = ["ideal_50hz", "realistic_v2v_50hz"]
+    elif suite == "three_d":
+        scenarios = CANONICAL_3D_SCENARIOS
+        methods = _parse_str_list(args.methods) if args.methods else ["orca_expert"]
+        n_agents = [6, 10] + ([20] if stretch else [])
+        seeds = list(range(0, 20 if stretch else 10))
+        comm_profiles = ["ideal_50hz"]
+    elif suite == "perception_stress":
+        scenarios = CANONICAL_PERCEPTION_SCENARIOS
+        methods = _parse_str_list(args.methods) if args.methods else ["priority_yield"]
+        n_agents = [6, 10] + ([20] if stretch else [])
+        seeds = list(range(0, 20 if stretch else 10))
+        comm_profiles = ["ideal_50hz", "degraded_20hz"]
+    else:
+        raise ValueError(f"Unknown suite: {suite}")
+
+    if include_bursty and "bursty_stress_50hz" not in comm_profiles:
+        comm_profiles.append("bursty_stress_50hz")
+
+    specs: list[RunSpec] = []
+    for scenario in scenarios:
+        for method in methods:
+            for comm in comm_profiles:
+                for n in n_agents:
+                    for seed in seeds:
+                        specs.append(
+                            RunSpec(
+                                scenario_path=scenario,
+                                method=method,
+                                n_agents=n,
+                                seed=seed,
+                                comm_profile=comm,
+                                out_dir=out_dir,
+                                save_trace=save_trace,
+                            )
+                        )
+
+    if args.max_runs is not None:
+        specs = specs[: max(0, int(args.max_runs))]
+
+    if args.print_plan:
+        print("canonical sweep plan:")
+        print(f"  suite: {suite}")
+        print(f"  methods: {','.join(methods)}")
+        print(f"  scenarios: {','.join(scenarios)}")
+        print(f"  N: {','.join(str(x) for x in n_agents)}")
+        print(f"  seeds: {seeds[0]}:{seeds[-1]}")
+        print(f"  comm: {','.join(comm_profiles)}")
+        print(f"  total_runs: {len(specs)}")
+        if args.no_run:
+            return
+
+    run_cfg = _build_run_config(
+        out_dir=out_dir,
+        suite=suite,
+        methods=methods,
+        scenarios=scenarios,
+        n_agents=n_agents,
+        seeds=seeds,
+        comm_profiles=comm_profiles,
+        defaults=defaults,
+    )
+    wb_run = wandb_logger.init_run(args, run_cfg)
+    try:
+        _run_specs(specs, out_dir)
+        run_dir = Path(out_dir)
+        wandb_logger.log_summary(
+            wb_run,
+            summary_csv_path=run_dir / "summary.csv",
+            results_csv_path=run_dir / "results.csv",
+            extra_artifacts_paths={
+                "upload_results": bool(args.wandb_upload_results),
+                "upload_traces": bool(args.wandb_upload_traces),
+                "upload_replays": bool(args.wandb_upload_replays),
+                "traces_dir": run_dir / "worst_cases",
+                "replays_dir": run_dir / "worst_cases",
+                "worst_cases_index": run_dir / "worst_cases" / "index.csv",
+            },
+            metrics_dict=None,
+        )
+    finally:
+        wandb_logger.finish(wb_run)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="microbench")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_run = sub.add_parser("run", help="Run a single episode")
+    p_run.add_argument("--scenario", required=True)
+    p_run.add_argument("--method", required=True)
+    p_run.add_argument("--n", required=True, type=int)
+    p_run.add_argument("--seed", required=True, type=int)
+    p_run.add_argument("--comm", default=None)
+    p_run.add_argument("--out-dir", default=None)
+    p_run.add_argument(
+        "--agent-methods",
+        default=None,
+        help="Optional comma-separated methods for heterogeneous agents; length must be 1 or N",
+    )
+
+    p_sweep = sub.add_parser("sweep", help="Run a parameter sweep")
+    p_sweep.add_argument("--scenarios", required=True, help="Comma-separated list and/or globs")
+    p_sweep.add_argument("--methods", required=True, help="Comma-separated planner methods")
+    p_sweep.add_argument("--seeds", required=True, help="Comma list and/or ranges, e.g. 0:9")
+    p_sweep.add_argument("--n", required=True, help="Comma list and/or ranges of agent counts")
+    p_sweep.add_argument("--comm", default=None, help="One or more comm profiles (comma-separated)")
+    p_sweep.add_argument("--out-dir", default=None)
+    _add_wandb_flags(p_sweep)
+
+    p_replay = sub.add_parser("replay", help="Render a saved episode or collision trace")
+    p_replay.add_argument("--trace", required=True, help="Path to trace_episode.jsonl or trace_collision_*.jsonl")
+    p_replay.add_argument("--out", required=True, help="Output media path (.gif/.mp4)")
+    p_replay.add_argument("--fps", type=int, default=25)
+    p_replay.add_argument("--tail", type=int, default=25, help="Trail length in frames")
+    p_replay.add_argument("--max-sensed", type=int, default=8, help="Max sensed-neighbor links per focus agent")
+    p_replay.add_argument(
+        "--show-sensed",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Show sensed-neighbor links and msgAge labels",
+    )
+
+    p_replay_html = sub.add_parser("replay-interactive", help="Render an interactive HTML replay")
+    p_replay_html.add_argument("--trace", required=True, help="Path to trace_episode.jsonl or trace_collision_*.jsonl")
+    p_replay_html.add_argument("--out", required=True, help="Output HTML path")
+    p_replay_html.add_argument("--tail", type=int, default=40, help="Trail length in frames")
+    p_replay_html.add_argument("--max-sensed", type=int, default=8, help="Max sensed-neighbor links per focus agent")
+    p_replay_html.add_argument(
+        "--show-sensed",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Show sensed-neighbor links",
+    )
+
+    p_ds = sub.add_parser("generate-dataset", help="Generate diffusion training dataset shards")
+    p_ds.add_argument("--scenario", required=True, help="Scenario path(s) or globs (comma-separated)")
+    p_ds.add_argument("--method", default="orca_expert")
+    p_ds.add_argument("--n", default=None, help="Agent counts, e.g. 10,20,50 (preferred)")
+    p_ds.add_argument("--N", default=None, help="Deprecated alias for --n")
+    p_ds.add_argument("--seeds", required=True, help="Seed list/range, e.g. 0:99")
+    p_ds.add_argument("--T", type=int, default=20, help="Number of planning steps in U0")
+    p_ds.add_argument("--dt-plan-s", type=float, default=0.10, help="Action sequence sampling dt")
+    p_ds.add_argument("--horizon_steps", type=int, default=None, help="Deprecated alias for --T")
+    p_ds.add_argument("--goal-dist-cap", type=float, default=60.0)
+    p_ds.add_argument("--comm", default=None, help="Comma-separated comm profile list")
+    p_ds.add_argument("--out-dir", default="datasets")
+    p_ds.add_argument("--shard-size", type=int, default=50000)
+    p_ds.add_argument("--quality-filter", choices=["none", "collision_free", "safe_expert"], default="safe_expert")
+    p_ds.add_argument("--filter-min-sep-m", type=float, default=0.2)
+
+    p_sc = sub.add_parser("sanity-check-dataset", help="Sanity check one dataset shard")
+    p_sc.add_argument("--shard", required=True)
+    p_sc.add_argument("--out-plot", default=None, help="Optional histogram path")
+
+    p_cs = sub.add_parser("canonical-sweep", help="Run a canonical benchmark suite")
+    p_cs.add_argument("--suite", required=True, choices=["primary", "baseline_sanity", "three_d", "perception_stress"])
+    p_cs.add_argument("--methods", default=None, help="Comma-separated methods (required for primary; defaults to orca_expert for three_d)")
+    p_cs.add_argument("--out-dir", default=None)
+    p_cs.add_argument("--stretch", action="store_true", help="Enable stretch settings (N=100 and more seeds)")
+    p_cs.add_argument("--include-bursty", action="store_true", help="Include bursty_stress_50hz comm profile")
+    p_cs.add_argument("--print-plan", action="store_true", help="Print resolved run matrix before execution")
+    p_cs.add_argument("--no-run", action="store_true", help="Only print matrix; do not execute")
+    p_cs.add_argument("--max-runs", type=int, default=None, help="Optional cap for debugging/smoke tests")
+    _add_wandb_flags(p_cs)
+
+    p_hc = sub.add_parser("mine-hard-cases", help="Collect trace artifacts for worst episodes")
+    p_hc.add_argument("--results", required=True, help="Path to runs/<id>/results.csv")
+    p_hc.add_argument("--top-k", type=int, default=20, help="Number of episodes to collect")
+
+    sub.add_parser("list-methods", help="List available planner methods")
+
+    return parser
+
+
+def main() -> None:
+    parser = build_parser()
+    args = parser.parse_args()
+    if args.cmd == "run":
+        row = _run_once(args)
+        print(
+            f"done: scenario={row['scenario']} method={row['method']} n={row['N']} seed={row['seed']} "
+            f"collisions={row['collisions']} completion={row['completion_rate']:.3f}"
+        )
+        return
+    if args.cmd == "sweep":
+        _run_sweep(args)
+        print("done: sweep complete")
+        return
+    if args.cmd == "replay":
+        out = render_trace(
+            args.trace,
+            args.out,
+            fps=args.fps,
+            tail=args.tail,
+            show_sensed=args.show_sensed,
+            max_sensed_per_agent=args.max_sensed,
+        )
+        print(f"done: replay saved to {out}")
+        return
+    if args.cmd == "replay-interactive":
+        out = render_interactive_trace(
+            args.trace,
+            args.out,
+            tail=args.tail,
+            show_sensed=args.show_sensed,
+            max_sensed_per_agent=args.max_sensed,
+        )
+        print(f"done: interactive replay saved to {out}")
+        return
+    if args.cmd == "generate-dataset":
+        defaults = load_defaults()
+        comm_default = defaults.get("comm", {}).get("profile", "ideal_50hz")
+        comm_profiles = expand_list(args.comm) if args.comm else [comm_default]
+        scenarios = expand_scenarios(args.scenario)
+        n_spec = args.n if args.n is not None else args.N
+        if n_spec is None:
+            raise ValueError("generate-dataset requires --n (or deprecated --N)")
+        n_agents = _parse_int_list(n_spec)
+        seeds = _parse_int_list(args.seeds)
+        T = int(args.horizon_steps) if args.horizon_steps is not None else int(args.T)
+        shards = generate_dataset(
+            scenarios=scenarios,
+            method=args.method,
+            n_agents_list=n_agents,
+            seeds=seeds,
+            T=T,
+            dt_plan_s=float(args.dt_plan_s),
+            out_dir=args.out_dir,
+            comm_profiles=comm_profiles,
+            shard_size=int(args.shard_size),
+            goal_dist_cap=float(args.goal_dist_cap),
+            quality_filter=str(args.quality_filter),
+            filter_min_sep_m=float(args.filter_min_sep_m),
+        )
+        print(f"done: dataset generated with {len(shards)} shard(s) in {args.out_dir}")
+        return
+    if args.cmd == "sanity-check-dataset":
+        stats = sanity_check_shard(args.shard, out_plot=args.out_plot)
+        print("dataset sanity check:")
+        for k in sorted(stats):
+            print(f"  {k}: {stats[k]}")
+        return
+    if args.cmd == "canonical-sweep":
+        _run_canonical_sweep(args)
+        if not args.no_run:
+            print("done: canonical sweep complete")
+        return
+    if args.cmd == "mine-hard-cases":
+        out = mine_worst_cases(results_csv=args.results, top_k=args.top_k)
+        print(
+            f"done: mined {out['selected']} episodes, copied artifacts for {out['copied']} "
+            f"into {out['worst_dir']}"
+        )
+        return
+    if args.cmd == "list-methods":
+        for m in list_methods():
+            print(m)
+        return
+
+
+if __name__ == "__main__":
+    main()

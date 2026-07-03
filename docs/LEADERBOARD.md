@@ -1,0 +1,136 @@
+# Leaderboard Policy
+
+This document defines the intended public leaderboard policy for DAA Microbench.
+
+## Status
+
+The benchmark is currently pre-v1. Leaderboard fields and official suites may still change. Public results should include the benchmark commit hash and schema version implied by `results.csv`.
+
+## Official Dimensions
+
+DAA Microbench should report results across five dimensions:
+
+- Safety
+- Mission progress
+- Efficiency and smoothness
+- Robustness to perception/communication degradation
+- Compute and communication cost
+
+No single scalar can fully describe DAA behavior. When a scalar ranking is needed, use the v0 score below and always publish the component metrics.
+
+## Required Inputs for a Result
+
+Every submitted result should include:
+
+- benchmark commit hash
+- method name and version
+- full command used
+- `results.csv`
+- `summary.csv`
+- hardware and Python version
+- any changed config files
+- whether the method uses V2V, intent, agent messages, local sensing, or learned weights
+
+## Safety Metrics
+
+Primary safety fields:
+
+- `collision_episode_rate`
+- `unique_collision_pairs_mean`
+- `collision_pair_ticks_mean`
+- `time_to_first_collision_mean`
+- `min_sep_min_mean`
+- `min_sep_p05_mean`
+
+Interpretation:
+
+- `collision_episode_rate` answers whether an episode failed at all.
+- `unique_collision_pairs_mean` answers how many pairs were involved.
+- `collision_pair_ticks_mean` captures duration/severity of overlap.
+- `min_sep_*` captures near-collision margins even when no collision happens.
+
+## Mission Metrics
+
+Primary mission fields:
+
+- `completion_rate_mean`
+- `mean_time_to_goal_mean`
+- `deadlock_time_pct_mean`
+
+Completion should not be optimized by accepting collisions. Safety is the first gate.
+
+## Observation Metrics
+
+Primary observation fields:
+
+- `obs_neighbors_mean`
+- `obs_v2v_fraction_mean`
+- `obs_sensor_fraction_mean`
+- `obs_stale_fraction_mean`
+- `obs_empty_fraction_mean`
+
+These explain whether a result is driven by dense observation, stale V2V, sensor-only partial observability, or frequent empty neighborhoods.
+
+## Compute Metrics
+
+Primary compute fields:
+
+- `planner_ms_mean`
+- `planner_ms_p95`
+
+Report hardware and Python version. Timing columns should not be compared bit-for-bit across machines.
+
+## v0 Scalar Score
+
+Use this only as a convenience ranking. Publish components next to it.
+
+```text
+safety_penalty =
+  1000 * collision_episode_rate
+  + 50 * unique_collision_pairs_mean
+  + 0.1 * collision_pair_ticks_mean
+  + 10 * max(0, -min_sep_p05_mean)
+
+mission_penalty =
+  100 * (1 - completion_rate_mean)
+  + 2 * deadlock_time_pct_mean
+  + 0.01 * mean_time_to_goal_mean
+
+compute_penalty =
+  0.1 * planner_ms_p95
+
+score_v0 = safety_penalty + mission_penalty + compute_penalty
+```
+
+Lower is better. A method with any collisions should rank below a collision-free method unless the collision-free method has near-zero completion and is clearly unusable.
+
+## Result Categories
+
+Results should be grouped, not blended:
+
+- `primary`: official planar suite
+- `three_d`: 3D development suite
+- `perception_stress`: partial observation and fused-observation suite
+- custom suites: must be labeled separately
+
+Do not compare methods across different suites as if they share one ranking.
+
+## Reproducibility Rules
+
+Submitted results must:
+
+- use unmodified official scenario files unless explicitly marked custom
+- use official comm profiles unless explicitly marked custom
+- use the same `N`, seeds, and comm matrix for all methods in a comparison
+- include failed runs instead of silently dropping them
+- disclose learned weights, external dependencies, and runtime services
+
+## Review Policy
+
+Maintainers may reject or mark a result as unofficial if:
+
+- it uses privileged simulator state
+- it changes shared benchmark parameters for one method
+- it cannot be reproduced from the provided command/config
+- it omits failed episodes
+- it uses a modified benchmark without disclosure

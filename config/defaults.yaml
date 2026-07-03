@@ -1,0 +1,74 @@
+# config/defaults.yaml
+sim:
+  dt_s: 0.02                # 50 Hz fixed-step
+  duration_s: 60.0          # default episode length
+  planar: true              # planar mode = move in XZ, keep Y fixed
+  fixed_y_m: 0.0            # used when planar=true
+  goal_tolerance_m: 1.0     # agent considered "done" if within this distance of goal
+  goal_hold_time_s: 0.5     # must remain within goal_tolerance for this long
+  near_miss_margin_m: 0.5   # near-miss threshold = r_i + r_j + near_miss_margin_m
+
+dynamics:
+  # Defaults (can be overridden per scenario or per agent)
+  v_max_mps: 3.0
+  a_max_mps2: 2.0
+
+neighbors:
+  # Shared neighbor selection for all planners (fair comparison)
+  range_m: 30.0
+  top_k: 8
+  threat_metric: "ttc"      # "ttc" or "distance"
+  ttc_horizon_s: 6.0        # only used if threat_metric="ttc"
+  # If a neighbor message is older than this, still pass it but clamp age to age_cap (comm.age_cap_s)
+  # Planners can treat old messages as "uncooperative" and inflate buffers.
+
+perception:
+  # Observation source for planner neighbors: "v2v", "sensor", or "fused".
+  mode: "v2v"
+  sensor:
+    range_m: 30.0
+    fov_deg: 360.0
+    occlusion: false
+    occlusion_margin_m: 0.0
+    false_negative_p: 0.0
+    noise_sigma_pos_m: 0.0
+    noise_sigma_vel_mps: 0.0
+
+comm:
+  profile: "ideal_50hz"     # name in comm_profiles.yaml
+  age_cap_s: 0.75           # clamp msgAgeSec to this for planner inputs
+  noise_sigma_pos_m: 0.0    # optional; override per comm profile if desired
+  noise_sigma_vel_mps: 0.0
+
+intent:
+  enabled: false
+  tx_rate_hz: 10.0
+  max_points: 12
+  age_cap_s: 0.75
+
+logging:
+  out_dir: "runs"
+  save_trace: false
+  trace_max_steps: 4000     # cap trace size (60s @50Hz = 3000 steps)
+  trace_save_failures_only: true
+  save_events: false
+  save_trace_on_collision: false
+  trace_window_s: 3.0
+  trace_agents_mode: "collision_pair_plus_neighbors"   # all | collision_pair_plus_neighbors
+  near_miss_record_threshold_m: 0.2
+
+batch:
+  # CLI can override these
+  seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  n_agents_list: [10, 20, 50, 100]
+
+
+orca_expert:
+  time_horizon_s: 3.0
+  max_neighbors: 8
+  neighbor_range_m: 30.0
+  safety_margin_m: 0.2
+  stale_age_cap_s: 0.75
+  stale_inflation_gain: 0.8
+  closing_speed_buffer_s: 0.1
+  sidestep_bias_gain: 0.2

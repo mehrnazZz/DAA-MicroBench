@@ -1,0 +1,53 @@
+scenario:
+  name: "layered_funnel_3d"
+  description: "3D funnel through a narrow gate with mismatched altitude layers."
+  duration_s: 45.0
+
+world:
+  planar: false
+  bounds:
+    xmin: -60.0
+    xmax: 60.0
+    ymin: -8.0
+    ymax: 8.0
+    zmin: -30.0
+    zmax: 30.0
+
+agent_params:
+  radius_m: 0.6
+  v_max_mps: 3.0
+  a_max_mps2: 2.0
+  goal_tolerance_m: 1.0
+
+goals:
+  min_goal_distance_m: 40.0
+
+obstacles:
+  - aabb:
+      center: [0.0, 0.0, 32.0]
+      half: [70.0, 10.0, 2.0]
+  - aabb:
+      center: [0.0, 0.0, -32.0]
+      half: [70.0, 10.0, 2.0]
+  - aabb:
+      center: [0.0, 0.0, 16.75]
+      half: [2.0, 10.0, 13.25]
+  - aabb:
+      center: [0.0, 0.0, -16.75]
+      half: [2.0, 10.0, 13.25]
+
+spawn:
+  type: "rect_to_rect"
+  start_region:
+    center: [-45.0, 0.0, 0.0]
+    half: [6.0, 6.0, 24.0]
+  goal_region:
+    center: [45.0, 0.0, 0.0]
+    half: [6.0, 6.0, 24.0]
+  spawn_bias:
+    type: "gaussian_z"
+    sigma_m: 12.0
+  start_layers_m: [-4.0, 0.0, 4.0]
+  goal_layers_m: [-4.0, 0.0, 4.0]
+  goal_layers_shift: 1
+

@@ -1,0 +1,38 @@
+scenario:
+  name: "weather_event"
+  description: "Crossing traffic with a sudden forced maneuver event."
+  duration_s: 60.0
+
+world:
+  planar: true
+  fixed_y_m: 0.0
+
+agent_params:
+  radius_m: 0.55
+  v_max_mps: 3.0
+  a_max_mps2: 2.0
+  goal_tolerance_m: 1.0
+
+goals:
+  min_goal_distance_m: 40.0
+
+spawn:
+  type: "rect_to_rect"
+  start_region:
+    center: [-45.0, 0.0, 0.0]
+    half: [7.0, 0.0, 22.0]
+  goal_region:
+    center: [45.0, 0.0, 0.0]
+    half: [7.0, 0.0, 22.0]
+
+events:
+  - type: "weather_maneuver"
+    enabled: true
+    t_start_s: 12.0
+    duration_s: 3.0
+    n_agents: 2
+    selection: "closest_to_gate"
+    forced_policy:
+      type: "hard_turn_and_slow"
+      turn_deg: 75.0
+      speed_scale: 0.3

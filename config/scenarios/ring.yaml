@@ -1,0 +1,31 @@
+scenario:
+  name: "ring"
+  description: "Circular flow with merge/exits around a central blocker."
+  duration_s: 60.0
+
+world:
+  planar: true
+  fixed_y_m: 0.0
+
+agent_params:
+  radius_m: 0.55
+  v_max_mps: 2.8
+  a_max_mps2: 2.0
+  goal_tolerance_m: 1.2
+
+goals:
+  min_goal_distance_m: 30.0
+
+obstacles:
+  - aabb:
+      center: [0.0, 0.0, 0.0]
+      half: [9.0, 2.0, 9.0]
+
+spawn:
+  type: "rect_to_rect"
+  start_region:
+    center: [-28.0, 0.0, 0.0]
+    half: [4.0, 0.0, 24.0]
+  goal_region:
+    center: [28.0, 0.0, 0.0]
+    half: [4.0, 0.0, 24.0]

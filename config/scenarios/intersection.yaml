@@ -1,0 +1,23 @@
+scenario:
+  name: "intersection"
+  description: "Crossing flows from four directions through an open center."
+  duration_s: 60.0
+
+world:
+  planar: true
+  fixed_y_m: 0.0
+
+agent_params:
+  radius_m: 0.55
+  v_max_mps: 3.0
+  a_max_mps2: 2.2
+  goal_tolerance_m: 1.0
+
+goals:
+  min_goal_distance_m: 50.0
+
+spawn:
+  type: "four_way"
+  extent_m: 40.0
+  lane_half_width_m: 5.0
+  y_m: 0.0

@@ -1,0 +1,47 @@
+scenario:
+  name: "weather_vertical_event_3d"
+  description: "3D crossing traffic with a sudden forced climb/descent event."
+  duration_s: 45.0
+
+world:
+  planar: false
+  bounds:
+    xmin: -50.0
+    xmax: 50.0
+    ymin: -8.0
+    ymax: 8.0
+    zmin: -28.0
+    zmax: 28.0
+
+agent_params:
+  radius_m: 0.55
+  v_max_mps: 3.0
+  a_max_mps2: 2.0
+  goal_tolerance_m: 1.0
+
+goals:
+  min_goal_distance_m: 40.0
+
+spawn:
+  type: "rect_to_rect"
+  start_region:
+    center: [-42.0, 0.0, 0.0]
+    half: [6.0, 4.0, 20.0]
+  goal_region:
+    center: [42.0, 0.0, 0.0]
+    half: [6.0, 4.0, 20.0]
+  start_layers_m: [-2.5, 0.0, 2.5]
+  goal_layers_m: [-2.5, 0.0, 2.5]
+
+events:
+  - type: "weather_maneuver"
+    enabled: true
+    t_start_s: 12.0
+    duration_s: 2.5
+    n_agents: 1
+    selection: "closest_to_gate"
+    forced_policy:
+      type: "vertical_shift_and_slow"
+      vertical_speed_mps: 2.0
+      speed_scale: 0.45
+      direction: "up"

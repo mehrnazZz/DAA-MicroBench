@@ -1,0 +1,36 @@
+scenario:
+  name: "vertical_crossing_obstacles_3d"
+  description: "Four-way 3D crossing around a center obstruction that forces vertical deconfliction."
+  duration_s: 45.0
+
+world:
+  planar: false
+  bounds:
+    xmin: -48.0
+    xmax: 48.0
+    ymin: -4.0
+    ymax: 12.0
+    zmin: -48.0
+    zmax: 48.0
+
+agent_params:
+  radius_m: 0.55
+  v_max_mps: 3.0
+  a_max_mps2: 2.0
+  goal_tolerance_m: 1.0
+
+goals:
+  min_goal_distance_m: 50.0
+
+obstacles:
+  - aabb:
+      center: [0.0, 2.0, 0.0]
+      half: [4.5, 2.0, 4.5]
+
+spawn:
+  type: "four_way"
+  extent_m: 42.0
+  lane_half_width_m: 7.0
+  y_m: 0.0
+  start_layers_m: [0.0, 0.0, 6.0, 6.0]
+  goal_layers_m: [6.0, 6.0, 0.0, 0.0]
