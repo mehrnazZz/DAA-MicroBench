@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import inspect
 import time
 from pathlib import Path
 from typing import Callable
@@ -8,7 +9,7 @@ from typing import Callable
 import numpy as np
 
 from microbench.comm.v2v import V2VEmulator
-from microbench.config import load_comm_profiles, load_defaults
+from microbench.config import deep_merge, load_comm_profiles, load_defaults
 from microbench.core.collision import pairwise_stats
 from microbench.core.dynamics import apply_dynamics
 from microbench.core.neighbors import select_neighbors
@@ -18,6 +19,8 @@ from microbench.scenarios import EventEngine, generate_spawns_goals, load_scenar
 from microbench.types import (
     AABBObs,
     AgentContext,
+    AgentMemory,
+    AgentProfile,
     AgentState,
     IntentMsg,
     IntentObs,
@@ -53,6 +56,8 @@ class EpisodeStep:
     min_sep: float
     collision_pairs: set[tuple[int, int]]
     near_miss_pairs: set[tuple[int, int]]
+    planner_debug: list[dict]
+    agent_failures: list[list[str]]
 
     def trace_frame(self) -> dict:
         return {
@@ -68,6 +73,8 @@ class EpisodeStep:
             "selected_messages": self.selected_messages,
             "speed_saturated": [bool(x) for x in self.speed_saturated],
             "accel_saturated": [bool(x) for x in self.accel_saturated],
+            "planner_debug": self.planner_debug,
+            "agent_failures": self.agent_failures,
         }
 
 
@@ -129,6 +136,33 @@ def _copy_state(s: AgentState) -> AgentState:
     )
 
 
+def _json_safe(value):
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+def _public_config(profile: AgentProfile) -> dict:
+    return {
+        "agent_id": int(profile.agent_id),
+        "method": profile.method,
+        "role": profile.role,
+        "priority": int(profile.priority),
+        "capabilities": _json_safe(profile.capabilities),
+        "mission": _json_safe(profile.mission),
+        "failure_modes": _json_safe(profile.failure_modes),
+        "tags": list(profile.tags),
+    }
+
+
 class EpisodeEngine:
     """Shared closed-loop simulation engine for benchmark, trace, and dataset runs."""
 
@@ -188,32 +222,51 @@ class EpisodeEngine:
             self.spawns[:, 1] = self.fixed_y
             self.goals[:, 1] = self.fixed_y
 
-        self.states = [
-            AgentState(
-                idx=i,
-                pos=self.spawns[i].copy(),
-                vel=np.zeros(3, dtype=float),
-                goal=self.goals[i].copy(),
-                radius=self.radius,
-                v_max=self.v_max,
-                a_max=self.a_max,
-            )
-            for i in range(self.n_agents)
-        ]
+        self.agent_profiles = [self._build_agent_profile(i) for i in range(self.n_agents)]
+        self.agent_rngs = [np.random.default_rng(_agent_seed(seed + 17_171, i)) for i in range(self.n_agents)]
+        self.command_delay_buffers: list[list[np.ndarray]] = [[] for _ in range(self.n_agents)]
 
-        self.agent_methods, self.method_label = resolve_agent_methods(method, self.n_agents, agent_methods)
+        self.states = []
+        for i, profile in enumerate(self.agent_profiles):
+            caps = profile.capabilities
+            self.states.append(
+                AgentState(
+                    idx=i,
+                    pos=self.spawns[i].copy(),
+                    vel=np.zeros(3, dtype=float),
+                    goal=self.goals[i].copy(),
+                    radius=float(caps.get("radius_m", self.radius)),
+                    v_max=float(caps.get("v_max_mps", self.v_max)),
+                    a_max=float(caps.get("a_max_mps2", self.a_max)),
+                )
+            )
+
+        profile_methods = [p.method or method for p in self.agent_profiles]
+        resolved_agent_methods = agent_methods
+        if resolved_agent_methods is None and any(p.method for p in self.agent_profiles):
+            resolved_agent_methods = profile_methods
+        self.agent_methods, self.method_label = resolve_agent_methods(method, self.n_agents, resolved_agent_methods)
         make_planner = planner_factory or default_make_planner
         self.planners = [make_planner(agent_method) for agent_method in self.agent_methods]
         self.agent_contexts: list[AgentContext] = []
         for i, planner in enumerate(self.planners):
             seed_i = _agent_seed(seed, i)
-            planner.reset(seed_i)
+            profile = self.agent_profiles[i]
+            profile.method = self.agent_methods[i]
+            config = _public_config(profile)
+            self._reset_planner(planner, agent_id=i, seed=seed_i, config=config)
             self.agent_contexts.append(
                 AgentContext(
                     agent_id=i,
                     method=self.agent_methods[i],
                     seed=seed_i,
-                    priority=i,
+                    memory=AgentMemory(),
+                    role=profile.role,
+                    priority=int(profile.priority),
+                    capabilities=dict(profile.capabilities),
+                    mission=dict(profile.mission),
+                    failure_modes=dict(profile.failure_modes),
+                    profile=profile,
                 )
             )
 
@@ -260,6 +313,147 @@ class EpisodeEngine:
         self.spawn_goal_dists = np.linalg.norm(self.goals - self.spawns, axis=1)
         self.planner_ms_samples: list[float] = []
         self.k = 0
+        self._closed = False
+
+    def _build_agent_profile(self, agent_id: int) -> AgentProfile:
+        agents_cfg = self.cfg.get("agents", {})
+        default_cfg: dict = {}
+        override_cfg: dict = {}
+
+        if isinstance(agents_cfg, dict):
+            default_cfg = agents_cfg.get("defaults", {}) or {}
+            by_id = agents_cfg.get("by_id", agents_cfg.get("overrides", {})) or {}
+            if isinstance(by_id, dict):
+                override_cfg = by_id.get(agent_id, by_id.get(str(agent_id), {})) or {}
+            profiles = agents_cfg.get("profiles", agents_cfg.get("list", [])) or []
+            if isinstance(profiles, list):
+                for idx, item in enumerate(profiles):
+                    if not isinstance(item, dict):
+                        continue
+                    item_id = item.get("id", item.get("agent_id", idx))
+                    if int(item_id) == int(agent_id):
+                        override_cfg = deep_merge(override_cfg, item)
+                        break
+        elif isinstance(agents_cfg, list):
+            if agent_id < len(agents_cfg) and isinstance(agents_cfg[agent_id], dict):
+                override_cfg = agents_cfg[agent_id]
+            for idx, item in enumerate(agents_cfg):
+                if not isinstance(item, dict):
+                    continue
+                item_id = item.get("id", item.get("agent_id", idx))
+                if int(item_id) == int(agent_id):
+                    override_cfg = deep_merge(override_cfg, item)
+                    break
+
+        merged = deep_merge(default_cfg, override_cfg)
+        capabilities = dict(merged.get("capabilities", {}) or {})
+        for key in ("radius_m", "v_max_mps", "a_max_mps2", "sensor_range_m", "comm_range_m"):
+            if key in merged:
+                capabilities.setdefault(key, merged[key])
+
+        failure_modes = merged.get("failure_modes", merged.get("failures", {})) or {}
+        mission = merged.get("mission", {}) or {}
+        tags = merged.get("tags", []) or []
+        if isinstance(tags, str):
+            tags = [tags]
+
+        return AgentProfile(
+            agent_id=int(agent_id),
+            method=merged.get("method"),
+            role=merged.get("role"),
+            priority=int(merged.get("priority", merged.get("mission_priority", agent_id))),
+            capabilities=capabilities,
+            mission=dict(mission),
+            failure_modes=dict(failure_modes),
+            tags=[str(t) for t in tags],
+        )
+
+    @staticmethod
+    def _reset_planner(planner, *, agent_id: int, seed: int, config: dict) -> None:
+        reset = getattr(planner, "reset", None)
+        if reset is None:
+            return
+        try:
+            sig = inspect.signature(reset)
+        except (TypeError, ValueError):
+            reset(seed)
+            return
+
+        params = list(sig.parameters.values())
+        names = {p.name for p in params}
+        accepts_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params)
+        if accepts_kwargs or {"agent_id", "seed", "config"} & names:
+            kwargs = {}
+            if accepts_kwargs or "agent_id" in names:
+                kwargs["agent_id"] = int(agent_id)
+            if accepts_kwargs or "seed" in names:
+                kwargs["seed"] = int(seed)
+            if accepts_kwargs or "config" in names:
+                kwargs["config"] = dict(config)
+            try:
+                reset(**kwargs)
+                return
+            except TypeError:
+                pass
+
+        positional = [
+            p
+            for p in params
+            if p.kind in {inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD}
+        ]
+        if len(positional) >= 3:
+            reset(agent_id, seed, config)
+        elif len(positional) >= 2:
+            reset(seed, config)
+        else:
+            reset(seed)
+
+    @staticmethod
+    def _finalize_planner(planner, *, context: AgentContext, config: dict) -> None:
+        finalize = getattr(planner, "finalize", None)
+        if finalize is None:
+            return
+        try:
+            sig = inspect.signature(finalize)
+        except (TypeError, ValueError):
+            finalize()
+            return
+
+        params = list(sig.parameters.values())
+        names = {p.name for p in params}
+        accepts_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params)
+        if accepts_kwargs or {"agent_context", "context", "config"} & names:
+            kwargs = {}
+            if accepts_kwargs or "agent_context" in names:
+                kwargs["agent_context"] = context
+            if accepts_kwargs or "context" in names:
+                kwargs["context"] = context
+            if accepts_kwargs or "config" in names:
+                kwargs["config"] = dict(config)
+            try:
+                finalize(**kwargs)
+                return
+            except TypeError:
+                pass
+
+        positional = [
+            p
+            for p in params
+            if p.kind in {inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD}
+        ]
+        if len(positional) >= 2:
+            finalize(context, config)
+        elif len(positional) == 1:
+            finalize(context)
+        else:
+            finalize()
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        for planner, context, profile in zip(self.planners, self.agent_contexts, self.agent_profiles):
+            self._finalize_planner(planner, context=context, config=_public_config(profile))
+        self._closed = True
 
     def done(self) -> bool:
         return self.k >= self.steps or bool(np.all([s.done for s in self.states]))
@@ -285,8 +479,14 @@ class EpisodeEngine:
         pending_intent_out: list[IntentMsg | None] = [None for _ in self.states]
         pending_messages_out: list[list] = [[] for _ in self.states]
         active_for_sampling = np.zeros(self.n_agents, dtype=bool)
+        planner_debug: list[dict] = [{} for _ in self.states]
+        agent_failures: list[list[str]] = [[] for _ in self.states]
+        command_delay_steps = [0 for _ in self.states]
 
         for i, s in enumerate(self.states):
+            active_failures, delay_steps = self._resolve_agent_failures(i, t)
+            agent_failures[i] = active_failures
+            command_delay_steps[i] = delay_steps
             if s.done:
                 continue
 
@@ -315,6 +515,8 @@ class EpisodeEngine:
                             source="v2v",
                         )
                     )
+            if self._has_failure(active_failures, "comm_dropout", "communication_dropout", "noncooperative"):
+                v2v_obs = []
 
             perception_mode = str(self.perception_cfg.get("mode", "v2v")).lower()
             sensor_obs: list[NeighborObs] = []
@@ -328,12 +530,16 @@ class EpisodeEngine:
                     planar=self.planar,
                     rng=self.rng,
                 )
+            if self._has_failure(active_failures, "sensor_dropout", "perception_dropout"):
+                sensor_obs = []
             if perception_mode == "sensor":
                 all_obs = sensor_obs
             elif perception_mode == "fused":
                 all_obs = fuse_observations(v2v_obs, sensor_obs)
             else:
                 all_obs = v2v_obs
+            if self._has_failure(active_failures, "observation_dropout"):
+                all_obs = []
 
             selected = select_neighbors(
                 ego_idx=i,
@@ -404,7 +610,8 @@ class EpisodeEngine:
                     }
                 )
 
-            agent_messages = self.v2v.drain_agent_messages(i, t)
+            raw_agent_messages = self.v2v.drain_agent_messages(i, t)
+            agent_messages = [] if self._has_failure(active_failures, "comm_dropout", "communication_dropout") else raw_agent_messages
             selected_messages[i] = [
                 {
                     "sender_id": int(m.sender_id),
@@ -417,6 +624,10 @@ class EpisodeEngine:
                 }
                 for m in agent_messages
             ]
+
+            if self._has_failure(active_failures, "frozen", "frozen_planner"):
+                planner_debug[i] = {"engine_failure": "frozen_planner"}
+                continue
 
             p_input = PlannerInput(
                 ego=s,
@@ -438,13 +649,15 @@ class EpisodeEngine:
                 v_cmds[i] = np.asarray(planner_out.v_cmd, dtype=float)
                 pending_intent_out[i] = planner_out.intent_out
                 pending_messages_out[i] = list(planner_out.messages_out or [])
+                planner_debug[i] = _json_safe(planner_out.debug_info)
             else:
                 v_cmds[i] = np.asarray(planner_out, dtype=float)
 
-        self._publish_intents(t, pending_intent_out)
-        self._publish_messages(t, pending_messages_out)
+        self._publish_intents(t, pending_intent_out, agent_failures)
+        self._publish_messages(t, pending_messages_out, agent_failures)
 
         v_cmds = self.events.apply_overrides(t, self.states, v_cmds)
+        v_cmds = self._apply_command_failures(v_cmds, agent_failures, command_delay_steps)
         speed_sat, accel_sat = self._apply_motion(v_cmds)
 
         pos = np.array([s.pos for s in self.states], dtype=float)
@@ -481,6 +694,8 @@ class EpisodeEngine:
             min_sep=min_sep,
             collision_pairs=collision_pairs_step,
             near_miss_pairs=near_miss_pairs_step,
+            planner_debug=planner_debug,
+            agent_failures=agent_failures,
         )
 
     def _update_goal_completion(self, t: float) -> None:
@@ -497,11 +712,104 @@ class EpisodeEngine:
             else:
                 self.goal_hold_elapsed[s.idx] = 0.0
 
-    def _publish_intents(self, t: float, pending_intent_out: list[IntentMsg | None]) -> None:
+    @staticmethod
+    def _has_failure(active_failures: list[str], *names: str) -> bool:
+        active = {str(name) for name in active_failures}
+        return any(name in active for name in names)
+
+    def _mode_active(self, cfg, t: float, rng: np.random.Generator) -> bool:
+        if isinstance(cfg, bool):
+            return bool(cfg)
+        if isinstance(cfg, (int, float)):
+            return float(cfg) != 0.0
+        if not isinstance(cfg, dict):
+            return False
+
+        if not bool(cfg.get("enabled", True)):
+            return False
+        start_s = float(cfg.get("start_s", cfg.get("t_start_s", 0.0)))
+        end_s = cfg.get("end_s")
+        if end_s is None and cfg.get("duration_s") is not None:
+            end_s = start_s + float(cfg.get("duration_s", 0.0))
+        end = float(end_s) if end_s is not None else float("inf")
+        if not (start_s <= t <= end):
+            return False
+
+        p = float(cfg.get("p", cfg.get("probability", cfg.get("drop_probability", 1.0))))
+        p = max(0.0, min(1.0, p))
+        if p >= 1.0:
+            return True
+        if p <= 0.0:
+            return False
+        return bool(rng.random() < p)
+
+    def _active_command_delay_steps(self, agent_id: int, t: float) -> int:
+        modes = self.agent_profiles[agent_id].failure_modes
+        rng = self.agent_rngs[agent_id]
+        for name in ("actuation_delay", "command_delay", "actuation_delay_steps", "command_delay_steps"):
+            if name not in modes:
+                continue
+            cfg = modes[name]
+            if isinstance(cfg, (int, float)):
+                return max(0, int(cfg))
+            if isinstance(cfg, dict) and self._mode_active(cfg, t, rng):
+                return max(0, int(cfg.get("steps", cfg.get("delay_steps", cfg.get("value", 0)))))
+        return 0
+
+    def _resolve_agent_failures(self, agent_id: int, t: float) -> tuple[list[str], int]:
+        modes = self.agent_profiles[agent_id].failure_modes
+        rng = self.agent_rngs[agent_id]
+        active: list[str] = []
+        delay_names = {"actuation_delay", "command_delay", "actuation_delay_steps", "command_delay_steps"}
+        for name, cfg in modes.items():
+            if str(name) in delay_names:
+                continue
+            if self._mode_active(cfg, t, rng):
+                active.append(str(name))
+
+        delay_steps = self._active_command_delay_steps(agent_id, t)
+        if delay_steps > 0:
+            active.append("actuation_delay")
+        return active, delay_steps
+
+    def _apply_command_failures(
+        self,
+        v_cmds: list[np.ndarray],
+        agent_failures: list[list[str]],
+        command_delay_steps: list[int],
+    ) -> list[np.ndarray]:
+        out = [np.asarray(v, dtype=float).copy() for v in v_cmds]
+        for i, cmd in enumerate(out):
+            delay_steps = int(command_delay_steps[i])
+            if delay_steps > 0:
+                buf = self.command_delay_buffers[i]
+                buf.append(cmd.copy())
+                if len(buf) <= delay_steps:
+                    cmd = np.zeros(3, dtype=float)
+                else:
+                    cmd = buf.pop(0)
+                while len(buf) > delay_steps:
+                    buf.pop(0)
+            else:
+                self.command_delay_buffers[i].clear()
+
+            if self._has_failure(agent_failures[i], "frozen", "frozen_planner"):
+                cmd = np.zeros(3, dtype=float)
+            out[i] = cmd
+        return out
+
+    def _publish_intents(
+        self,
+        t: float,
+        pending_intent_out: list[IntentMsg | None],
+        agent_failures: list[list[str]],
+    ) -> None:
         if not self.intent_enabled:
             return
         for i, out_msg in enumerate(pending_intent_out):
             if self.states[i].done or out_msg is None:
+                continue
+            if self._has_failure(agent_failures[i], "comm_dropout", "communication_dropout", "noncooperative"):
                 continue
             points = np.asarray(out_msg.points, dtype=float)
             if points.ndim != 2 or points.shape[1] != 3 or points.shape[0] < 1:
@@ -522,9 +830,16 @@ class EpisodeEngine:
                 max_points=self.intent_max_points,
             )
 
-    def _publish_messages(self, t: float, pending_messages_out: list[list]) -> None:
+    def _publish_messages(
+        self,
+        t: float,
+        pending_messages_out: list[list],
+        agent_failures: list[list[str]],
+    ) -> None:
         for i, out_msgs in enumerate(pending_messages_out):
             if self.states[i].done:
+                continue
+            if self._has_failure(agent_failures[i], "comm_dropout", "communication_dropout", "noncooperative"):
                 continue
             for out_msg in out_msgs:
                 self.v2v.publish_agent_message(

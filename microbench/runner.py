@@ -89,6 +89,18 @@ def run_episode(spec: RunSpec) -> dict:
             "fixed_y_m": float(engine.fixed_y),
             "world_bounds": engine.world_cfg.get("bounds", {}),
             "obstacles": engine.obstacles,
+            "agent_profiles": [
+                {
+                    "agent_id": int(ctx.agent_id),
+                    "method": str(ctx.method),
+                    "role": ctx.role,
+                    "priority": int(ctx.priority),
+                    "capabilities": dict(ctx.capabilities),
+                    "mission": dict(ctx.mission),
+                    "failure_modes": dict(ctx.failure_modes),
+                }
+                for ctx in engine.agent_contexts
+            ],
         }
     )
 
@@ -183,6 +195,7 @@ def run_episode(spec: RunSpec) -> dict:
             if bool(np.all(step.done)):
                 break
     finally:
+        engine.close()
         failure.close()
 
     episode_runtime_s = time.perf_counter() - t_wall0

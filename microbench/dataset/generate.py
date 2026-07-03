@@ -218,6 +218,7 @@ def _episode_collect(spec: DatasetGenSpec) -> dict[str, np.ndarray]:
             break
 
     if not cmd_steps:
+        engine.close()
         return {
             "cond_ego": np.zeros((0, 6), dtype=np.float32),
             "cond_goal": np.zeros((0, 4), dtype=np.float32),
@@ -323,6 +324,7 @@ def _episode_collect(spec: DatasetGenSpec) -> dict[str, np.ndarray]:
             out_amax.append(float(engine.states[ego_id].a_max))
 
     if not out_cond_ego:
+        engine.close()
         return {
             "cond_ego": np.zeros((0, 6), dtype=np.float32),
             "cond_goal": np.zeros((0, 4), dtype=np.float32),
@@ -421,6 +423,7 @@ def _episode_collect(spec: DatasetGenSpec) -> dict[str, np.ndarray]:
         n0 = int(rec["cond_ego"].shape[0])
         rec["num_samples_raw"] = np.asarray(n0, dtype=np.int64)
         rec["num_samples_kept"] = np.asarray(n0, dtype=np.int64)
+    engine.close()
     return rec
 
 

@@ -136,6 +136,12 @@ class FailureRecorder:
             }
             if "selected_messages" in frame
             else {},
+            "planner_debug": {str(a): frame.get("planner_debug", [])[a] for a in idx}
+            if "planner_debug" in frame
+            else {},
+            "agent_failures": {str(a): frame.get("agent_failures", [])[a] for a in idx}
+            if "agent_failures" in frame
+            else {},
         }
 
     def close(self) -> None:

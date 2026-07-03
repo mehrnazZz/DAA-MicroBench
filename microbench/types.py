@@ -38,14 +38,34 @@ class AABBObs:
     half: Vec3
 
 
+class AgentMemory(dict[str, object]):
+    """Persistent per-agent scratchpad owned by one planner instance."""
+
+
+@dataclass
+class AgentProfile:
+    agent_id: int
+    method: str | None = None
+    role: str | None = None
+    priority: int = 0
+    capabilities: dict[str, object] = field(default_factory=dict)
+    mission: dict[str, object] = field(default_factory=dict)
+    failure_modes: dict[str, object] = field(default_factory=dict)
+    tags: list[str] = field(default_factory=list)
+
+
 @dataclass
 class AgentContext:
     agent_id: int
     method: str
     seed: int
-    memory: dict[str, object] = field(default_factory=dict)
+    memory: AgentMemory = field(default_factory=AgentMemory)
     role: str | None = None
     priority: int = 0
+    capabilities: dict[str, object] = field(default_factory=dict)
+    mission: dict[str, object] = field(default_factory=dict)
+    failure_modes: dict[str, object] = field(default_factory=dict)
+    profile: AgentProfile | None = None
 
 
 @dataclass
