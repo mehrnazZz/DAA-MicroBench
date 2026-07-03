@@ -6,6 +6,16 @@ import numpy as np
 
 Vec3 = np.ndarray
 
+MSG_ODOMETRY = "ODOMETRY"
+MSG_INTENT_TRAJECTORY = "INTENT_TRAJECTORY"
+MSG_YIELD = "YIELD"
+MSG_PRIORITY = "PRIORITY"
+MSG_NEGOTIATION_PROPOSAL = "NEGOTIATION_PROPOSAL"
+MSG_ACK = "ACK"
+MSG_ABORT = "ABORT"
+MSG_EMERGENCY = "EMERGENCY"
+MSG_STALE_BELIEF = "STALE_BELIEF"
+
 
 @dataclass
 class AgentState:
@@ -101,6 +111,12 @@ class AgentMessage:
     payload: dict[str, object] = field(default_factory=dict)
     recipient_id: int | None = None
     ttl_s: float = 1.0
+    message_id: str | None = None
+    correlation_id: str | None = None
+    seq: int | None = None
+    channel: str = "agent_msg"
+    priority: int = 0
+    size_bytes: int | None = None
 
 
 @dataclass
@@ -113,6 +129,12 @@ class AgentMessageObs:
     msg_age_s: float
     valid: bool
     ttl_s: float
+    message_id: str | None = None
+    correlation_id: str | None = None
+    seq: int | None = None
+    channel: str = "agent_msg"
+    priority: int = 0
+    size_bytes: int = 0
 
 
 @dataclass

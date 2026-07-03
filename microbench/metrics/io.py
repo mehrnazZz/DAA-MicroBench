@@ -44,6 +44,16 @@ RESULT_FIELDS = [
     "obs_sensor_fraction",
     "obs_stale_fraction",
     "obs_empty_fraction",
+    "comm_agent_msg_attempted",
+    "comm_agent_msg_scheduled",
+    "comm_agent_msg_delivered",
+    "comm_agent_msg_dropped",
+    "comm_agent_msg_expired",
+    "comm_agent_msg_bytes_scheduled",
+    "comm_agent_msg_bytes_delivered",
+    "comm_agent_msg_bandwidth_Bps",
+    "comm_agent_msg_drop_fraction",
+    "comm_agent_msg_delivery_fraction",
     "episode_runtime_s",
 ]
 
@@ -76,6 +86,14 @@ SUMMARY_FIELDS = [
     "obs_sensor_fraction_mean",
     "obs_stale_fraction_mean",
     "obs_empty_fraction_mean",
+    "comm_agent_msg_attempted_mean",
+    "comm_agent_msg_scheduled_mean",
+    "comm_agent_msg_delivered_mean",
+    "comm_agent_msg_dropped_mean",
+    "comm_agent_msg_expired_mean",
+    "comm_agent_msg_bandwidth_Bps_mean",
+    "comm_agent_msg_drop_fraction_mean",
+    "comm_agent_msg_delivery_fraction_mean",
 ]
 
 
@@ -180,6 +198,22 @@ def write_summary(out_dir: str | Path) -> Path:
             obs_stale = [x for x in obs_stale if x is not None]
             obs_empty = [_to_float(x.get("obs_empty_fraction")) for x in items]
             obs_empty = [x for x in obs_empty if x is not None]
+            msg_attempted = [_to_float(x.get("comm_agent_msg_attempted")) for x in items]
+            msg_attempted = [x for x in msg_attempted if x is not None]
+            msg_scheduled = [_to_float(x.get("comm_agent_msg_scheduled")) for x in items]
+            msg_scheduled = [x for x in msg_scheduled if x is not None]
+            msg_delivered = [_to_float(x.get("comm_agent_msg_delivered")) for x in items]
+            msg_delivered = [x for x in msg_delivered if x is not None]
+            msg_dropped = [_to_float(x.get("comm_agent_msg_dropped")) for x in items]
+            msg_dropped = [x for x in msg_dropped if x is not None]
+            msg_expired = [_to_float(x.get("comm_agent_msg_expired")) for x in items]
+            msg_expired = [x for x in msg_expired if x is not None]
+            msg_bandwidth = [_to_float(x.get("comm_agent_msg_bandwidth_Bps")) for x in items]
+            msg_bandwidth = [x for x in msg_bandwidth if x is not None]
+            msg_drop_fraction = [_to_float(x.get("comm_agent_msg_drop_fraction")) for x in items]
+            msg_drop_fraction = [x for x in msg_drop_fraction if x is not None]
+            msg_delivery_fraction = [_to_float(x.get("comm_agent_msg_delivery_fraction")) for x in items]
+            msg_delivery_fraction = [x for x in msg_delivery_fraction if x is not None]
 
             collision_rate = (
                 sum(1 for x in coll if x > 0.0) / len(coll)
@@ -216,6 +250,14 @@ def write_summary(out_dir: str | Path) -> Path:
                 "obs_sensor_fraction_mean": _mean(obs_sensor),
                 "obs_stale_fraction_mean": _mean(obs_stale),
                 "obs_empty_fraction_mean": _mean(obs_empty),
+                "comm_agent_msg_attempted_mean": _mean(msg_attempted),
+                "comm_agent_msg_scheduled_mean": _mean(msg_scheduled),
+                "comm_agent_msg_delivered_mean": _mean(msg_delivered),
+                "comm_agent_msg_dropped_mean": _mean(msg_dropped),
+                "comm_agent_msg_expired_mean": _mean(msg_expired),
+                "comm_agent_msg_bandwidth_Bps_mean": _mean(msg_bandwidth),
+                "comm_agent_msg_drop_fraction_mean": _mean(msg_drop_fraction),
+                "comm_agent_msg_delivery_fraction_mean": _mean(msg_delivery_fraction),
             }
             writer.writerow(row)
 

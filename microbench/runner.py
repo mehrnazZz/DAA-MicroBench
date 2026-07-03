@@ -204,6 +204,7 @@ def run_episode(spec: RunSpec) -> dict:
         spawn_goal_dists=engine.spawn_goal_dists,
         planner_ms_samples=np.asarray(engine.planner_ms_samples, dtype=float),
         episode_runtime_s=episode_runtime_s,
+        comm_stats=engine.v2v.agent_message_stats_snapshot(),
     )
 
     run_id = Path(spec.out_dir).name

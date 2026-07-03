@@ -58,6 +58,8 @@ class EpisodeStep:
     near_miss_pairs: set[tuple[int, int]]
     planner_debug: list[dict]
     agent_failures: list[list[str]]
+    message_events: list[dict]
+    comm_stats: dict[str, int]
 
     def trace_frame(self) -> dict:
         return {
@@ -75,6 +77,8 @@ class EpisodeStep:
             "accel_saturated": [bool(x) for x in self.accel_saturated],
             "planner_debug": self.planner_debug,
             "agent_failures": self.agent_failures,
+            "message_events": self.message_events,
+            "comm_stats": self.comm_stats,
         }
 
 
@@ -279,6 +283,10 @@ class EpisodeEngine:
             cprof.setdefault("noise", {})["sigma_vel_mps"] = float(
                 self.comm_cfg.get("noise_sigma_vel_mps", cprof.get("noise", {}).get("sigma_vel_mps", 0.0))
             )
+        if self.comm_cfg.get("agent_messages") is not None:
+            cprof["agent_messages"] = deep_merge(cprof.get("agent_messages", {}), self.comm_cfg.get("agent_messages", {}))
+        if self.comm_cfg.get("message_bus") is not None:
+            cprof["agent_messages"] = deep_merge(cprof.get("agent_messages", {}), self.comm_cfg.get("message_bus", {}))
 
         self.intent_enabled = bool(self.intent_cfg.get("enabled", False))
         self.intent_tx_rate_hz = float(self.intent_cfg.get("tx_rate_hz", cprof.get("tx_rate_hz", 10.0)))
@@ -621,6 +629,12 @@ class EpisodeEngine:
                     "valid": bool(m.valid),
                     "ttl_s": float(m.ttl_s),
                     "payload": dict(m.payload),
+                    "message_id": m.message_id,
+                    "correlation_id": m.correlation_id,
+                    "seq": m.seq,
+                    "channel": str(m.channel),
+                    "priority": int(m.priority),
+                    "size_bytes": int(m.size_bytes),
                 }
                 for m in agent_messages
             ]
@@ -655,6 +669,8 @@ class EpisodeEngine:
 
         self._publish_intents(t, pending_intent_out, agent_failures)
         self._publish_messages(t, pending_messages_out, agent_failures)
+        message_events = self.v2v.drain_agent_message_events()
+        comm_stats = self.v2v.agent_message_stats_snapshot()
 
         v_cmds = self.events.apply_overrides(t, self.states, v_cmds)
         v_cmds = self._apply_command_failures(v_cmds, agent_failures, command_delay_steps)
@@ -696,6 +712,8 @@ class EpisodeEngine:
             near_miss_pairs=near_miss_pairs_step,
             planner_debug=planner_debug,
             agent_failures=agent_failures,
+            message_events=message_events,
+            comm_stats=comm_stats,
         )
 
     def _update_goal_completion(self, t: float) -> None:

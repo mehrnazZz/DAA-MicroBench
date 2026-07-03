@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import heapq
+import json
 import numpy as np
 
 from microbench.types import AgentMessage, AgentMessageObs, IntentMsg
@@ -52,6 +53,12 @@ class DeliveredAgentMessage:
     kind: str
     payload: dict[str, object]
     ttl_s: float
+    message_id: str | None
+    correlation_id: str | None
+    seq: int | None
+    channel: str
+    priority: int
+    size_bytes: int
 
 
 @dataclass(order=True)
@@ -82,6 +89,13 @@ class V2VEmulator:
         self.delay_cfg = profile.get("delay", {})
         self.loss_cfg = profile.get("loss", {})
         self.noise_cfg = profile.get("noise", {})
+        self.agent_msg_cfg = profile.get("agent_messages", profile.get("message_bus", {})) or {}
+        self.agent_msg_rate_limit_hz = float(self.agent_msg_cfg.get("rate_limit_hz", 0.0))
+        self.agent_msg_bandwidth_limit_Bps = float(
+            self.agent_msg_cfg.get("bandwidth_limit_Bps", self.agent_msg_cfg.get("bandwidth_limit_bytes_per_s", 0.0))
+        )
+        self.agent_msg_max_bytes = int(self.agent_msg_cfg.get("max_message_bytes", 0))
+        self.agent_msg_overhead_bytes = int(self.agent_msg_cfg.get("overhead_bytes", 48))
         self.age_cap_s = float(age_cap_s)
         self.rng = rng
         self.next_tx_time: list[float] = []
@@ -94,6 +108,11 @@ class V2VEmulator:
         self.agent_messages_received: list[list[DeliveredAgentMessage]] = []
         self.pending_intent: list[IntentMsg | None] = []
         self.ge_state: dict[tuple[int, int], str] = {}
+        self.agent_msg_rate_windows: list[list[float]] = []
+        self.agent_msg_bandwidth_windows: list[list[tuple[float, int]]] = []
+        self.agent_message_events: list[dict] = []
+        self.agent_msg_stats: dict[str, int] = {}
+        self.agent_msg_seq_by_sender: list[int] = []
         self._seq = 0
 
     def reset(self, n_agents: int) -> None:
@@ -107,6 +126,19 @@ class V2VEmulator:
         self.agent_messages_received = [[] for _ in range(n_agents)]
         self.pending_intent = [None for _ in range(n_agents)]
         self.ge_state = {}
+        self.agent_msg_rate_windows = [[] for _ in range(n_agents)]
+        self.agent_msg_bandwidth_windows = [[] for _ in range(n_agents)]
+        self.agent_message_events = []
+        self.agent_msg_stats = {
+            "agent_msg_attempted": 0,
+            "agent_msg_scheduled": 0,
+            "agent_msg_delivered": 0,
+            "agent_msg_dropped": 0,
+            "agent_msg_expired": 0,
+            "agent_msg_bytes_scheduled": 0,
+            "agent_msg_bytes_delivered": 0,
+        }
+        self.agent_msg_seq_by_sender = [0 for _ in range(n_agents)]
         self._seq = 0
 
     def step(self, t: float, states: list) -> None:
@@ -136,6 +168,26 @@ class V2VEmulator:
         while self.agent_message_delivery_queue and self.agent_message_delivery_queue[0].deliver_time <= t + 1e-12:
             sched = heapq.heappop(self.agent_message_delivery_queue)
             self.agent_messages_received[sched.receiver].append(sched.msg)
+            self.agent_msg_stats["agent_msg_delivered"] += 1
+            self.agent_msg_stats["agent_msg_bytes_delivered"] += int(sched.msg.size_bytes)
+            self._record_agent_event(
+                {
+                    "event": "delivered",
+                    "t": float(t),
+                    "sender_id": int(sched.msg.sender),
+                    "receiver_id": int(sched.receiver),
+                    "recipient_id": sched.msg.recipient,
+                    "kind": str(sched.msg.kind),
+                    "message_id": sched.msg.message_id,
+                    "correlation_id": sched.msg.correlation_id,
+                    "seq": sched.msg.seq,
+                    "channel": sched.msg.channel,
+                    "priority": int(sched.msg.priority),
+                    "size_bytes": int(sched.msg.size_bytes),
+                    "timestamp_send_s": float(sched.msg.timestamp_send_s),
+                    "deliver_time_s": float(sched.deliver_time),
+                }
+            )
 
     def _broadcast(self, send_time: float, sender: int, states: list) -> None:
         s = states[sender]
@@ -231,16 +283,48 @@ class V2VEmulator:
         timestamp_send_s = float(msg.timestamp_send_s)
         if timestamp_send_s < 0.0:
             timestamp_send_s = float(now_s)
+        seq = int(msg.seq) if msg.seq is not None else int(self.agent_msg_seq_by_sender[sender])
+        if msg.seq is None:
+            self.agent_msg_seq_by_sender[sender] += 1
+        message_id = msg.message_id or f"{sender}:{seq}:{timestamp_send_s:.6f}:{self._seq}"
+        channel = str(msg.channel or "agent_msg")
+        payload = dict(msg.payload or {})
+        size_bytes = int(msg.size_bytes) if msg.size_bytes is not None else self._estimate_agent_message_bytes(
+            sender=sender,
+            recipient=recipient,
+            kind=str(msg.kind),
+            payload=payload,
+            message_id=message_id,
+            correlation_id=msg.correlation_id,
+            seq=seq,
+            channel=channel,
+            priority=int(msg.priority),
+            ttl_s=max(0.0, float(msg.ttl_s)),
+        )
         delivered = DeliveredAgentMessage(
             sender=sender,
             recipient=recipient,
             timestamp_send_s=timestamp_send_s,
             kind=str(msg.kind),
-            payload=dict(msg.payload or {}),
+            payload=payload,
             ttl_s=max(0.0, float(msg.ttl_s)),
+            message_id=message_id,
+            correlation_id=msg.correlation_id,
+            seq=seq,
+            channel=channel,
+            priority=int(msg.priority),
+            size_bytes=size_bytes,
         )
         for receiver in receivers:
+            self.agent_msg_stats["agent_msg_attempted"] += 1
+            if self.agent_msg_max_bytes > 0 and size_bytes > self.agent_msg_max_bytes:
+                self._drop_agent_message(now_s, sender, receiver, delivered, reason="max_message_bytes")
+                continue
+            if not self._reserve_agent_message_budget(sender, now_s, size_bytes):
+                self._drop_agent_message(now_s, sender, receiver, delivered, reason="rate_or_bandwidth_limit")
+                continue
             if self._drop(sender, receiver, channel="agent_msg"):
+                self._drop_agent_message(now_s, sender, receiver, delivered, reason="loss_model")
                 continue
             delay_s = self._sample_delay_sec()
             heapq.heappush(
@@ -252,7 +336,109 @@ class V2VEmulator:
                     msg=delivered,
                 ),
             )
+            self.agent_msg_stats["agent_msg_scheduled"] += 1
+            self.agent_msg_stats["agent_msg_bytes_scheduled"] += int(size_bytes)
+            self._record_agent_event(
+                {
+                    "event": "scheduled",
+                    "t": float(now_s),
+                    "sender_id": int(sender),
+                    "receiver_id": int(receiver),
+                    "recipient_id": recipient,
+                    "kind": str(delivered.kind),
+                    "message_id": delivered.message_id,
+                    "correlation_id": delivered.correlation_id,
+                    "seq": delivered.seq,
+                    "channel": delivered.channel,
+                    "priority": int(delivered.priority),
+                    "size_bytes": int(delivered.size_bytes),
+                    "timestamp_send_s": float(delivered.timestamp_send_s),
+                    "deliver_time_s": float(now_s) + float(delay_s),
+                }
+            )
             self._seq += 1
+
+    def _record_agent_event(self, event: dict) -> None:
+        self.agent_message_events.append(event)
+
+    def _drop_agent_message(
+        self,
+        now_s: float,
+        sender: int,
+        receiver: int,
+        msg: DeliveredAgentMessage,
+        *,
+        reason: str,
+    ) -> None:
+        self.agent_msg_stats["agent_msg_dropped"] += 1
+        self._record_agent_event(
+            {
+                "event": "dropped",
+                "reason": str(reason),
+                "t": float(now_s),
+                "sender_id": int(sender),
+                "receiver_id": int(receiver),
+                "recipient_id": msg.recipient,
+                "kind": str(msg.kind),
+                "message_id": msg.message_id,
+                "correlation_id": msg.correlation_id,
+                "seq": msg.seq,
+                "channel": msg.channel,
+                "priority": int(msg.priority),
+                "size_bytes": int(msg.size_bytes),
+                "timestamp_send_s": float(msg.timestamp_send_s),
+            }
+        )
+
+    def _estimate_agent_message_bytes(
+        self,
+        *,
+        sender: int,
+        recipient: int | None,
+        kind: str,
+        payload: dict[str, object],
+        message_id: str | None,
+        correlation_id: str | None,
+        seq: int | None,
+        channel: str,
+        priority: int,
+        ttl_s: float,
+    ) -> int:
+        body = {
+            "sender_id": int(sender),
+            "recipient_id": recipient,
+            "kind": str(kind),
+            "payload": payload,
+            "message_id": message_id,
+            "correlation_id": correlation_id,
+            "seq": seq,
+            "channel": channel,
+            "priority": int(priority),
+            "ttl_s": float(ttl_s),
+        }
+        raw = json.dumps(body, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+        return int(len(raw) + max(0, self.agent_msg_overhead_bytes))
+
+    def _reserve_agent_message_budget(self, sender: int, now_s: float, size_bytes: int) -> bool:
+        cutoff = float(now_s) - 1.0
+        rate_window = self.agent_msg_rate_windows[sender]
+        while rate_window and rate_window[0] <= cutoff:
+            rate_window.pop(0)
+        if self.agent_msg_rate_limit_hz > 0.0:
+            rate_limit = max(1, int(np.floor(self.agent_msg_rate_limit_hz)))
+            if len(rate_window) >= rate_limit:
+                return False
+
+        bandwidth_window = self.agent_msg_bandwidth_windows[sender]
+        while bandwidth_window and bandwidth_window[0][0] <= cutoff:
+            bandwidth_window.pop(0)
+        used_bytes = sum(int(x[1]) for x in bandwidth_window)
+        if self.agent_msg_bandwidth_limit_Bps > 0.0 and used_bytes + int(size_bytes) > self.agent_msg_bandwidth_limit_Bps:
+            return False
+
+        rate_window.append(float(now_s))
+        bandwidth_window.append((float(now_s), int(size_bytes)))
+        return True
 
     def _sample_delay_sec(self) -> float:
         dtype = self.delay_cfg.get("type", "constant_ms")
@@ -350,6 +536,41 @@ class V2VEmulator:
                     msg_age_s=min(age, self.age_cap_s),
                     valid=bool(valid),
                     ttl_s=float(msg.ttl_s),
+                    message_id=msg.message_id,
+                    correlation_id=msg.correlation_id,
+                    seq=msg.seq,
+                    channel=msg.channel,
+                    priority=int(msg.priority),
+                    size_bytes=int(msg.size_bytes),
                 )
             )
+            if not valid:
+                self.agent_msg_stats["agent_msg_expired"] += 1
+                self._record_agent_event(
+                    {
+                        "event": "expired",
+                        "t": float(now),
+                        "sender_id": int(msg.sender),
+                        "receiver_id": int(receiver),
+                        "recipient_id": msg.recipient,
+                        "kind": str(msg.kind),
+                        "message_id": msg.message_id,
+                        "correlation_id": msg.correlation_id,
+                        "seq": msg.seq,
+                        "channel": msg.channel,
+                        "priority": int(msg.priority),
+                        "size_bytes": int(msg.size_bytes),
+                        "timestamp_send_s": float(msg.timestamp_send_s),
+                        "msg_age_s": float(age),
+                        "ttl_s": float(msg.ttl_s),
+                    }
+                )
         return out
+
+    def drain_agent_message_events(self) -> list[dict]:
+        events = list(self.agent_message_events)
+        self.agent_message_events = []
+        return events
+
+    def agent_message_stats_snapshot(self) -> dict[str, int]:
+        return dict(self.agent_msg_stats)

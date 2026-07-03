@@ -142,6 +142,12 @@ class FailureRecorder:
             "agent_failures": {str(a): frame.get("agent_failures", [])[a] for a in idx}
             if "agent_failures" in frame
             else {},
+            "message_events": [
+                e
+                for e in frame.get("message_events", [])
+                if int(e.get("sender_id", -1)) in keep or int(e.get("receiver_id", -1)) in keep
+            ],
+            "comm_stats": dict(frame.get("comm_stats", {})),
         }
 
     def close(self) -> None:

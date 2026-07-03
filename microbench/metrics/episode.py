@@ -32,6 +32,16 @@ class EpisodeMetrics:
     obs_sensor_fraction: float
     obs_stale_fraction: float
     obs_empty_fraction: float
+    comm_agent_msg_attempted: int
+    comm_agent_msg_scheduled: int
+    comm_agent_msg_delivered: int
+    comm_agent_msg_dropped: int
+    comm_agent_msg_expired: int
+    comm_agent_msg_bytes_scheduled: int
+    comm_agent_msg_bytes_delivered: int
+    comm_agent_msg_bandwidth_Bps: float
+    comm_agent_msg_drop_fraction: float
+    comm_agent_msg_delivery_fraction: float
     episode_runtime_s: float
 
 
@@ -115,6 +125,7 @@ class EpisodeRecorder:
         spawn_goal_dists: np.ndarray,
         planner_ms_samples: np.ndarray,
         episode_runtime_s: float,
+        comm_stats: dict[str, int] | None = None,
     ) -> EpisodeMetrics:
         finished = np.isfinite(done_times)
         completion_rate = float(np.mean(finished)) if len(finished) else 0.0
@@ -142,6 +153,15 @@ class EpisodeRecorder:
         obs_neighbors_mean = float(np.mean(self.obs_neighbor_counts)) if self.obs_neighbor_counts else 0.0
         obs_total = max(1, self.obs_total_count)
         obs_agent_ticks = max(1, self.obs_agent_ticks)
+        comm = comm_stats or {}
+        msg_attempted = int(comm.get("agent_msg_attempted", 0))
+        msg_scheduled = int(comm.get("agent_msg_scheduled", 0))
+        msg_delivered = int(comm.get("agent_msg_delivered", 0))
+        msg_dropped = int(comm.get("agent_msg_dropped", 0))
+        msg_expired = int(comm.get("agent_msg_expired", 0))
+        bytes_scheduled = int(comm.get("agent_msg_bytes_scheduled", 0))
+        bytes_delivered = int(comm.get("agent_msg_bytes_delivered", 0))
+        sim_time_s = max(self.dt, (self.total_ticks / max(1, self.n_agents)) * self.dt)
 
         return EpisodeMetrics(
             collisions=int(self.collision_pair_ticks),
@@ -171,5 +191,15 @@ class EpisodeRecorder:
             obs_sensor_fraction=float(self.obs_sensor_count / obs_total),
             obs_stale_fraction=float(self.obs_stale_count / obs_total),
             obs_empty_fraction=float(self.obs_empty_agent_ticks / obs_agent_ticks),
+            comm_agent_msg_attempted=msg_attempted,
+            comm_agent_msg_scheduled=msg_scheduled,
+            comm_agent_msg_delivered=msg_delivered,
+            comm_agent_msg_dropped=msg_dropped,
+            comm_agent_msg_expired=msg_expired,
+            comm_agent_msg_bytes_scheduled=bytes_scheduled,
+            comm_agent_msg_bytes_delivered=bytes_delivered,
+            comm_agent_msg_bandwidth_Bps=float(bytes_scheduled / sim_time_s),
+            comm_agent_msg_drop_fraction=float(msg_dropped / max(1, msg_attempted)),
+            comm_agent_msg_delivery_fraction=float(msg_delivered / max(1, msg_scheduled)),
             episode_runtime_s=float(episode_runtime_s),
         )
