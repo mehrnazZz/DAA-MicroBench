@@ -313,6 +313,16 @@ python -m microbench.cli canonical-sweep \
 
 Generated scenario files and `suite_manifest.yaml` are saved under `<out-dir>/_generated_scenarios/<suite>/` so result folders are self-describing.
 
+Validate built-in and generated suites:
+
+```bash
+python -m microbench.cli validate-scenarios \
+  --all-builtins \
+  --all-generated-suites
+```
+
+Validation checks required scenario keys, supported spawn/perception schemas, AABB obstacle geometry, suite manifests, and 3D-specific constraints such as `world.planar: false`, nonzero vertical volume, and spawn/goal bounds.
+
 Legacy hand-written canonical suites remain available while the official generator matures.
 
 Required scenarios:

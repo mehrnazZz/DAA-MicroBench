@@ -203,7 +203,7 @@ SCENARIO_FAMILIES: dict[str, ScenarioFamily] = {
             },
             "world": {
                 "planar": False,
-                "bounds": {"xmin": -42.0, "xmax": 42.0, "ymin": -24.0, "ymax": 24.0, "zmin": -42.0, "zmax": 42.0},
+                "bounds": {"xmin": -42.0, "xmax": 42.0, "ymin": -42.0, "ymax": 42.0, "zmin": -42.0, "zmax": 42.0},
             },
             "agent_params": {"radius_m": 0.5, "v_max_mps": 3.0, "a_max_mps2": 2.0, "goal_tolerance_m": 1.0},
             "goals": {"min_goal_distance_m": 48.0},
@@ -279,7 +279,7 @@ SCENARIO_FAMILIES: dict[str, ScenarioFamily] = {
             },
             "world": {
                 "planar": False,
-                "bounds": {"xmin": -44.0, "xmax": 44.0, "ymin": -22.0, "ymax": 22.0, "zmin": -44.0, "zmax": 44.0},
+                "bounds": {"xmin": -44.0, "xmax": 44.0, "ymin": -44.0, "ymax": 44.0, "zmin": -44.0, "zmax": 44.0},
             },
             "agent_params": {"radius_m": 0.5, "v_max_mps": 3.0, "a_max_mps2": 2.0, "goal_tolerance_m": 1.0},
             "goals": {"min_goal_distance_m": 46.0},
@@ -455,7 +455,7 @@ def materialize_official_suite(
             yaml.safe_dump(family.config, f, sort_keys=False)
         scenario_paths.append(path)
 
-    manifest = build_suite_manifest(suite_id, scenario_paths, stretch=stretch)
+    manifest = build_suite_manifest(suite_id, [Path(p.name) for p in scenario_paths], stretch=stretch)
     manifest_path = out / "suite_manifest.yaml"
     if manifest_path.exists() and not overwrite:
         raise FileExistsError(f"{manifest_path} already exists; pass overwrite=True to replace generated manifest")

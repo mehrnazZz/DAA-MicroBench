@@ -44,7 +44,7 @@ class TestScenarioFamilies(unittest.TestCase):
             self.assertEqual({s["dimension"] for s in manifest["scenarios"]}, {"2d", "3d"})
 
             for scenario in manifest["scenarios"]:
-                cfg = load_yaml(scenario["path"])
+                cfg = load_yaml(Path(td) / scenario["path"])
                 self.assertEqual(cfg["scenario"]["name"], scenario["id"])
                 self.assertEqual(cfg["benchmark"]["dimension"], scenario["dimension"])
                 if scenario["dimension"] == "3d":

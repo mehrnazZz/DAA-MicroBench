@@ -7,6 +7,13 @@ from microbench.scenarios.families import (
     materialize_official_suite,
     suite_defaults,
 )
+from microbench.scenarios.validation import (
+    ValidationReport,
+    validate_scenario_config,
+    validate_scenario_file,
+    validate_suite_manifest_config,
+    validate_suite_manifest_file,
+)
 
 __all__ = [
     "load_scenario",
@@ -17,4 +24,9 @@ __all__ = [
     "list_scenario_families",
     "materialize_official_suite",
     "suite_defaults",
+    "ValidationReport",
+    "validate_scenario_config",
+    "validate_scenario_file",
+    "validate_suite_manifest_config",
+    "validate_suite_manifest_file",
 ]

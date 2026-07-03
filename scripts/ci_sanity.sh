@@ -16,6 +16,11 @@ python -m microbench.cli sweep \
   --comm "${COMM}" \
   --out-dir "${OUT_DIR}"
 
+python -m microbench.cli validate-scenarios \
+  --all-builtins \
+  --generated-suite official_3d_stress \
+  --quiet
+
 export OUT_DIR
 python - <<'PY'
 import csv

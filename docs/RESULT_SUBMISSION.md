@@ -31,6 +31,14 @@ Attach or link:
 - any planner source or package version needed to reproduce
 - representative failure traces for nonzero collision or near-miss-heavy results
 
+Run validation before submitting:
+
+```bash
+python -m microbench.cli validate-scenarios \
+  --scenario path/to/custom_or_official.yaml \
+  --suite-manifest path/to/suite_manifest.yaml
+```
+
 ## Reproduction Command
 
 Paste the exact command. Example:

@@ -6,6 +6,7 @@ import platform
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 from tqdm import tqdm
 
 from microbench.config import load_defaults
@@ -17,7 +18,13 @@ from microbench.replay import render_interactive_trace, render_trace
 from microbench.dataset import generate_dataset, expand_scenarios, expand_list, sanity_check_shard
 from microbench.logging import wandb_logger
 from microbench.tools import mine_worst_cases
-from microbench.scenarios import list_official_suites, materialize_official_suite, suite_defaults
+from microbench.scenarios import (
+    list_official_suites,
+    materialize_official_suite,
+    suite_defaults,
+    validate_scenario_file,
+    validate_suite_manifest_file,
+)
 
 CANONICAL_SCENARIOS = [
     "config/scenarios/corridor.yaml",
@@ -351,6 +358,61 @@ def _run_canonical_sweep(args) -> None:
         wandb_logger.finish(wb_run)
 
 
+def _print_validation_report(report) -> None:
+    status = "ok" if report.ok else "FAIL"
+    print(f"{status}: {report.kind} {report.path}")
+    for warning in report.warnings:
+        print(f"  warning: {warning}")
+    for error in report.errors:
+        print(f"  error: {error}")
+
+
+def _validate_scenarios(args) -> None:
+    reports = []
+    scenario_paths: list[str] = []
+    manifest_paths: list[str] = []
+    generated_suites: list[str] = []
+
+    if args.scenario:
+        scenario_paths.extend(_expand_scenarios(args.scenario))
+    if args.all_builtins:
+        scenario_paths.extend(sorted(glob.glob("config/scenarios/*.yaml")))
+    if args.suite_manifest:
+        manifest_paths.extend(_expand_scenarios(args.suite_manifest))
+    if args.generated_suite:
+        generated_suites.extend(_parse_str_list(args.generated_suite))
+    if args.all_generated_suites:
+        generated_suites.extend(list_official_suites())
+
+    if not scenario_paths and not manifest_paths and not generated_suites:
+        scenario_paths.extend(sorted(glob.glob("config/scenarios/*.yaml")))
+
+    for path in dict.fromkeys(scenario_paths):
+        reports.append(validate_scenario_file(path))
+    for path in dict.fromkeys(manifest_paths):
+        reports.append(validate_suite_manifest_file(path))
+
+    unknown_suites = sorted(set(generated_suites) - set(list_official_suites()))
+    if unknown_suites:
+        raise SystemExit(f"Unknown generated suite(s): {','.join(unknown_suites)}")
+    if generated_suites:
+        with tempfile.TemporaryDirectory(prefix="daa_suite_validate_") as td:
+            for suite in dict.fromkeys(generated_suites):
+                generated = materialize_official_suite(suite, Path(td) / suite, overwrite=True)
+                reports.append(validate_suite_manifest_file(generated["manifest_path"]))
+
+    for report in reports:
+        if not args.quiet or not report.ok:
+            _print_validation_report(report)
+    failed = [r for r in reports if not r.ok]
+    if failed:
+        raise SystemExit(f"validation failed: {len(failed)} artifact(s) had errors")
+
+    scenarios = sum(1 for r in reports if r.kind == "scenario")
+    manifests = sum(1 for r in reports if r.kind == "suite_manifest")
+    print(f"validation: PASS scenarios={scenarios} suite_manifests={manifests}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="microbench")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -443,6 +505,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_ms.add_argument("--overwrite", action="store_true")
     p_ms.add_argument("--stretch", action="store_true", help="Write stretch run-matrix recommendations into manifest")
     p_ms.add_argument("--print-plan", action="store_true")
+
+    p_val = sub.add_parser("validate-scenarios", help="Validate scenario YAMLs and generated suite manifests")
+    p_val.add_argument("--scenario", default=None, help="Scenario path(s) or globs (comma-separated)")
+    p_val.add_argument("--suite-manifest", default=None, help="Suite manifest path(s) or globs (comma-separated)")
+    p_val.add_argument("--generated-suite", default=None, help="Generated suite id(s), comma-separated")
+    p_val.add_argument("--all-builtins", action="store_true", help="Validate config/scenarios/*.yaml")
+    p_val.add_argument("--all-generated-suites", action="store_true", help="Materialize and validate all generated suites")
+    p_val.add_argument("--quiet", action="store_true", help="Only print failures and final summary")
 
     p_hc = sub.add_parser("mine-hard-cases", help="Collect trace artifacts for worst episodes")
     p_hc.add_argument("--results", required=True, help="Path to runs/<id>/results.csv")
@@ -544,6 +614,9 @@ def main() -> None:
             print(f"  N: {','.join(str(x) for x in manifest['n_agents'])}")
             print(f"  seeds: {','.join(str(x) for x in manifest['seeds'])}")
             print(f"  comm: {','.join(manifest['comm_profiles'])}")
+        return
+    if args.cmd == "validate-scenarios":
+        _validate_scenarios(args)
         return
     if args.cmd == "mine-hard-cases":
         out = mine_worst_cases(results_csv=args.results, top_k=args.top_k)
