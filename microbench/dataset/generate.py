@@ -8,13 +8,10 @@ import math
 import hashlib
 import numpy as np
 
-from microbench.types import AABBObs, AgentContext, AgentState, NeighborObs, PlannerInput, PlannerOutput
-from microbench.config import load_defaults, load_comm_profiles
-from microbench.scenarios import load_scenario, generate_spawns_goals, EventEngine
-from microbench.planners import make_planner
-from microbench.comm.v2v import V2VEmulator
-from microbench.core import apply_dynamics, select_neighbors
-from microbench.core.perception import fuse_observations, sense_neighbors
+from microbench.config import load_defaults
+from microbench.core import EpisodeEngine
+from microbench.scenarios import load_scenario
+from microbench.types import AgentState, NeighborObs
 
 
 @dataclass
@@ -33,25 +30,9 @@ class DatasetGenSpec:
     filter_min_sep_m: float = 0.0
 
 
-def _normalize(v: np.ndarray) -> np.ndarray:
-    n = float(np.linalg.norm(v))
-    if n < 1e-9:
-        return np.zeros_like(v)
-    return v / n
-
-
 def _stable_id(name: str) -> int:
     h = hashlib.md5(name.encode("utf-8")).hexdigest()[:8]
     return int(h, 16)
-
-
-def _agent_seed(base_seed: int, agent_idx: int) -> int:
-    return int((int(base_seed) * 1_000_003 + int(agent_idx)) % (2**32 - 1))
-
-
-def _in_aabb(pos: np.ndarray, center: np.ndarray, half: np.ndarray, radius: float) -> bool:
-    d = np.abs(pos - center)
-    return bool(np.all(d <= (half + radius)))
 
 
 def _frame_angle(goal_dir: np.ndarray, ego_vel: np.ndarray) -> float:
@@ -157,101 +138,25 @@ def _encode_cond_structured(
 
 
 def _episode_collect(spec: DatasetGenSpec) -> dict[str, np.ndarray]:
-    defaults = load_defaults()
-    profiles = load_comm_profiles()
-    if spec.comm_profile not in profiles:
-        raise ValueError(f"Unknown comm profile: {spec.comm_profile}")
+    engine = EpisodeEngine(
+        scenario_path=spec.scenario_path,
+        method=spec.method,
+        n_agents=spec.n_agents,
+        seed=spec.seed,
+        comm_profile=spec.comm_profile,
+    )
 
-    cfg = load_scenario(defaults, spec.scenario_path)
-    rng = np.random.default_rng(spec.seed)
-
-    sim_cfg = cfg.get("sim", {})
-    world_cfg = cfg.get("world", {})
-    agent_cfg = cfg.get("agent_params", {})
-    dyn_cfg = cfg.get("dynamics", {})
-    ncfg = cfg.get("neighbors", {})
-    perception_cfg = cfg.get("perception", {})
-    comm_cfg = cfg.get("comm", {})
-
-    dt = float(sim_cfg.get("dt_s", 0.02))
+    dt = engine.dt
     stride = int(round(spec.dt_plan_s / dt))
     if stride < 1:
         raise ValueError("dt_plan_s must be >= sim dt")
     dt_plan_eff = stride * dt
 
-    duration_s = float(cfg.get("scenario", {}).get("duration_s", sim_cfg.get("duration_s", 60.0)))
-    steps = int(round(duration_s / dt))
-    top_k = int(ncfg.get("top_k", 8))
-
-    planar = bool(world_cfg.get("planar", sim_cfg.get("planar", True)))
-    fixed_y = float(world_cfg.get("fixed_y_m", sim_cfg.get("fixed_y_m", 0.0)))
-    goal_tol = float(agent_cfg.get("goal_tolerance_m", sim_cfg.get("goal_tolerance_m", 1.0)))
-
-    v_max = float(agent_cfg.get("v_max_mps", dyn_cfg.get("v_max_mps", 3.0)))
-    a_max = float(agent_cfg.get("a_max_mps2", dyn_cfg.get("a_max_mps2", 2.0)))
-    radius = float(agent_cfg.get("radius_m", 0.5))
-
-    v_ref = float(defaults.get("dynamics", {}).get("v_max_mps", 3.0))
-    a_ref = float(defaults.get("dynamics", {}).get("a_max_mps2", 2.0))
-    r_ref = float(agent_cfg.get("radius_m", radius))
-    range_m = float(ncfg.get("range_m", 30.0))
-
-    spawns, goals = generate_spawns_goals(cfg, spec.n_agents, rng)
-    if planar:
-        spawns[:, 1] = fixed_y
-        goals[:, 1] = fixed_y
-
-    states: list[AgentState] = []
-    for i in range(spec.n_agents):
-        states.append(
-            AgentState(
-                idx=i,
-                pos=spawns[i].copy(),
-                vel=np.zeros(3, dtype=np.float32),
-                goal=goals[i].copy(),
-                radius=radius,
-                v_max=v_max,
-                a_max=a_max,
-            )
-        )
-
-    planners = [make_planner(spec.method) for _ in range(spec.n_agents)]
-    agent_contexts: list[AgentContext] = []
-    for i, planner in enumerate(planners):
-        seed_i = _agent_seed(spec.seed, i)
-        planner.reset(seed_i)
-        agent_contexts.append(
-            AgentContext(
-                agent_id=i,
-                method=spec.method,
-                seed=seed_i,
-                priority=i,
-            )
-        )
-
-    cprof = profiles[spec.comm_profile].copy()
-    if comm_cfg.get("noise_sigma_pos_m") is not None:
-        cprof.setdefault("noise", {})["sigma_pos_m"] = float(comm_cfg.get("noise_sigma_pos_m", cprof.get("noise", {}).get("sigma_pos_m", 0.0)))
-    if comm_cfg.get("noise_sigma_vel_mps") is not None:
-        cprof.setdefault("noise", {})["sigma_vel_mps"] = float(comm_cfg.get("noise_sigma_vel_mps", cprof.get("noise", {}).get("sigma_vel_mps", 0.0)))
-    age_cap_s = float(comm_cfg.get("age_cap_s", 0.75))
-
-    v2v = V2VEmulator(cprof, age_cap_s=age_cap_s, rng=rng)
-    v2v.reset(spec.n_agents)
-
-    events_cfg = cfg.get("events", [])
-    events = EventEngine(events_cfg, rng)
-    events.reset()
-
-    obstacles = cfg.get("obstacles", [])
-    planner_obstacles = [
-        AABBObs(
-            center=np.asarray(ob["aabb"].get("center", [0.0, 0.0, 0.0]), dtype=float),
-            half=np.asarray(ob["aabb"].get("half", [0.0, 0.0, 0.0]), dtype=float),
-        )
-        for ob in obstacles
-        if "aabb" in ob
-    ]
+    top_k = int(engine.neighbor_cfg.get("top_k", 8))
+    v_ref = float(engine.defaults.get("dynamics", {}).get("v_max_mps", 3.0))
+    a_ref = float(engine.defaults.get("dynamics", {}).get("a_max_mps2", 2.0))
+    r_ref = float(engine.agent_cfg.get("radius_m", engine.radius))
+    range_m = float(engine.neighbor_cfg.get("range_m", 30.0))
 
     cond_ego_steps: list[np.ndarray] = []
     cond_goal_steps: list[np.ndarray] = []
@@ -262,168 +167,87 @@ def _episode_collect(spec: DatasetGenSpec) -> dict[str, np.ndarray]:
     pos_steps: list[np.ndarray] = []
     rad_steps: list[np.ndarray] = []
 
-    for k_tick in range(steps):
-        t = k_tick * dt
+    while True:
+        step = engine.step()
+        if step is None:
+            break
 
-        for s in states:
-            if s.done:
-                continue
-            if np.linalg.norm(s.goal - s.pos) <= goal_tol:
-                s.done = True
-                s.vel = np.zeros(3, dtype=np.float32)
-
-        v2v.step(t, states)
-
-        v_cmds: list[np.ndarray] = [np.zeros(3, dtype=np.float32) for _ in states]
-        pending_messages_out: list[list] = [[] for _ in states]
         ego_batch = np.zeros((spec.n_agents, 6), dtype=np.float32)
         goal_batch = np.zeros((spec.n_agents, 4), dtype=np.float32)
         nbh_batch = np.zeros((spec.n_agents, top_k, 9), dtype=np.float32)
         evt_batch = np.zeros((spec.n_agents, 2), dtype=np.float32)
         active_batch = np.zeros(spec.n_agents, dtype=bool)
 
-        evt_feat = _event_features(events_cfg, t, duration_s)
+        evt_feat = _event_features(engine.events_cfg, step.t, engine.duration_s)
 
-        for i, s in enumerate(states):
+        for i, s in enumerate(step.planner_states):
             evt_batch[i] = evt_feat
-            if s.done:
-                continue
-            goal_dir = _normalize(s.goal - s.pos).astype(np.float32)
-            goal_dist = float(np.linalg.norm(s.goal - s.pos))
-            if goal_dist < goal_tol:
+            if not bool(step.active_for_sampling[i]):
                 continue
             active_batch[i] = True
 
-            v2v_obs: list[NeighborObs] = []
-            for j in range(spec.n_agents):
-                if j == i:
-                    continue
-                m = v2v.get_last(i, j)
-                valid, age = v2v.message_age(t, m)
-                if m is not None and valid:
-                    v2v_obs.append(
-                        NeighborObs(
-                            idx=j,
-                            pos=m.pos.copy(),
-                            vel=m.vel.copy(),
-                            radius=m.radius,
-                            msg_age_sec=age,
-                            valid=True,
-                            source="v2v",
-                        )
-                    )
-
-            perception_mode = str(perception_cfg.get("mode", "v2v")).lower()
-            sensor_obs: list[NeighborObs] = []
-            if perception_mode in {"sensor", "fused"}:
-                sensor_obs = sense_neighbors(
-                    ego=s,
-                    states=states,
-                    goal_dir=goal_dir,
-                    obstacles=obstacles,
-                    perception_cfg=perception_cfg,
-                    planar=planar,
-                    rng=rng,
-                )
-            if perception_mode == "sensor":
-                all_obs = sensor_obs
-            elif perception_mode == "fused":
-                all_obs = fuse_observations(v2v_obs, sensor_obs)
-            else:
-                all_obs = v2v_obs
-
-            selected = select_neighbors(
-                ego_idx=i,
-                ego_pos=s.pos,
-                ego_vel=s.vel,
-                obs=all_obs,
-                range_m=range_m,
-                top_k=top_k,
-                threat_metric=str(ncfg.get("threat_metric", "ttc")),
-                ttc_horizon_s=float(ncfg.get("ttc_horizon_s", 6.0)),
-            )
-
             cond_ego, cond_goal, cond_nbh, cond_evt = _encode_cond_structured(
                 ego=s,
-                goal_dir_world=goal_dir,
-                neighbors=selected,
+                goal_dir_world=step.goal_dirs[i],
+                neighbors=step.selected_neighbor_obs[i],
                 top_k=top_k,
                 range_m=range_m,
-                age_cap_s=age_cap_s,
+                age_cap_s=engine.age_cap_s,
                 r_ref=r_ref,
                 goal_dist_cap=spec.goal_dist_cap,
                 evt_feat=evt_feat,
                 v_ref=v_ref,
                 a_ref=a_ref,
-                planar=planar,
+                planar=engine.planar,
             )
             ego_batch[i] = cond_ego
             goal_batch[i] = cond_goal
             nbh_batch[i] = cond_nbh
             evt_batch[i] = cond_evt
 
-            p_input = PlannerInput(
-                ego=s,
-                goal_dir=goal_dir,
-                neighbors=selected,
-                dt=dt,
-                t=t,
-                obstacles=planner_obstacles,
-                messages=v2v.drain_agent_messages(i, t),
-                agent_context=agent_contexts[i],
-                planar=planar,
-            )
-            pout = planners[i].compute_cmd(p_input)
-            if isinstance(pout, PlannerOutput):
-                v_cmds[i] = np.asarray(pout.v_cmd, dtype=np.float32)
-                pending_messages_out[i] = list(pout.messages_out or [])
-            else:
-                v_cmds[i] = np.asarray(pout, dtype=np.float32)
-
-        for i, out_msgs in enumerate(pending_messages_out):
-            if states[i].done:
-                continue
-            for out_msg in out_msgs:
-                v2v.publish_agent_message(sender=i, msg=out_msg, now_s=t, n_agents=spec.n_agents)
-
-        v_cmds = events.apply_overrides(t, states, v_cmds)
-
-        for i, s in enumerate(states):
-            if s.done:
-                continue
-            p_next, v_next = apply_dynamics(s.pos, s.vel, v_cmds[i], s.v_max, s.a_max, dt)
-            if planar:
-                p_next[1] = fixed_y
-                v_next[1] = 0.0
-
-            blocked = False
-            for ob in obstacles:
-                if "aabb" not in ob:
-                    continue
-                aabb = ob["aabb"]
-                center = np.asarray(aabb.get("center", [0.0, 0.0, 0.0]), dtype=float)
-                half = np.asarray(aabb.get("half", [0.0, 0.0, 0.0]), dtype=float)
-                if _in_aabb(p_next, center, half, s.radius):
-                    blocked = True
-                    break
-
-            if blocked:
-                s.vel = np.zeros(3, dtype=np.float32)
-            else:
-                s.pos = p_next
-                s.vel = v_next
-
         cond_ego_steps.append(ego_batch)
         cond_goal_steps.append(goal_batch)
         cond_nbh_steps.append(nbh_batch)
         cond_evt_steps.append(evt_batch)
-        cmd_steps.append(np.stack(v_cmds, axis=0).astype(np.float32))
+        cmd_steps.append(np.stack(step.v_cmds, axis=0).astype(np.float32))
         active_steps.append(active_batch)
-        pos_steps.append(np.stack([s.pos for s in states], axis=0).astype(np.float32))
-        rad_steps.append(np.asarray([s.radius for s in states], dtype=np.float32))
+        pos_steps.append(step.pos.astype(np.float32))
+        rad_steps.append(step.radii.astype(np.float32))
 
-        if all(s.done for s in states):
+        if bool(np.all(step.done)):
             break
+
+    if not cmd_steps:
+        return {
+            "cond_ego": np.zeros((0, 6), dtype=np.float32),
+            "cond_goal": np.zeros((0, 4), dtype=np.float32),
+            "cond_nbh": np.zeros((0, top_k, 9), dtype=np.float32),
+            "cond_evt": np.zeros((0, 2), dtype=np.float32),
+            "cond_flat": np.zeros((0, 6 + 4 + top_k * 9 + 2), dtype=np.float32),
+            "U0_raw": np.zeros((0, spec.T, 3), dtype=np.float32),
+            "U0": np.zeros((0, spec.T, 3), dtype=np.float32),
+            "scenario_id": np.zeros((0,), dtype=np.int64),
+            "comm_profile": np.zeros((0,), dtype="U1"),
+            "comm_profile_id": np.zeros((0,), dtype=np.int64),
+            "N_agents": np.zeros((0,), dtype=np.int32),
+            "seed": np.zeros((0,), dtype=np.int32),
+            "t_sec": np.zeros((0,), dtype=np.float32),
+            "ego_id": np.zeros((0,), dtype=np.int32),
+            "min_sep_next_H": np.zeros((0,), dtype=np.float32),
+            "collision_in_next_H": np.zeros((0,), dtype=np.int8),
+            "v_max_ego": np.zeros((0,), dtype=np.float32),
+            "a_max_ego": np.zeros((0,), dtype=np.float32),
+            "dt_plan_s": np.asarray(dt_plan_eff, dtype=np.float32),
+            "T": np.asarray(spec.T, dtype=np.int32),
+            "k": np.asarray(top_k, dtype=np.int32),
+            "norm_R_sense": np.asarray(range_m, dtype=np.float32),
+            "norm_age_cap_s": np.asarray(engine.age_cap_s, dtype=np.float32),
+            "norm_goal_dist_cap": np.asarray(spec.goal_dist_cap, dtype=np.float32),
+            "norm_r_ref": np.asarray(r_ref, dtype=np.float32),
+            "norm_v_ref": np.asarray(v_ref, dtype=np.float32),
+            "norm_a_ref": np.asarray(a_ref, dtype=np.float32),
+            "sim_dt_s": np.asarray(dt, dtype=np.float32),
+        }
 
     cond_ego_arr = np.stack(cond_ego_steps, axis=0)
     cond_goal_arr = np.stack(cond_goal_steps, axis=0)
@@ -495,8 +319,8 @@ def _episode_collect(spec: DatasetGenSpec) -> dict[str, np.ndarray]:
             out_ego_id.append(ego_id)
             out_min_sep.append(min_sep)
             out_collision.append(collision)
-            out_vmax.append(float(states[ego_id].v_max))
-            out_amax.append(float(states[ego_id].a_max))
+            out_vmax.append(float(engine.states[ego_id].v_max))
+            out_amax.append(float(engine.states[ego_id].a_max))
 
     if not out_cond_ego:
         return {
@@ -522,7 +346,7 @@ def _episode_collect(spec: DatasetGenSpec) -> dict[str, np.ndarray]:
             "T": np.asarray(spec.T, dtype=np.int32),
             "k": np.asarray(top_k, dtype=np.int32),
             "norm_R_sense": np.asarray(range_m, dtype=np.float32),
-            "norm_age_cap_s": np.asarray(age_cap_s, dtype=np.float32),
+            "norm_age_cap_s": np.asarray(engine.age_cap_s, dtype=np.float32),
             "norm_goal_dist_cap": np.asarray(spec.goal_dist_cap, dtype=np.float32),
             "norm_r_ref": np.asarray(r_ref, dtype=np.float32),
             "norm_v_ref": np.asarray(v_ref, dtype=np.float32),
@@ -572,7 +396,7 @@ def _episode_collect(spec: DatasetGenSpec) -> dict[str, np.ndarray]:
         "T": np.asarray(spec.T, dtype=np.int32),
         "k": np.asarray(top_k, dtype=np.int32),
         "norm_R_sense": np.asarray(range_m, dtype=np.float32),
-        "norm_age_cap_s": np.asarray(age_cap_s, dtype=np.float32),
+        "norm_age_cap_s": np.asarray(engine.age_cap_s, dtype=np.float32),
         "norm_goal_dist_cap": np.asarray(spec.goal_dist_cap, dtype=np.float32),
         "norm_r_ref": np.asarray(r_ref, dtype=np.float32),
         "norm_v_ref": np.asarray(v_ref, dtype=np.float32),
