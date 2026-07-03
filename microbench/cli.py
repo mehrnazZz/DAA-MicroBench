@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import json
 import platform
 from pathlib import Path
 import subprocess
@@ -21,6 +22,7 @@ from microbench.tools import mine_worst_cases
 from microbench.scenarios import (
     list_official_suites,
     materialize_official_suite,
+    suite_registry_dicts,
     suite_defaults,
     validate_scenario_file,
     validate_suite_manifest_file,
@@ -413,6 +415,29 @@ def _validate_scenarios(args) -> None:
     print(f"validation: PASS scenarios={scenarios} suite_manifests={manifests}")
 
 
+def _list_suites(args) -> None:
+    entries = suite_registry_dicts()
+    if args.json:
+        print(json.dumps(entries, indent=2, sort_keys=True))
+        return
+
+    print("suite,status,source,dimensions,scenario_count,default_methods,description")
+    for entry in entries:
+        print(
+            ",".join(
+                [
+                    entry["suite"],
+                    entry["status"],
+                    entry["source"],
+                    "+".join(entry["dimensions"]),
+                    str(len(entry["scenarios"])),
+                    "+".join(entry["default_methods"]) if entry["default_methods"] else "-",
+                    entry["description"],
+                ]
+            )
+        )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="microbench")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -513,6 +538,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_val.add_argument("--all-builtins", action="store_true", help="Validate config/scenarios/*.yaml")
     p_val.add_argument("--all-generated-suites", action="store_true", help="Materialize and validate all generated suites")
     p_val.add_argument("--quiet", action="store_true", help="Only print failures and final summary")
+
+    p_ls = sub.add_parser("list-suites", help="List known benchmark suites and registry status")
+    p_ls.add_argument("--json", action="store_true", help="Emit suite registry as JSON")
 
     p_hc = sub.add_parser("mine-hard-cases", help="Collect trace artifacts for worst episodes")
     p_hc.add_argument("--results", required=True, help="Path to runs/<id>/results.csv")
@@ -617,6 +645,9 @@ def main() -> None:
         return
     if args.cmd == "validate-scenarios":
         _validate_scenarios(args)
+        return
+    if args.cmd == "list-suites":
+        _list_suites(args)
         return
     if args.cmd == "mine-hard-cases":
         out = mine_worst_cases(results_csv=args.results, top_k=args.top_k)

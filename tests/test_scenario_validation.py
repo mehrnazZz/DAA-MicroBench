@@ -102,6 +102,25 @@ class TestScenarioValidation(unittest.TestCase):
         self.assertIn("scenarios=19", proc.stdout)
         self.assertIn("suite_manifests=1", proc.stdout)
 
+    def test_validate_scenarios_cli_checks_all_generated_suites(self):
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "microbench.cli",
+                "validate-scenarios",
+                "--all-generated-suites",
+                "--quiet",
+            ],
+            cwd=Path(__file__).resolve().parents[1],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+
+        self.assertIn("validation: PASS", proc.stdout)
+        self.assertIn("suite_manifests=3", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

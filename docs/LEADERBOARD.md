@@ -110,12 +110,15 @@ Results should be grouped, not blended:
 
 - `official_alpha`: generated pre-v1 suite with planar and 3D scenarios
 - `official_3d_stress`: generated volumetric/vertical 3D stress suite
+- `official_agentic_stress`: generated heterogeneous-priority and noncooperative 3D stress suite
 - `primary`: official planar suite
 - `three_d`: hand-written 3D development suite
 - `perception_stress`: partial observation and fused-observation suite
 - custom suites: must be labeled separately
 
 Do not compare methods across different suites as if they share one ranking.
+
+See [SCENARIO_SUITES.md](SCENARIO_SUITES.md) or `python -m microbench.cli list-suites` for the current suite registry.
 
 ## Reproducibility Rules
 

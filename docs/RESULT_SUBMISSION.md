@@ -50,6 +50,8 @@ python -m microbench.cli canonical-sweep \
   --out-dir runs_your_method_official_alpha
 ```
 
+Use `python -m microbench.cli list-suites` to confirm suite status, source, and default run matrix.
+
 ## Result Tables
 
 Include the relevant rows from `summary.csv`. At minimum include:

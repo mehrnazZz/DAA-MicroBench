@@ -11,7 +11,7 @@ import numpy as np
 from microbench.config import load_yaml
 from microbench.core import EpisodeEngine
 from microbench.scenarios import generate_spawns_goals, materialize_official_suite
-from microbench.scenarios.families import SCENARIO_FAMILIES
+from microbench.scenarios.families import SCENARIO_FAMILIES, suite_registry_dicts
 
 
 class TestScenarioFamilies(unittest.TestCase):
@@ -40,7 +40,7 @@ class TestScenarioFamilies(unittest.TestCase):
             manifest = generated["manifest"]
 
             self.assertTrue(generated["manifest_path"].exists())
-            self.assertEqual(len(generated["scenario_paths"]), 6)
+            self.assertEqual(len(generated["scenario_paths"]), 8)
             self.assertEqual({s["dimension"] for s in manifest["scenarios"]}, {"2d", "3d"})
 
             for scenario in manifest["scenarios"]:
@@ -80,7 +80,28 @@ class TestScenarioFamilies(unittest.TestCase):
             bounds = cfg["world"].get("bounds", {})
             y_span = float(bounds.get("ymax", 0.0)) - float(bounds.get("ymin", 0.0))
             self.assertGreater(y_span, 0.0, family.scenario_id)
-            self.assertIn(spawn_type, {"sphere_swap", "four_way"}, family.scenario_id)
+            self.assertIn(spawn_type, {"sphere_swap", "four_way", "rect_to_rect"}, family.scenario_id)
+
+    def test_new_agentic_families_include_noncooperative_and_priority_metadata(self):
+        intruder = SCENARIO_FAMILIES["noncooperative_intruder_3d_hard"].config
+        intruder_agent = intruder["agents"]["by_id"][0]
+        self.assertEqual(intruder_agent["role"], "noncooperative_intruder")
+        self.assertTrue(intruder_agent["failure_modes"]["noncooperative"])
+        self.assertEqual(intruder["perception"]["mode"], "sensor")
+
+        priority = SCENARIO_FAMILIES["heterogeneous_priority_crossing_3d_medium"].config
+        self.assertGreater(priority["agents"]["by_id"][0]["priority"], priority["agents"]["by_id"][2]["priority"])
+        self.assertTrue(priority["intent"]["enabled"])
+
+    def test_suite_registry_lists_generated_and_handwritten_statuses(self):
+        registry = {entry["suite"]: entry for entry in suite_registry_dicts()}
+
+        self.assertEqual(registry["official_3d_stress"]["status"], "pre_v1_official")
+        self.assertEqual(registry["official_3d_stress"]["source"], "generated")
+        self.assertIn("merge_3d_hard", registry["official_3d_stress"]["scenarios"])
+        self.assertIn("noncooperative_intruder_3d_hard", registry["official_3d_stress"]["scenarios"])
+        self.assertEqual(registry["three_d"]["status"], "development")
+        self.assertEqual(registry["primary"]["status"], "legacy_official")
 
     def test_materialize_suite_cli_prints_plan_without_running(self):
         with tempfile.TemporaryDirectory() as td:
@@ -105,7 +126,19 @@ class TestScenarioFamilies(unittest.TestCase):
 
             self.assertIn("official_3d_stress", proc.stdout)
             self.assertTrue((out_dir / "suite_manifest.yaml").exists())
-            self.assertEqual(len(list(out_dir.glob("*.yaml"))), 4)
+            self.assertEqual(len(list(out_dir.glob("*.yaml"))), 8)
+
+    def test_list_suites_cli_reports_registry(self):
+        proc = subprocess.run(
+            [sys.executable, "-m", "microbench.cli", "list-suites"],
+            cwd=Path(__file__).resolve().parents[1],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+
+        self.assertIn("official_agentic_stress,pre_v1_official,generated,3d", proc.stdout)
+        self.assertIn("three_d,development,hand_written,3d", proc.stdout)
 
 
 if __name__ == "__main__":

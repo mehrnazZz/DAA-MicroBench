@@ -5,6 +5,8 @@ from microbench.scenarios.families import (
     list_official_suites,
     list_scenario_families,
     materialize_official_suite,
+    suite_registry_dicts,
+    suite_registry_entries,
     suite_defaults,
 )
 from microbench.scenarios.validation import (
@@ -23,6 +25,8 @@ __all__ = [
     "list_official_suites",
     "list_scenario_families",
     "materialize_official_suite",
+    "suite_registry_dicts",
+    "suite_registry_entries",
     "suite_defaults",
     "ValidationReport",
     "validate_scenario_config",

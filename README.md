@@ -282,6 +282,12 @@ Note: `intent.tx_rate_hz` is independent from odometry `tx_rate_hz`. Delay/loss 
 
 Generated official suites are the preferred path for new comparisons because they carry scenario metadata, recommended run matrices, and both 2D and 3D coverage.
 
+See [docs/SCENARIO_SUITES.md](docs/SCENARIO_SUITES.md) or run:
+
+```bash
+python -m microbench.cli list-suites
+```
+
 Materialize an official suite without running it:
 
 ```bash
@@ -308,6 +314,16 @@ python -m microbench.cli canonical-sweep \
   --suite official_3d_stress \
   --methods orca_expert \
   --out-dir runs_official_3d_stress \
+  --max-runs 3
+```
+
+Run the generated agentic stress suite:
+
+```bash
+python -m microbench.cli canonical-sweep \
+  --suite official_agentic_stress \
+  --methods priority_yield,negotiation_yield \
+  --out-dir runs_official_agentic_stress \
   --max-runs 3
 ```
 
@@ -406,7 +422,11 @@ Built-in 3D scenarios:
 
 Generated 3D family scenarios:
 - `sphere_swap_3d_medium`: true volumetric antipodal swap through shared airspace
+- `merge_3d_hard`: converging 3D streams into a constrained exit volume
+- `overtake_3d_medium`: same-direction 3D corridor traffic with heterogeneous speeds
 - `vertical_crossing_3d_hard`: layer-changing crossing around a central obstruction
+- `noncooperative_intruder_3d_hard`: sensor-driven encounter with a noncooperative intruder
+- `heterogeneous_priority_crossing_3d_medium`: mixed priority/capability crossing with altitude changes
 - `sensor_volume_3d_hard`: volumetric fused-perception stress case with stale local tracks
 
 What they are for:
