@@ -337,7 +337,23 @@ python -m microbench.cli canonical-sweep \
 
 Generated scenario files and `suite_manifest.yaml` are saved under `<out-dir>/_generated_scenarios/<suite>/` so result folders are self-describing.
 
-Generated manifests include an `acceptance` block with pre-v1 baseline rule metadata. These rules are currently a transparent contract for smoke/reference expectations; future releases can enforce them directly.
+Generated manifests include an `acceptance` block with pre-v1 baseline rule metadata. Check it against a run with:
+
+```bash
+python -m microbench.cli check-acceptance \
+  --summary runs_official_smoke_generated/summary.csv \
+  --results runs_official_smoke_generated/results.csv \
+  --suite-manifest runs_official_smoke_generated/_generated_scenarios/official_smoke_generated/suite_manifest.yaml
+```
+
+If you only ran a subset of methods, filter the rule set:
+
+```bash
+python -m microbench.cli check-acceptance \
+  --summary runs_official_smoke_generated/summary.csv \
+  --suite-manifest runs_official_smoke_generated/_generated_scenarios/official_smoke_generated/suite_manifest.yaml \
+  --methods baseline_goal
+```
 
 Validate built-in and generated suites:
 

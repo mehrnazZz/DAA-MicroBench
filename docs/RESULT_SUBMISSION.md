@@ -39,6 +39,15 @@ python -m microbench.cli validate-scenarios \
   --suite-manifest path/to/suite_manifest.yaml
 ```
 
+Run acceptance checks for generated suites:
+
+```bash
+python -m microbench.cli check-acceptance \
+  --summary path/to/summary.csv \
+  --results path/to/results.csv \
+  --suite-manifest path/to/suite_manifest.yaml
+```
+
 ## Reproduction Command
 
 Paste the exact command. Example:

@@ -10,6 +10,7 @@ import sys
 import tempfile
 from tqdm import tqdm
 
+from microbench.acceptance import check_acceptance
 from microbench.config import load_defaults
 from microbench.planners import list_methods
 from microbench.types import RunSpec
@@ -439,6 +440,51 @@ def _list_suites(args) -> None:
         )
 
 
+def _check_acceptance(args) -> None:
+    report = check_acceptance(
+        summary_csv=args.summary,
+        results_csv=args.results,
+        suite_manifest=args.suite_manifest,
+        methods=_parse_str_list(args.methods) if args.methods else None,
+        scenarios=_parse_str_list(args.scenarios) if args.scenarios else None,
+        comm_profiles=_parse_str_list(args.comm_profiles) if args.comm_profiles else None,
+        n_agents=[str(x) for x in _parse_int_list(args.n)] if args.n else None,
+    )
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        print(
+            "acceptance: "
+            f"{report['status']} suite={report['suite']} rules={report['rules_total']} "
+            f"passed={report['rules_passed']} warnings={report['rules_warned']} "
+            f"failed={report['rules_failed']} skipped={report['rules_skipped']}"
+        )
+        for check in report["checks"]:
+            status = check["status"]
+            if status == "pass" and not args.verbose:
+                continue
+            if status == "skipped" and not args.verbose:
+                continue
+            print(
+                f"{status}: {check.get('name')} "
+                f"scope={check.get('scope')} method={check.get('method')} "
+                f"scenario={check.get('scenario')} comm={check.get('comm_profile')} "
+                f"N={check.get('n_agents')} metric={check.get('metric')} "
+                f"{check.get('operator')} {check.get('value')} matched={check.get('matched_rows')}"
+            )
+            for violation in check.get("violations", [])[:10]:
+                print(
+                    "  row: "
+                    f"method={violation.get('method')} scenario={violation.get('scenario')} "
+                    f"comm={violation.get('comm_profile')} N={violation.get('N')} "
+                    f"observed={violation.get('observed')} reason={violation.get('reason')}"
+                )
+            if len(check.get("violations", [])) > 10:
+                print(f"  ... {len(check['violations']) - 10} more violation(s)")
+    if not report["ok"]:
+        raise SystemExit(f"acceptance failed: {report['rules_failed']} rule(s) failed")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="microbench")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -542,6 +588,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_ls = sub.add_parser("list-suites", help="List known benchmark suites and registry status")
     p_ls.add_argument("--json", action="store_true", help="Emit suite registry as JSON")
+
+    p_acc = sub.add_parser("check-acceptance", help="Evaluate suite acceptance rules against result CSVs")
+    p_acc.add_argument("--summary", required=True, help="Path to summary.csv")
+    p_acc.add_argument("--suite-manifest", required=True, help="Path to generated suite_manifest.yaml")
+    p_acc.add_argument("--results", default=None, help="Optional path to results.csv for results-scoped rules")
+    p_acc.add_argument("--methods", default=None, help="Only evaluate rules/rows for these methods")
+    p_acc.add_argument("--scenarios", default=None, help="Only evaluate rules/rows for these scenario ids")
+    p_acc.add_argument(
+        "--comm-profiles",
+        "--comm",
+        dest="comm_profiles",
+        default=None,
+        help="Only evaluate rules/rows for these comm profiles",
+    )
+    p_acc.add_argument("--n", default=None, help="Only evaluate rules/rows for these agent counts")
+    p_acc.add_argument("--json", action="store_true", help="Emit machine-readable acceptance report")
+    p_acc.add_argument("--verbose", action="store_true", help="Print pass/skipped checks as well as failures/warnings")
 
     p_hc = sub.add_parser("mine-hard-cases", help="Collect trace artifacts for worst episodes")
     p_hc.add_argument("--results", required=True, help="Path to runs/<id>/results.csv")
@@ -649,6 +712,9 @@ def main() -> None:
         return
     if args.cmd == "list-suites":
         _list_suites(args)
+        return
+    if args.cmd == "check-acceptance":
+        _check_acceptance(args)
         return
     if args.cmd == "mine-hard-cases":
         out = mine_worst_cases(results_csv=args.results, top_k=args.top_k)

@@ -100,7 +100,16 @@ acceptance:
       severity: smoke
 ```
 
-The validator checks rule schema, operator names, and metric names against `summary.csv` / `results.csv` fields. These rules are pre-v1 metadata, not a final leaderboard gate.
+The validator checks rule schema, operator names, and metric names against `summary.csv` / `results.csv` fields. Evaluate the rules against a run with:
+
+```bash
+python -m microbench.cli check-acceptance \
+  --summary runs_official_smoke_generated/summary.csv \
+  --results runs_official_smoke_generated/results.csv \
+  --suite-manifest runs_official_smoke_generated/_generated_scenarios/official_smoke_generated/suite_manifest.yaml
+```
+
+Use `--methods`, `--scenarios`, `--comm-profiles`, or `--n` when a run intentionally covers only part of a suite. `required` and `smoke` rule failures exit nonzero; `warning` and `informational` rule violations are reported without failing the command.
 
 ## Validation
 

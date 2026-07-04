@@ -14,6 +14,12 @@ python -m microbench.cli validate-scenarios \
   --all-generated-suites \
   --quiet
 
+python -m microbench.cli check-acceptance \
+  --summary "${OUT_DIR}/summary.csv" \
+  --results "${OUT_DIR}/results.csv" \
+  --suite-manifest "${OUT_DIR}/_generated_scenarios/official_smoke_generated/suite_manifest.yaml" \
+  --methods "${METHOD}"
+
 export OUT_DIR
 python - <<'PY'
 import csv

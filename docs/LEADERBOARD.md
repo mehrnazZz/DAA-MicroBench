@@ -128,6 +128,7 @@ Submitted results must:
 - use unmodified official scenario files unless explicitly marked custom
 - include the generated `suite_manifest.yaml` for generated official suites
 - pass `python -m microbench.cli validate-scenarios` for any submitted official or custom scenario files
+- pass `python -m microbench.cli check-acceptance` for generated-suite acceptance metadata
 - use official comm profiles unless explicitly marked custom
 - use the same `N`, seeds, and comm matrix for all methods in a comparison
 - include failed runs instead of silently dropping them
