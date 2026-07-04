@@ -102,6 +102,7 @@ class TestScenarioFamilies(unittest.TestCase):
         self.assertIn("heterogeneous_priority_crossing_3d_medium", registry["official_smoke_generated"]["scenarios"])
         self.assertEqual(registry["official_3d_stress"]["status"], "pre_v1_official")
         self.assertEqual(registry["official_3d_stress"]["source"], "generated")
+        self.assertEqual(registry["official_3d_stress"]["acceptance_rule_count"], 6)
         self.assertIn("merge_3d_hard", registry["official_3d_stress"]["scenarios"])
         self.assertIn("noncooperative_intruder_3d_hard", registry["official_3d_stress"]["scenarios"])
         self.assertIn("orca_with_staleness", registry["official_3d_stress"]["default_methods"])
@@ -133,6 +134,18 @@ class TestScenarioFamilies(unittest.TestCase):
             self.assertIn("official_3d_stress", proc.stdout)
             self.assertTrue((out_dir / "suite_manifest.yaml").exists())
             self.assertEqual(len(list(out_dir.glob("*.yaml"))), 8)
+
+    def test_generated_3d_stress_suite_carries_orca_acceptance_rules(self):
+        with tempfile.TemporaryDirectory() as td:
+            generated = materialize_official_suite("official_3d_stress", Path(td), overwrite=True)
+            manifest = generated["manifest"]
+            rules = manifest["acceptance"]["rules"]
+
+            self.assertEqual(len(rules), 6)
+            self.assertIn("orca_heuristic", manifest["default_methods"])
+            self.assertIn("orca_with_staleness", manifest["default_methods"])
+            self.assertTrue(any(rule["name"] == "orca_heuristic_3d_runtime_p95" for rule in rules))
+            self.assertTrue(any(rule["name"] == "orca_with_staleness_3d_runtime_p95" for rule in rules))
 
     def test_generated_smoke_suite_manifest_carries_acceptance_rules(self):
         with tempfile.TemporaryDirectory() as td:

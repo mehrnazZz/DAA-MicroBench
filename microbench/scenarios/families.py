@@ -199,6 +199,50 @@ AGENTIC_REFERENCE_ACCEPTANCE: tuple[dict, ...] = (
 )
 
 
+THREE_D_STRESS_BASELINE_ACCEPTANCE: tuple[dict, ...] = (
+    _acceptance_rule(
+        name="orca_heuristic_3d_completion_metric_present",
+        method="orca_heuristic",
+        metric="completion_rate_mean",
+        operator=">=",
+        value=0.0,
+        severity="informational",
+        band="pre_v1_3d_stress",
+        description="ORCA heuristic 3D stress rows should expose completion metrics.",
+    ),
+    _acceptance_rule(
+        name="orca_with_staleness_3d_completion_metric_present",
+        method="orca_with_staleness",
+        metric="completion_rate_mean",
+        operator=">=",
+        value=0.0,
+        severity="informational",
+        band="pre_v1_3d_stress",
+        description="Stale-aware ORCA 3D stress rows should expose completion metrics.",
+    ),
+    _acceptance_rule(
+        name="orca_heuristic_3d_runtime_p95",
+        method="orca_heuristic",
+        metric="planner_ms_p95",
+        operator="<=",
+        value=100.0,
+        severity="informational",
+        band="pre_v1_3d_stress",
+        description="ORCA heuristic should remain within a broad pre-v1 3D stress compute band.",
+    ),
+    _acceptance_rule(
+        name="orca_with_staleness_3d_runtime_p95",
+        method="orca_with_staleness",
+        metric="planner_ms_p95",
+        operator="<=",
+        value=100.0,
+        severity="informational",
+        band="pre_v1_3d_stress",
+        description="Stale-aware ORCA should remain within a broad pre-v1 3D stress compute band.",
+    ),
+)
+
+
 def _benchmark_meta(
     *,
     family: str,
@@ -764,7 +808,7 @@ OFFICIAL_SUITES: dict[str, OfficialSuite] = {
         stretch_seeds=tuple(range(30)),
         comm_profiles=("ideal_50hz", "realistic_v2v_50hz", "degraded_20hz"),
         dimensions=("3d",),
-        baseline_acceptance=PRE_V1_REFERENCE_ACCEPTANCE,
+        baseline_acceptance=PRE_V1_REFERENCE_ACCEPTANCE + THREE_D_STRESS_BASELINE_ACCEPTANCE,
     ),
     "official_agentic_stress": OfficialSuite(
         suite_id="official_agentic_stress",

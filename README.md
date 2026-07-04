@@ -423,6 +423,7 @@ Expected baseline sanity behavior:
 - `baseline_goal`: high collisions in dense scenarios.
 - `orca_heuristic`: substantially lower collisions, especially in ideal comm.
 - `orca_with_staleness`: more conservative behavior when observations are stale or degraded.
+- `cbf_qp`: experimental solver-free CBF projection skeleton for development, not a calibrated leaderboard anchor.
 
 Quick acceptance heuristic:
 - ORCA collision counts should be at least ~5x lower than baseline in `intersection` and `funnel` under `ideal_50hz`.

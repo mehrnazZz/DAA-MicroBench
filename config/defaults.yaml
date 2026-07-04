@@ -86,3 +86,12 @@ orca_with_staleness:
   responsibility_age_gain: 0.55
   closing_speed_buffer_s: 0.15
   sidestep_bias_gain: 0.24
+
+cbf_qp:
+  alpha: 2.0
+  safety_margin_m: 0.25
+  obstacle_margin_m: 0.2
+  max_neighbors: 8
+  max_projection_iters: 8
+  violation_tol: 1.0e-5
+  fallback_speed_scale: 0.5

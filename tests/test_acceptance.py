@@ -38,6 +38,11 @@ def _smoke_manifest(tmp_path: Path) -> Path:
     return generated["manifest_path"]
 
 
+def _stress_manifest(tmp_path: Path) -> Path:
+    generated = materialize_official_suite("official_3d_stress", tmp_path / "suite_3d", overwrite=True)
+    return generated["manifest_path"]
+
+
 def _summary_rows(*, include_all_methods: bool = True, slow_orca: bool = False) -> list[dict]:
     scenarios = ["head_on_2d_easy", "sphere_swap_3d_medium", "heterogeneous_priority_crossing_3d_medium"]
     methods = ["baseline_goal", "orca_heuristic", "priority_yield"] if include_all_methods else ["baseline_goal"]
@@ -60,6 +65,22 @@ def _summary_rows(*, include_all_methods: bool = True, slow_orca: bool = False) 
                 }
             )
     return rows
+
+
+def _stress_summary_rows() -> list[dict]:
+    return [
+        {
+            "method": "orca_with_staleness",
+            "scenario": "sphere_swap_3d_medium",
+            "comm_profile": "ideal_50hz",
+            "N": 6,
+            "completion_rate_mean": 0.5,
+            "collision_episode_rate": 0.0,
+            "planner_ms_p95": 2.5,
+            "comm_agent_msg_attempted_mean": 0.0,
+            "comm_agent_msg_delivered_mean": 0.0,
+        }
+    ]
 
 
 def _fixture_projection(report: dict) -> dict:
@@ -154,6 +175,18 @@ def test_check_acceptance_fails_threshold_violation(tmp_path: Path) -> None:
     failed = [check for check in report["checks"] if check["status"] == "fail"]
     assert failed[0]["name"] == "orca_heuristic_smoke_runtime"
     assert len(failed[0]["violations"]) == 3
+
+
+def test_check_acceptance_filters_generated_3d_stress_baseline_rules(tmp_path: Path) -> None:
+    manifest = _stress_manifest(tmp_path)
+    summary = tmp_path / "summary.csv"
+    _write_csv(summary, _stress_summary_rows())
+
+    report = check_acceptance(summary_csv=summary, suite_manifest=manifest, methods=["orca_with_staleness"])
+
+    assert report["status"] == "PASS"
+    assert report["rules_passed"] == 4
+    assert report["rules_skipped"] == 2
 
 
 def test_check_acceptance_supports_results_scoped_rules(tmp_path: Path) -> None:

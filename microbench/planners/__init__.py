@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass
 from microbench.config import deep_merge, load_defaults
 from microbench.planners.base import ILocalPlanner
 from microbench.planners.baseline_goal import BaselineGoalPlanner
+from microbench.planners.cbf_qp import CbfQpPlanner
 from microbench.planners.intent_dummy import IntentDummyPlanner
 from microbench.planners.negotiation_yield import NegotiationYieldPlanner
 from microbench.planners.orca_expert import OrcaExpertPlanner
@@ -57,10 +58,16 @@ def _make_orca_with_staleness() -> ILocalPlanner:
     return OrcaExpertPlanner(cfg=_orca_cfg(defaults, "orca_with_staleness"), age_cap_s=age_cap)
 
 
+def _make_cbf_qp() -> ILocalPlanner:
+    defaults = load_defaults()
+    return CbfQpPlanner(cfg=defaults.get("cbf_qp", {}))
+
+
 _FACTORIES: dict[str, Callable[[], ILocalPlanner]] = {
     "baseline_goal": BaselineGoalPlanner,
     "orca_heuristic": _make_orca_heuristic,
     "orca_with_staleness": _make_orca_with_staleness,
+    "cbf_qp": _make_cbf_qp,
     "template": TemplatePlanner,
     "intent_dummy": IntentDummyPlanner,
     "priority_yield": PriorityYieldPlanner,
@@ -121,6 +128,27 @@ _METADATA: dict[str, PlannerMetadata] = {
             "Not a formally validated ORCA implementation.",
             "May trade mission progress for conservative behavior under stale observations.",
             "Uses the benchmark's provided local neighbor tracks rather than raw sensor processing.",
+        ),
+    ),
+    "cbf_qp": PlannerMetadata(
+        method="cbf_qp",
+        display_name="CBF-QP projection skeleton",
+        planner_type="optimization_skeleton",
+        role="experimental_baseline",
+        status="experimental",
+        dimensions=("2d", "3d"),
+        observation_sources=("local_neighbors", "v2v", "sensor", "fused"),
+        uses_v2v=True,
+        uses_local_sensing=True,
+        uses_obstacles=True,
+        description=(
+            "Solver-free control-barrier-function baseline skeleton using deterministic "
+            "halfspace projection with a bounded fallback."
+        ),
+        limitations=(
+            "Not yet a solver-backed quadratic program.",
+            "Experimental; not recommended as a leaderboard anchor until calibrated.",
+            "Uses local tracks supplied by PlannerInput rather than raw sensor processing.",
         ),
     ),
     "template": PlannerMetadata(

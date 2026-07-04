@@ -115,6 +115,7 @@ python -m microbench.cli check-acceptance \
 Use `--methods`, `--scenarios`, `--comm-profiles`, or `--n` when a run intentionally covers only part of a suite. `required` and `smoke` rule failures exit nonzero; `warning` and `informational` rule violations are reported without failing the command.
 
 `official_smoke_generated` includes calibrated smoke bands for baseline runtime, ORCA runtime, and priority-yield message delivery. The expected path-independent acceptance report lives in `golden/acceptance/official_smoke_generated_acceptance.json`.
+`official_3d_stress` includes pre-v1 informational checks for the `orca_heuristic` and `orca_with_staleness` 3D reference rows.
 
 `orca_heuristic` is the canonical ORCA-like reference baseline name. `orca_expert` is still accepted by the planner registry as a compatibility alias for older scripts and legacy result folders.
 Use `orca_with_staleness` when you want an explicit stale-aware ORCA-like preset for degraded communication or stale sensor-track comparisons.

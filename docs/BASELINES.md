@@ -14,6 +14,7 @@ python -m microbench.cli list-methods --json --include-aliases
 | `baseline_goal` | illustrative baseline | ego state, goal | 2D, 3D | Lower bound that shows how hard a scenario is without avoidance. |
 | `orca_heuristic` | reference baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Main ORCA-like geometric comparison baseline. |
 | `orca_with_staleness` | reference baseline | same as `orca_heuristic`, with stronger stale-track inflation | 2D, 3D | Degraded communication or stale sensor-track comparison baseline. |
+| `cbf_qp` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Solver-free CBF projection skeleton for staged development. |
 | `priority_yield` | agentic reference baseline | local tracks, priority, agent messages | 2D, 3D | Simple decentralized right-of-way behavior. |
 | `negotiation_yield` | experimental agentic baseline | local tracks, proposal/ACK messages, priority | 2D, 3D | Structured negotiation plumbing and early agentic comparison. |
 | `intent_dummy` | illustrative/plumbing baseline | goal, intent-style messages | 2D, 3D | Message and trace plumbing checks, not scoring. |
@@ -32,6 +33,10 @@ Reference baselines are intended to appear in comparison tables:
 - `orca_with_staleness`
 - `priority_yield`
 - `negotiation_yield` once its behavior is better calibrated
+
+Experimental baselines are runnable but not leaderboard anchors yet:
+
+- `cbf_qp`
 
 Illustrative baselines are useful for sanity checks and tutorials but should not be treated as serious DAA competitors:
 
@@ -69,6 +74,18 @@ python -m microbench.cli canonical-sweep \
   --out-dir runs_agentic_baselines
 ```
 
+CBF skeleton smoke:
+
+```bash
+python -m microbench.cli run \
+  --scenario config/scenarios/stacked_swap_3d.yaml \
+  --method cbf_qp \
+  --n 2 \
+  --seed 0 \
+  --comm ideal_50hz \
+  --out-dir runs_cbf_qp_smoke
+```
+
 ## Stale-Aware ORCA Preset
 
 `orca_with_staleness` uses the same planner implementation as `orca_heuristic`, but its default config is more conservative when neighbor tracks are old:
@@ -80,20 +97,30 @@ python -m microbench.cli canonical-sweep \
 
 This is useful for comparisons where `obs_stale_fraction_mean`, `obs_sensor_track_stale_fraction_mean`, or communication drop/delay metrics are high. It may reduce collisions at the cost of slower completion or extra path deviation.
 
-## Pending Strong Baselines
+## CBF-QP Skeleton
 
-The following names are intentionally not exposed as planner methods yet. They need implementation and validation before public use.
+`cbf_qp` is currently a deterministic, solver-free CBF-style skeleton. It constructs pairwise and obstacle barrier halfspaces, projects the preferred goal velocity through them for a bounded number of iterations, clamps speed, and uses a deterministic away-from-risk fallback if constraints remain violated.
 
-### `cbf_qp`
+Use it for development and API comparison, not as a mature CBF baseline. It is useful because it establishes:
 
-Requirements before adding:
+- the public method name and config block
+- 2D/3D command shape
+- neighbor and obstacle barrier semantics
+- bounded fallback behavior
+- debug fields in `PlannerOutput.debug_info`
 
-- deterministic quadratic-program solver dependency or pure-Python fallback
+Requirements before promoting it to a reference baseline:
+
+- deterministic quadratic-program solver dependency or documented pure-Python fallback
 - explicit 2D and 3D barrier constraints for agent-agent and agent-obstacle separation
 - bounded solver timeout and deterministic fallback command
 - no privileged information beyond `PlannerInput`
 - tests for infeasible constraints, solver failure, and stale/noisy observations
 - acceptance bands for safety, compute p95, and completion
+
+## Pending Strong Baselines
+
+The following names are intentionally not exposed as planner methods yet. They need implementation and validation before public use.
 
 ### `mpc_local`
 
