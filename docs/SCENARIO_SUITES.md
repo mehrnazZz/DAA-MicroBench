@@ -96,7 +96,7 @@ acceptance:
       method: orca_expert
       metric: planner_ms_p95
       operator: <=
-      value: 100.0
+      value: 25.0
       severity: smoke
 ```
 
@@ -110,6 +110,8 @@ python -m microbench.cli check-acceptance \
 ```
 
 Use `--methods`, `--scenarios`, `--comm-profiles`, or `--n` when a run intentionally covers only part of a suite. `required` and `smoke` rule failures exit nonzero; `warning` and `informational` rule violations are reported without failing the command.
+
+`official_smoke_generated` includes calibrated smoke bands for baseline runtime, ORCA runtime, and priority-yield message delivery. The expected path-independent acceptance report lives in `golden/acceptance/official_smoke_generated_acceptance.json`.
 
 ## Validation
 

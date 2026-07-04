@@ -8,6 +8,7 @@ Note: the benchmark result schema has evolved since this bundle was first genera
 - `results.csv` and `summary.csv` from the legacy leaderboard schema.
 - `events/` and `traces/` sample failure artifacts for recorder/replay checks.
 - `current_schema/` contains a tiny fast golden smoke bundle for the current result schema.
+- `acceptance/` contains path-independent acceptance report fixtures for generated suites.
 
 ## Source Run
 - Copied from: `runs_leaderboard_smoke/`

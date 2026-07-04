@@ -346,6 +346,8 @@ python -m microbench.cli check-acceptance \
   --suite-manifest runs_official_smoke_generated/_generated_scenarios/official_smoke_generated/suite_manifest.yaml
 ```
 
+The generated smoke suite currently has calibrated checks for baseline runtime, ORCA runtime, and priority-yield message delivery. A path-independent expected report is kept at `golden/acceptance/official_smoke_generated_acceptance.json`.
+
 If you only ran a subset of methods, filter the rule set:
 
 ```bash

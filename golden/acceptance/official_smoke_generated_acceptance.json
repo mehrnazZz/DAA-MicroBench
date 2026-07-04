@@ -1,0 +1,103 @@
+{
+  "suite": "official_smoke_generated",
+  "acceptance_schema_version": "0.1",
+  "status": "PASS",
+  "rules_total": 7,
+  "rules_passed": 7,
+  "rules_warned": 0,
+  "rules_failed": 0,
+  "rules_skipped": 0,
+  "checks": [
+    {
+      "name": "baseline_goal_completion_metric_present",
+      "status": "pass",
+      "severity": "smoke",
+      "scope": "summary",
+      "method": "baseline_goal",
+      "scenario": "*",
+      "metric": "completion_rate_mean",
+      "operator": ">=",
+      "value": 0.0,
+      "matched_rows": 3,
+      "passed_rows": 3
+    },
+    {
+      "name": "baseline_goal_collision_metric_bounded",
+      "status": "pass",
+      "severity": "smoke",
+      "scope": "summary",
+      "method": "baseline_goal",
+      "scenario": "*",
+      "metric": "collision_episode_rate",
+      "operator": "<=",
+      "value": 1.0,
+      "matched_rows": 3,
+      "passed_rows": 3
+    },
+    {
+      "name": "baseline_goal_smoke_runtime",
+      "status": "pass",
+      "severity": "smoke",
+      "scope": "summary",
+      "method": "baseline_goal",
+      "scenario": "*",
+      "metric": "planner_ms_p95",
+      "operator": "<=",
+      "value": 1.0,
+      "matched_rows": 3,
+      "passed_rows": 3
+    },
+    {
+      "name": "orca_expert_smoke_runtime",
+      "status": "pass",
+      "severity": "smoke",
+      "scope": "summary",
+      "method": "orca_expert",
+      "scenario": "*",
+      "metric": "planner_ms_p95",
+      "operator": "<=",
+      "value": 25.0,
+      "matched_rows": 3,
+      "passed_rows": 3
+    },
+    {
+      "name": "priority_yield_message_metric_present",
+      "status": "pass",
+      "severity": "smoke",
+      "scope": "summary",
+      "method": "priority_yield",
+      "scenario": "*",
+      "metric": "comm_agent_msg_attempted_mean",
+      "operator": ">=",
+      "value": 0.0,
+      "matched_rows": 3,
+      "passed_rows": 3
+    },
+    {
+      "name": "priority_yield_head_on_message_delivery",
+      "status": "pass",
+      "severity": "smoke",
+      "scope": "summary",
+      "method": "priority_yield",
+      "scenario": "head_on_2d_easy",
+      "metric": "comm_agent_msg_delivered_mean",
+      "operator": ">=",
+      "value": 1.0,
+      "matched_rows": 1,
+      "passed_rows": 1
+    },
+    {
+      "name": "priority_yield_smoke_runtime",
+      "status": "pass",
+      "severity": "smoke",
+      "scope": "summary",
+      "method": "priority_yield",
+      "scenario": "*",
+      "metric": "planner_ms_p95",
+      "operator": "<=",
+      "value": 5.0,
+      "matched_rows": 3,
+      "passed_rows": 3
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -20,6 +21,7 @@ SUMMARY_FIELDS = [
     "collision_episode_rate",
     "planner_ms_p95",
     "comm_agent_msg_attempted_mean",
+    "comm_agent_msg_delivered_mean",
 ]
 
 
@@ -50,11 +52,43 @@ def _summary_rows(*, include_all_methods: bool = True, slow_orca: bool = False) 
                     "N": 4,
                     "completion_rate_mean": 0.5,
                     "collision_episode_rate": 0.0,
-                    "planner_ms_p95": 150.0 if slow_orca and method == "orca_expert" else 5.0,
+                    "planner_ms_p95": 50.0 if slow_orca and method == "orca_expert" else 0.5,
                     "comm_agent_msg_attempted_mean": 1.0 if method == "priority_yield" else 0.0,
+                    "comm_agent_msg_delivered_mean": (
+                        1.0 if method == "priority_yield" and scenario == "head_on_2d_easy" else 0.0
+                    ),
                 }
             )
     return rows
+
+
+def _fixture_projection(report: dict) -> dict:
+    return {
+        "suite": report["suite"],
+        "acceptance_schema_version": report["acceptance_schema_version"],
+        "status": report["status"],
+        "rules_total": report["rules_total"],
+        "rules_passed": report["rules_passed"],
+        "rules_warned": report["rules_warned"],
+        "rules_failed": report["rules_failed"],
+        "rules_skipped": report["rules_skipped"],
+        "checks": [
+            {
+                "name": check["name"],
+                "status": check["status"],
+                "severity": check["severity"],
+                "scope": check["scope"],
+                "method": check["method"],
+                "scenario": check["scenario"],
+                "metric": check["metric"],
+                "operator": check["operator"],
+                "value": check["value"],
+                "matched_rows": check["matched_rows"],
+                "passed_rows": check["passed_rows"],
+            }
+            for check in report["checks"]
+        ],
+    }
 
 
 def test_check_acceptance_passes_generated_smoke_summary(tmp_path: Path) -> None:
@@ -65,8 +99,23 @@ def test_check_acceptance_passes_generated_smoke_summary(tmp_path: Path) -> None
     report = check_acceptance(summary_csv=summary, suite_manifest=manifest)
 
     assert report["status"] == "PASS"
-    assert report["rules_passed"] == 5
+    assert report["rules_passed"] == 7
     assert report["rules_failed"] == 0
+
+
+def test_golden_acceptance_fixture_matches_generated_smoke_contract(tmp_path: Path) -> None:
+    manifest = _smoke_manifest(tmp_path)
+    summary = tmp_path / "summary.csv"
+    _write_csv(summary, _summary_rows())
+
+    report = check_acceptance(summary_csv=summary, suite_manifest=manifest)
+    fixture = json.loads(
+        (Path(__file__).resolve().parents[1] / "golden/acceptance/official_smoke_generated_acceptance.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert _fixture_projection(report) == fixture
 
 
 def test_check_acceptance_filters_to_run_method(tmp_path: Path) -> None:
@@ -77,8 +126,8 @@ def test_check_acceptance_filters_to_run_method(tmp_path: Path) -> None:
     report = check_acceptance(summary_csv=summary, suite_manifest=manifest, methods=["baseline_goal"])
 
     assert report["status"] == "PASS"
-    assert report["rules_passed"] == 2
-    assert report["rules_skipped"] == 3
+    assert report["rules_passed"] == 3
+    assert report["rules_skipped"] == 4
 
 
 def test_check_acceptance_fails_missing_smoke_rows_without_filter(tmp_path: Path) -> None:
@@ -89,7 +138,7 @@ def test_check_acceptance_fails_missing_smoke_rows_without_filter(tmp_path: Path
     report = check_acceptance(summary_csv=summary, suite_manifest=manifest)
 
     assert report["status"] == "FAIL"
-    assert report["rules_failed"] == 3
+    assert report["rules_failed"] == 4
     assert any(check["message"] == "no matching rows" for check in report["checks"])
 
 
@@ -187,7 +236,7 @@ def test_check_acceptance_cli_json_passes_with_method_filter(tmp_path: Path) -> 
     )
 
     assert '"status": "PASS"' in proc.stdout
-    assert '"rules_skipped": 3' in proc.stdout
+    assert '"rules_skipped": 4' in proc.stdout
 
 
 def test_check_acceptance_cli_fails_on_missing_required_rows(tmp_path: Path) -> None:
