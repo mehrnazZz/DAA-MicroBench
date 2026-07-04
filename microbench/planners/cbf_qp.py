@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 import numpy as np
 
 from microbench.planners.base import ILocalPlanner
@@ -31,21 +32,23 @@ def _closest_point_on_aabb(point: np.ndarray, obs: AABBObs) -> np.ndarray:
 
 
 class CbfQpPlanner(ILocalPlanner):
-    """Deterministic CBF-QP skeleton with a projection fallback.
+    """Deterministic CBF-QP baseline with an optional solver path.
 
-    This is intentionally solver-free for now. It builds linearized control
-    barrier constraints and projects a preferred velocity onto the resulting
-    halfspaces. The public method is experimental until a solver-backed QP
-    variant and calibrated acceptance bands are added.
+    The default mode is deterministic halfspace projection. Optional `auto` or
+    `scipy` modes use SciPy SLSQP when available, then fall back to projection.
+    The public method remains experimental until solver behavior and acceptance
+    bands are calibrated.
     """
 
     def __init__(self, cfg: dict | None = None):
         cfg = cfg or {}
+        self.solver = str(cfg.get("solver", "projection")).lower()
         self.alpha = float(cfg.get("alpha", 2.0))
         self.safety_margin_m = float(cfg.get("safety_margin_m", 0.25))
         self.obstacle_margin_m = float(cfg.get("obstacle_margin_m", 0.2))
         self.max_neighbors = int(cfg.get("max_neighbors", 8))
         self.max_projection_iters = int(cfg.get("max_projection_iters", 8))
+        self.max_solver_iters = int(cfg.get("max_solver_iters", 40))
         self.violation_tol = float(cfg.get("violation_tol", 1e-5))
         self.fallback_speed_scale = float(cfg.get("fallback_speed_scale", 0.5))
 
@@ -59,7 +62,12 @@ class CbfQpPlanner(ILocalPlanner):
             v_pref[1] = 0.0
 
         constraints = self._constraints(planner_input)
-        v_cmd, iterations = self._project(v_pref, constraints, float(ego.v_max), bool(planner_input.planar))
+        v_cmd, iterations, solver_used, solver_status = self._solve(
+            v_pref,
+            constraints,
+            float(ego.v_max),
+            bool(planner_input.planar),
+        )
         max_violation = self._max_violation(v_cmd, constraints)
         fallback = bool(max_violation > self.violation_tol)
         if fallback:
@@ -73,7 +81,9 @@ class CbfQpPlanner(ILocalPlanner):
                 "cbf_projection_iters": int(iterations),
                 "cbf_max_violation": float(max_violation),
                 "cbf_fallback": fallback,
-                "cbf_solver": "projection_skeleton",
+                "cbf_solver": solver_used,
+                "cbf_solver_requested": self.solver,
+                "cbf_solver_status": solver_status,
             },
         )
 
@@ -157,6 +167,102 @@ class CbfQpPlanner(ILocalPlanner):
             if not changed:
                 break
         return _clamp_speed(v, v_max), iterations
+
+    def _solve(
+        self,
+        v_pref: np.ndarray,
+        constraints: list[tuple[np.ndarray, float]],
+        v_max: float,
+        planar: bool,
+    ) -> tuple[np.ndarray, int, str, str]:
+        if not constraints:
+            return _clamp_speed(v_pref, v_max), 0, "none", "no_constraints"
+
+        if self.solver in {"auto", "scipy", "scipy_slsqp"}:
+            solved = self._solve_scipy(v_pref, constraints, v_max, planar)
+            if solved is not None:
+                return solved[0], 0, "scipy_slsqp", solved[1]
+            if self.solver in {"scipy", "scipy_slsqp"}:
+                v, iters = self._project(v_pref, constraints, v_max, planar)
+                return v, iters, "projection_skeleton", "scipy_unavailable_or_failed"
+
+        v, iters = self._project(v_pref, constraints, v_max, planar)
+        status = "projection_fallback" if self.solver == "auto" else "projection"
+        return v, iters, "projection_skeleton", status
+
+    def _solve_scipy(
+        self,
+        v_pref: np.ndarray,
+        constraints: list[tuple[np.ndarray, float]],
+        v_max: float,
+        planar: bool,
+    ) -> tuple[np.ndarray, str] | None:
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                from scipy.optimize import minimize
+        except Exception:
+            return None
+
+        x0 = _clamp_speed(np.asarray(v_pref, dtype=float), v_max).astype(float)
+        if planar:
+            x0[1] = 0.0
+
+        cons = []
+        for a, b in constraints:
+            aa = np.asarray(a, dtype=float)
+            bb = float(b)
+            cons.append(
+                {
+                    "type": "ineq",
+                    "fun": lambda x, aa=aa, bb=bb: float(np.dot(aa, x) - bb),
+                    "jac": lambda x, aa=aa, bb=bb: aa,
+                }
+            )
+        cons.append(
+            {
+                "type": "ineq",
+                "fun": lambda x: float(v_max * v_max - np.dot(x, x)),
+                "jac": lambda x: -2.0 * np.asarray(x, dtype=float),
+            }
+        )
+        if planar:
+            cons.append(
+                {
+                    "type": "eq",
+                    "fun": lambda x: float(x[1]),
+                    "jac": lambda x: np.asarray([0.0, 1.0, 0.0], dtype=float),
+                }
+            )
+
+        def objective(x):
+            d = np.asarray(x, dtype=float) - np.asarray(v_pref, dtype=float)
+            return 0.5 * float(np.dot(d, d))
+
+        def jac(x):
+            return np.asarray(x, dtype=float) - np.asarray(v_pref, dtype=float)
+
+        try:
+            result = minimize(
+                objective,
+                x0,
+                jac=jac,
+                constraints=cons,
+                method="SLSQP",
+                options={
+                    "maxiter": max(1, self.max_solver_iters),
+                    "ftol": max(1e-12, self.violation_tol * 0.1),
+                    "disp": False,
+                },
+            )
+        except Exception:
+            return None
+        if not bool(getattr(result, "success", False)):
+            return None
+        v = _clamp_speed(np.asarray(result.x, dtype=np.float32), v_max)
+        if planar:
+            v[1] = 0.0
+        return v, str(getattr(result, "message", "success"))
 
     def _fallback(self, planner_input: PlannerInput, v_pref: np.ndarray) -> np.ndarray:
         ego = planner_input.ego

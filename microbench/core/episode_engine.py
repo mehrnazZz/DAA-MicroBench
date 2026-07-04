@@ -232,6 +232,7 @@ class EpisodeEngine:
         self.perception_cfg = self.cfg.get("perception", {})
         self.comm_cfg = self.cfg.get("comm", {})
         self.intent_cfg = self.cfg.get("intent", {})
+        self.planner_guardrails_cfg = self.cfg.get("planner_guardrails", {})
         self.events_cfg = self.cfg.get("events", [])
         self.obstacles = self.cfg.get("obstacles", [])
 
@@ -350,6 +351,11 @@ class EpisodeEngine:
         self.goal_hold_elapsed = np.zeros(self.n_agents, dtype=float)
         self.spawn_goal_dists = np.linalg.norm(self.goals - self.spawns, axis=1)
         self.planner_ms_samples: list[float] = []
+        self.planner_timeout_count = 0
+        self.planner_error_count = 0
+        self.planner_fallback_count = 0
+        self.planner_timeout_ms = float(self.planner_guardrails_cfg.get("timeout_ms", 100.0))
+        self.planner_fallback_speed_scale = float(self.planner_guardrails_cfg.get("fallback_speed_scale", 0.5))
         self.k = 0
         self._closed = False
 
@@ -612,6 +618,54 @@ class EpisodeEngine:
             "occluded": bool(n.occluded),
         }
 
+    def _planner_fallback_cmd(self, planner_input: PlannerInput) -> np.ndarray:
+        ego = planner_input.ego
+        away = np.zeros(3, dtype=float)
+        p_i = np.asarray(ego.pos, dtype=float)
+        for obs in planner_input.neighbors:
+            rel = p_i - np.asarray(obs.pos, dtype=float)
+            dist = max(1e-6, float(np.linalg.norm(rel)))
+            away += rel / (dist * dist)
+        for obs in planner_input.obstacles:
+            center = np.asarray(obs.center, dtype=float)
+            half = np.asarray(obs.half, dtype=float)
+            closest = np.minimum(np.maximum(p_i, center - half), center + half)
+            rel = p_i - closest
+            dist = max(1e-6, float(np.linalg.norm(rel)))
+            away += rel / (dist * dist)
+        if planner_input.planar:
+            away[1] = 0.0
+        if np.linalg.norm(away) < 1e-9:
+            return np.zeros(3, dtype=float)
+        return _normalize(away) * float(ego.v_max) * min(1.0, max(0.0, self.planner_fallback_speed_scale))
+
+    def _record_planner_fallback(
+        self,
+        *,
+        agent_id: int,
+        planner_input: PlannerInput,
+        planner_debug: list[dict],
+        reason: str,
+        elapsed_ms: float,
+        error: Exception | None = None,
+    ) -> np.ndarray:
+        self.planner_fallback_count += 1
+        if reason == "timeout":
+            self.planner_timeout_count += 1
+        elif reason == "error":
+            self.planner_error_count += 1
+        debug = {
+            "engine_guardrail": reason,
+            "planner_elapsed_ms": float(elapsed_ms),
+            "planner_timeout_ms": float(self.planner_timeout_ms),
+            "fallback_cmd": "away_from_risk",
+        }
+        if error is not None:
+            debug["error_type"] = type(error).__name__
+            debug["error"] = str(error)
+        planner_debug[agent_id] = debug
+        return self._planner_fallback_cmd(planner_input)
+
     def close(self) -> None:
         if self._closed:
             return
@@ -823,9 +877,33 @@ class EpisodeEngine:
                 planar=self.planar,
             )
             c0 = time.perf_counter()
-            planner_out = self.planners[i].compute_cmd(p_input)
-            c1 = time.perf_counter()
-            self.planner_ms_samples.append((c1 - c0) * 1000.0)
+            try:
+                planner_out = self.planners[i].compute_cmd(p_input)
+            except Exception as exc:
+                elapsed_ms = (time.perf_counter() - c0) * 1000.0
+                self.planner_ms_samples.append(elapsed_ms)
+                v_cmds[i] = self._record_planner_fallback(
+                    agent_id=i,
+                    planner_input=p_input,
+                    planner_debug=planner_debug,
+                    reason="error",
+                    elapsed_ms=elapsed_ms,
+                    error=exc,
+                )
+                continue
+
+            elapsed_ms = (time.perf_counter() - c0) * 1000.0
+            self.planner_ms_samples.append(elapsed_ms)
+            if self.planner_timeout_ms >= 0.0 and elapsed_ms > self.planner_timeout_ms:
+                v_cmds[i] = self._record_planner_fallback(
+                    agent_id=i,
+                    planner_input=p_input,
+                    planner_debug=planner_debug,
+                    reason="timeout",
+                    elapsed_ms=elapsed_ms,
+                )
+                continue
+
             if isinstance(planner_out, PlannerOutput):
                 v_cmds[i] = np.asarray(planner_out.v_cmd, dtype=float)
                 pending_intent_out[i] = planner_out.intent_out

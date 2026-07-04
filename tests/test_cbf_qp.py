@@ -59,6 +59,7 @@ def test_cbf_qp_head_on_uses_bounded_avoidance_fallback() -> None:
     assert np.linalg.norm(out.v_cmd) <= ego.v_max + 1e-6
     assert out.debug_info["cbf_constraints"] == 1
     assert "cbf_fallback" in out.debug_info
+    assert out.debug_info["cbf_solver"] in {"scipy_slsqp", "projection_skeleton"}
 
 
 def test_cbf_qp_obstacle_in_path_slows_or_redirects() -> None:
@@ -85,3 +86,21 @@ def test_cbf_qp_preserves_3d_command_shape() -> None:
     assert out.v_cmd.shape == (3,)
     assert out.v_cmd[1] > 0.0
     assert np.linalg.norm(out.v_cmd) <= ego.v_max + 1e-6
+
+
+def test_cbf_qp_projection_solver_mode_is_explicit() -> None:
+    ego = _agent((0.0, 0.0, 0.0), vel=(2.0, 0.0, 0.0))
+    neighbor = NeighborObs(
+        idx=1,
+        pos=np.asarray([0.8, 0.0, 0.0], dtype=np.float32),
+        vel=np.asarray([-2.0, 0.0, 0.0], dtype=np.float32),
+        radius=0.5,
+        msg_age_sec=0.0,
+        valid=True,
+    )
+
+    out = CbfQpPlanner(cfg={"solver": "projection"}).compute_cmd(_planner_input(ego=ego, neighbors=[neighbor]))
+
+    assert out.debug_info["cbf_solver"] == "projection_skeleton"
+    assert out.debug_info["cbf_solver_requested"] == "projection"
+    assert out.debug_info["cbf_solver_status"] == "projection"

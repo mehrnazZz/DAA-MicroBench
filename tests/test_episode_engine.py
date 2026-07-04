@@ -136,6 +136,81 @@ class _LifecyclePlanner:
         )
 
 
+class _CrashPlanner:
+    def reset(self, seed: int) -> None:
+        _ = seed
+
+    def compute_cmd(self, planner_input):
+        raise RuntimeError("planner exploded")
+
+
+def test_engine_guardrails_fallback_on_planner_error():
+    with tempfile.TemporaryDirectory() as td:
+        scenario = Path(td) / "scenario_engine.yaml"
+        _write_short_scenario(scenario)
+
+        engine = EpisodeEngine(
+            scenario_path=str(scenario),
+            method="crash",
+            n_agents=2,
+            seed=0,
+            comm_profile="ideal_50hz",
+            planner_factory=lambda _: _CrashPlanner(),
+        )
+        step = engine.step()
+
+        assert step is not None
+        assert engine.planner_error_count == 2
+        assert engine.planner_fallback_count == 2
+        assert step.planner_debug[0]["engine_guardrail"] == "error"
+        assert step.planner_debug[0]["error_type"] == "RuntimeError"
+
+
+def test_engine_guardrails_soft_timeout_discards_slow_output():
+    with tempfile.TemporaryDirectory() as td:
+        scenario = Path(td) / "scenario_engine.yaml"
+        _write_short_scenario(scenario)
+
+        engine = EpisodeEngine(
+            scenario_path=str(scenario),
+            method="baseline_goal",
+            n_agents=2,
+            seed=0,
+            comm_profile="ideal_50hz",
+        )
+        engine.planner_timeout_ms = 0.0
+        step = engine.step()
+
+        assert step is not None
+        assert engine.planner_timeout_count == 2
+        assert engine.planner_fallback_count == 2
+        assert step.planner_debug[0]["engine_guardrail"] == "timeout"
+        assert step.planner_debug[0]["planner_timeout_ms"] == 0.0
+
+
+def test_runner_reports_planner_guardrail_counts():
+    with tempfile.TemporaryDirectory() as td:
+        scenario = Path(td) / "scenario_engine.yaml"
+        _write_short_scenario(scenario)
+
+        with patch("microbench.runner.make_planner", side_effect=lambda _: _CrashPlanner()):
+            row = run_episode(
+                RunSpec(
+                    scenario_path=str(scenario),
+                    method="crash",
+                    n_agents=2,
+                    seed=0,
+                    comm_profile="ideal_50hz",
+                    out_dir=str(Path(td) / "runs"),
+                    save_trace=False,
+                )
+            )
+
+        assert int(row["planner_error_count"]) > 0
+        assert int(row["planner_fallback_count"]) == int(row["planner_error_count"])
+        assert int(row["planner_timeout_count"]) == 0
+
+
 def test_agent_profiles_lifecycle_and_memory_are_per_agent():
     _LifecyclePlanner.reset_records = []
     _LifecyclePlanner.finalize_records = []

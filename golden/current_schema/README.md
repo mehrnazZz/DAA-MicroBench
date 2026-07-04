@@ -3,8 +3,8 @@
 This folder freezes a tiny deterministic smoke reference for the current leaderboard CSV schema.
 
 ## Contents
-- `results.csv`: per-episode outputs with explicit collision, communication, and negotiation semantics.
-- `summary.csv`: grouped leaderboard summary.
+- `results.csv`: per-episode outputs with explicit collision, communication, negotiation, and planner guardrail semantics.
+- `summary.csv`: grouped leaderboard summary, including planner timeout/error/fallback count means.
 
 ## Source Commands
 ```bash

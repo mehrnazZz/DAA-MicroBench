@@ -63,6 +63,10 @@ batch:
   seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
   n_agents_list: [10, 20, 50, 100]
 
+planner_guardrails:
+  timeout_ms: 100.0       # soft timeout; slow outputs are discarded after the call returns
+  fallback_speed_scale: 0.5
+
 
 orca_heuristic: &orca_heuristic_defaults
   time_horizon_s: 3.0
@@ -88,10 +92,12 @@ orca_with_staleness:
   sidestep_bias_gain: 0.24
 
 cbf_qp:
+  solver: "projection"     # "projection", "auto", or "scipy"; projection is quiet and dependency-free
   alpha: 2.0
   safety_margin_m: 0.25
   obstacle_margin_m: 0.2
   max_neighbors: 8
   max_projection_iters: 8
+  max_solver_iters: 40
   violation_tol: 1.0e-5
   fallback_speed_scale: 0.5

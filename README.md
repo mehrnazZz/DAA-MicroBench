@@ -423,7 +423,7 @@ Expected baseline sanity behavior:
 - `baseline_goal`: high collisions in dense scenarios.
 - `orca_heuristic`: substantially lower collisions, especially in ideal comm.
 - `orca_with_staleness`: more conservative behavior when observations are stale or degraded.
-- `cbf_qp`: experimental solver-free CBF projection skeleton for development, not a calibrated leaderboard anchor.
+- `cbf_qp`: experimental CBF projection baseline with optional SciPy solver mode, not a calibrated leaderboard anchor.
 
 Quick acceptance heuristic:
 - ORCA collision counts should be at least ~5x lower than baseline in `intersection` and `funnel` under `ideal_50hz`.
@@ -575,6 +575,9 @@ What the interactive replay shows:
 - use `results.csv` / `summary.csv` to compare:
   - `planner_ms_per_tick_per_agent_mean`
   - `planner_ms_per_tick_per_agent_p95`
+  - `planner_timeout_count`
+  - `planner_error_count`
+  - `planner_fallback_count`
   - `episode_runtime_s`
 
 Quick profiling command:
@@ -865,6 +868,10 @@ Recommended scale for training: at least `100k+` samples across multiple scenari
 - Track planner cost from `results.csv` columns:
   - `planner_ms_per_tick_per_agent_mean`
   - `planner_ms_per_tick_per_agent_p95`
+  - `planner_timeout_count`
+  - `planner_error_count`
+  - `planner_fallback_count`
+- `planner_guardrails.timeout_ms` is a soft timeout: an over-budget call is counted and its returned output is replaced with a deterministic fallback after the call returns.
 - Track safety using explicit collision semantics:
   - `collision_episode`: whether the episode had any collision
   - `unique_collision_pairs`: number of agent pairs that collided at least once

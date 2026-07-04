@@ -77,8 +77,11 @@ Primary compute fields:
 
 - `planner_ms_mean`
 - `planner_ms_p95`
+- `planner_timeout_count_mean`
+- `planner_error_count_mean`
+- `planner_fallback_count_mean`
 
-Report hardware and Python version. Timing columns should not be compared bit-for-bit across machines.
+Report hardware and Python version. Timing columns should not be compared bit-for-bit across machines. Any nonzero timeout, error, or fallback count should be disclosed with the relevant trace/debug artifacts.
 
 ## v0 Scalar Score
 

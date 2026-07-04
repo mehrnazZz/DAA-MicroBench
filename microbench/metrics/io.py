@@ -62,6 +62,9 @@ RESULT_FIELDS = [
     "comm_negotiation_acks",
     "comm_negotiation_correlations_acked",
     "comm_negotiation_rejections",
+    "planner_timeout_count",
+    "planner_error_count",
+    "planner_fallback_count",
     "episode_runtime_s",
 ]
 
@@ -110,6 +113,9 @@ SUMMARY_FIELDS = [
     "comm_negotiation_acks_mean",
     "comm_negotiation_correlations_acked_mean",
     "comm_negotiation_rejections_mean",
+    "planner_timeout_count_mean",
+    "planner_error_count_mean",
+    "planner_fallback_count_mean",
 ]
 
 
@@ -246,6 +252,12 @@ def write_summary(out_dir: str | Path) -> Path:
             negotiation_correlations_acked = [x for x in negotiation_correlations_acked if x is not None]
             negotiation_rejections = [_to_float(x.get("comm_negotiation_rejections")) for x in items]
             negotiation_rejections = [x for x in negotiation_rejections if x is not None]
+            planner_timeout_count = [_to_float(x.get("planner_timeout_count")) for x in items]
+            planner_timeout_count = [x for x in planner_timeout_count if x is not None]
+            planner_error_count = [_to_float(x.get("planner_error_count")) for x in items]
+            planner_error_count = [x for x in planner_error_count if x is not None]
+            planner_fallback_count = [_to_float(x.get("planner_fallback_count")) for x in items]
+            planner_fallback_count = [x for x in planner_fallback_count if x is not None]
 
             collision_rate = (
                 sum(1 for x in coll if x > 0.0) / len(coll)
@@ -298,6 +310,9 @@ def write_summary(out_dir: str | Path) -> Path:
                 "comm_negotiation_acks_mean": _mean(negotiation_acks),
                 "comm_negotiation_correlations_acked_mean": _mean(negotiation_correlations_acked),
                 "comm_negotiation_rejections_mean": _mean(negotiation_rejections),
+                "planner_timeout_count_mean": _mean(planner_timeout_count),
+                "planner_error_count_mean": _mean(planner_error_count),
+                "planner_fallback_count_mean": _mean(planner_fallback_count),
             }
             writer.writerow(row)
 

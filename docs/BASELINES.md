@@ -14,7 +14,7 @@ python -m microbench.cli list-methods --json --include-aliases
 | `baseline_goal` | illustrative baseline | ego state, goal | 2D, 3D | Lower bound that shows how hard a scenario is without avoidance. |
 | `orca_heuristic` | reference baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Main ORCA-like geometric comparison baseline. |
 | `orca_with_staleness` | reference baseline | same as `orca_heuristic`, with stronger stale-track inflation | 2D, 3D | Degraded communication or stale sensor-track comparison baseline. |
-| `cbf_qp` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Solver-free CBF projection skeleton for staged development. |
+| `cbf_qp` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Dependency-free CBF projection baseline with optional SciPy solver mode. |
 | `priority_yield` | agentic reference baseline | local tracks, priority, agent messages | 2D, 3D | Simple decentralized right-of-way behavior. |
 | `negotiation_yield` | experimental agentic baseline | local tracks, proposal/ACK messages, priority | 2D, 3D | Structured negotiation plumbing and early agentic comparison. |
 | `intent_dummy` | illustrative/plumbing baseline | goal, intent-style messages | 2D, 3D | Message and trace plumbing checks, not scoring. |
@@ -99,7 +99,7 @@ This is useful for comparisons where `obs_stale_fraction_mean`, `obs_sensor_trac
 
 ## CBF-QP Skeleton
 
-`cbf_qp` is currently a deterministic, solver-free CBF-style skeleton. It constructs pairwise and obstacle barrier halfspaces, projects the preferred goal velocity through them for a bounded number of iterations, clamps speed, and uses a deterministic away-from-risk fallback if constraints remain violated.
+`cbf_qp` is currently an experimental CBF-style baseline. The default `solver: projection` mode is quiet and dependency-free. Optional `solver: auto` or `solver: scipy` modes use SciPy SLSQP when available, then fall back to deterministic halfspace projection. It constructs pairwise and obstacle barrier halfspaces, clamps speed, and uses a deterministic away-from-risk fallback if constraints remain violated.
 
 Use it for development and API comparison, not as a mature CBF baseline. It is useful because it establishes:
 
@@ -108,10 +108,11 @@ Use it for development and API comparison, not as a mature CBF baseline. It is u
 - neighbor and obstacle barrier semantics
 - bounded fallback behavior
 - debug fields in `PlannerOutput.debug_info`
+- solver status reporting via `cbf_solver`, `cbf_solver_requested`, and `cbf_solver_status`
 
 Requirements before promoting it to a reference baseline:
 
-- deterministic quadratic-program solver dependency or documented pure-Python fallback
+- stronger solver-backed validation and documented pure-Python fallback behavior
 - explicit 2D and 3D barrier constraints for agent-agent and agent-obstacle separation
 - bounded solver timeout and deterministic fallback command
 - no privileged information beyond `PlannerInput`

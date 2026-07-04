@@ -76,6 +76,9 @@ Include the relevant rows from `summary.csv`. At minimum include:
 - `mean_time_to_goal_mean`
 - `deadlock_time_pct_mean`
 - `planner_ms_p95`
+- `planner_timeout_count_mean`
+- `planner_error_count_mean`
+- `planner_fallback_count_mean`
 - `obs_neighbors_mean`
 - `obs_v2v_fraction_mean`
 - `obs_sensor_fraction_mean`

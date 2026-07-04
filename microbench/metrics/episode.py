@@ -50,6 +50,9 @@ class EpisodeMetrics:
     comm_negotiation_acks: int
     comm_negotiation_correlations_acked: int
     comm_negotiation_rejections: int
+    planner_timeout_count: int
+    planner_error_count: int
+    planner_fallback_count: int
     episode_runtime_s: float
 
 
@@ -145,6 +148,7 @@ class EpisodeRecorder:
         planner_ms_samples: np.ndarray,
         episode_runtime_s: float,
         comm_stats: dict[str, int] | None = None,
+        planner_guardrail_stats: dict[str, int] | None = None,
     ) -> EpisodeMetrics:
         finished = np.isfinite(done_times)
         completion_rate = float(np.mean(finished)) if len(finished) else 0.0
@@ -185,6 +189,10 @@ class EpisodeRecorder:
         negotiation_acks = int(comm.get("agent_msg_negotiation_acks", 0))
         negotiation_correlations_acked = int(comm.get("agent_msg_negotiation_correlations_acked", 0))
         negotiation_rejections = int(comm.get("agent_msg_negotiation_rejections", 0))
+        guardrails = planner_guardrail_stats or {}
+        planner_timeout_count = int(guardrails.get("planner_timeout_count", 0))
+        planner_error_count = int(guardrails.get("planner_error_count", 0))
+        planner_fallback_count = int(guardrails.get("planner_fallback_count", 0))
         sim_time_s = max(self.dt, (self.total_ticks / max(1, self.n_agents)) * self.dt)
 
         return EpisodeMetrics(
@@ -233,5 +241,8 @@ class EpisodeRecorder:
             comm_negotiation_acks=negotiation_acks,
             comm_negotiation_correlations_acked=negotiation_correlations_acked,
             comm_negotiation_rejections=negotiation_rejections,
+            planner_timeout_count=planner_timeout_count,
+            planner_error_count=planner_error_count,
+            planner_fallback_count=planner_fallback_count,
             episode_runtime_s=float(episode_runtime_s),
         )

@@ -205,6 +205,11 @@ def run_episode(spec: RunSpec) -> dict:
         planner_ms_samples=np.asarray(engine.planner_ms_samples, dtype=float),
         episode_runtime_s=episode_runtime_s,
         comm_stats=engine.v2v.agent_message_stats_snapshot(),
+        planner_guardrail_stats={
+            "planner_timeout_count": engine.planner_timeout_count,
+            "planner_error_count": engine.planner_error_count,
+            "planner_fallback_count": engine.planner_fallback_count,
+        },
     )
 
     run_id = Path(spec.out_dir).name
