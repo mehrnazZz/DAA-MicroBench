@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-OUT_DIR="${1:-runs/ci_sanity}"
+if [[ $# -gt 0 ]]; then
+  OUT_DIR="$1"
+else
+  OUT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/daa_ci_sanity.XXXXXX")"
+fi
 METHOD="baseline_goal"
 
 python -m microbench.cli canonical-sweep \

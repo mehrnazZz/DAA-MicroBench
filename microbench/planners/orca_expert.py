@@ -70,6 +70,13 @@ def _outside_normal(point: np.ndarray, center: np.ndarray, half: np.ndarray) -> 
 
 
 class OrcaExpertPlanner(ILocalPlanner):
+    """ORCA-like geometric heuristic.
+
+    The class/module name is retained for compatibility with earlier DAA
+    Microbench code. New public configs and results should use the
+    `orca_heuristic` planner registry method.
+    """
+
     def __init__(self, cfg: dict | None = None, age_cap_s: float = 0.75):
         cfg = cfg or {}
         self.time_horizon_s = float(cfg.get("time_horizon_s", 3.0))

@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 from microbench.acceptance import check_acceptance
 from microbench.config import load_defaults
-from microbench.planners import list_methods
+from microbench.planners import list_methods, planner_metadata
 from microbench.types import RunSpec
 from microbench.runner import run_episode
 from microbench.metrics import append_result, write_summary
@@ -274,13 +274,13 @@ def _run_canonical_sweep(args) -> None:
         comm_profiles = ["ideal_50hz", "realistic_v2v_50hz", "degraded_20hz"]
     elif suite == "baseline_sanity":
         scenarios = CANONICAL_SCENARIOS
-        methods = _parse_str_list(args.methods) if args.methods else ["baseline_goal", "orca_expert"]
+        methods = _parse_str_list(args.methods) if args.methods else ["baseline_goal", "orca_heuristic"]
         n_agents = [10, 20] + ([100] if stretch else [])
         seeds = list(range(0, 100 if stretch else 20))
         comm_profiles = ["ideal_50hz", "realistic_v2v_50hz"]
     elif suite == "three_d":
         scenarios = CANONICAL_3D_SCENARIOS
-        methods = _parse_str_list(args.methods) if args.methods else ["orca_expert"]
+        methods = _parse_str_list(args.methods) if args.methods else ["orca_heuristic"]
         n_agents = [6, 10] + ([20] if stretch else [])
         seeds = list(range(0, 20 if stretch else 10))
         comm_profiles = ["ideal_50hz"]
@@ -538,7 +538,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_ds = sub.add_parser("generate-dataset", help="Generate diffusion training dataset shards")
     p_ds.add_argument("--scenario", required=True, help="Scenario path(s) or globs (comma-separated)")
-    p_ds.add_argument("--method", default="orca_expert")
+    p_ds.add_argument("--method", default="orca_heuristic")
     p_ds.add_argument("--n", default=None, help="Agent counts, e.g. 10,20,50 (preferred)")
     p_ds.add_argument("--N", default=None, help="Deprecated alias for --n")
     p_ds.add_argument("--seeds", required=True, help="Seed list/range, e.g. 0:99")
@@ -562,7 +562,11 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         choices=["primary", "baseline_sanity", "three_d", "perception_stress"] + list_official_suites(),
     )
-    p_cs.add_argument("--methods", default=None, help="Comma-separated methods (required for primary; defaults to orca_expert for three_d)")
+    p_cs.add_argument(
+        "--methods",
+        default=None,
+        help="Comma-separated methods (required for primary; generated/3D suites have registry defaults)",
+    )
     p_cs.add_argument("--out-dir", default=None)
     p_cs.add_argument("--stretch", action="store_true", help="Enable stretch settings (N=100 and more seeds)")
     p_cs.add_argument("--include-bursty", action="store_true", help="Include bursty_stress_50hz comm profile")
@@ -610,7 +614,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_hc.add_argument("--results", required=True, help="Path to runs/<id>/results.csv")
     p_hc.add_argument("--top-k", type=int, default=20, help="Number of episodes to collect")
 
-    sub.add_parser("list-methods", help="List available planner methods")
+    p_lm = sub.add_parser("list-methods", help="List available planner methods")
+    p_lm.add_argument("--json", action="store_true", help="Emit planner metadata as JSON")
+    p_lm.add_argument("--include-aliases", action="store_true", help="Include compatibility aliases")
 
     return parser
 
@@ -724,7 +730,10 @@ def main() -> None:
         )
         return
     if args.cmd == "list-methods":
-        for m in list_methods():
+        if args.json:
+            print(json.dumps(planner_metadata(include_aliases=bool(args.include_aliases)), indent=2, sort_keys=True))
+            return
+        for m in list_methods(include_aliases=bool(args.include_aliases)):
             print(m)
         return
 

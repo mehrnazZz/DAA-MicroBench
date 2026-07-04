@@ -48,11 +48,11 @@
       "passed_rows": 3
     },
     {
-      "name": "orca_expert_smoke_runtime",
+      "name": "orca_heuristic_smoke_runtime",
       "status": "pass",
       "severity": "smoke",
       "scope": "summary",
-      "method": "orca_expert",
+      "method": "orca_heuristic",
       "scenario": "*",
       "metric": "planner_ms_p95",
       "operator": "<=",

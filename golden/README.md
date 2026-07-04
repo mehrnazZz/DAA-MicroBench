@@ -12,7 +12,7 @@ Note: the benchmark result schema has evolved since this bundle was first genera
 
 ## Source Run
 - Copied from: `runs_leaderboard_smoke/`
-- Methods: `baseline_goal`, `orca_expert`
+- Methods: `baseline_goal`, `orca_expert` (legacy name; use `orca_heuristic` for new runs)
 - Scenarios: `intersection`, `funnel`
 - Comm profiles: `ideal_50hz`, `realistic_v2v_50hz`
 - N: `10`
@@ -20,7 +20,7 @@ Note: the benchmark result schema has evolved since this bundle was first genera
 
 ## Why this golden is useful
 - Small enough to inspect and use as a legacy regression reference.
-- Includes both a weak baseline and expert planner.
+- Includes both a weak baseline and the legacy ORCA-like heuristic output.
 - Exercises safety/success/compute leaderboard columns.
 - Includes trace artifacts for recorder/replay regressions.
 

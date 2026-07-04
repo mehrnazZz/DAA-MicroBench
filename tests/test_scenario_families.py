@@ -140,7 +140,7 @@ class TestScenarioFamilies(unittest.TestCase):
             self.assertEqual(len(generated["scenario_paths"]), 3)
             self.assertEqual(manifest["status"], "smoke")
             self.assertEqual(manifest["dimensions"], ["2d", "3d"])
-            self.assertEqual(manifest["default_methods"], ["baseline_goal", "orca_expert", "priority_yield"])
+            self.assertEqual(manifest["default_methods"], ["baseline_goal", "orca_heuristic", "priority_yield"])
             self.assertEqual(manifest["n_agents"], [4])
             self.assertEqual(manifest["seeds"], [0])
             self.assertEqual(manifest["duration_override_s"], 8.0)

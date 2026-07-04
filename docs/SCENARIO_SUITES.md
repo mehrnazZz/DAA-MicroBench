@@ -31,7 +31,7 @@ Families:
 - `heterogeneous_priority_crossing_3d_medium`
 
 Default matrix:
-- methods: `baseline_goal`, `orca_expert`, `priority_yield`
+- methods: `baseline_goal`, `orca_heuristic`, `priority_yield`
 - N: `4`
 - seeds: `0`
 - comm: `ideal_50hz`
@@ -91,9 +91,9 @@ Generated suite manifests include:
 acceptance:
   schema_version: "0.1"
   rules:
-    - name: orca_expert_smoke_runtime
+    - name: orca_heuristic_smoke_runtime
       scope: summary
-      method: orca_expert
+      method: orca_heuristic
       metric: planner_ms_p95
       operator: <=
       value: 25.0
@@ -112,6 +112,8 @@ python -m microbench.cli check-acceptance \
 Use `--methods`, `--scenarios`, `--comm-profiles`, or `--n` when a run intentionally covers only part of a suite. `required` and `smoke` rule failures exit nonzero; `warning` and `informational` rule violations are reported without failing the command.
 
 `official_smoke_generated` includes calibrated smoke bands for baseline runtime, ORCA runtime, and priority-yield message delivery. The expected path-independent acceptance report lives in `golden/acceptance/official_smoke_generated_acceptance.json`.
+
+`orca_heuristic` is the canonical ORCA-like reference baseline name. `orca_expert` is still accepted by the planner registry as a compatibility alias for older scripts and legacy result folders.
 
 ## Validation
 

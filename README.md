@@ -54,9 +54,11 @@ Available planners / how to list methods:
 
 ```bash
 python -m microbench.cli list-methods
+python -m microbench.cli list-methods --json --include-aliases
 ```
 
 You can also inspect `microbench/planners/` (each planner module maps to a method name in the planner registry).
+`orca_heuristic` is the canonical ORCA-like geometric baseline; `orca_expert` remains accepted as a compatibility alias for older scripts and result folders.
 
 Run a heterogeneous episode with one explicit planner per drone:
 
@@ -310,7 +312,7 @@ Run the generated mixed 2D/3D alpha suite:
 ```bash
 python -m microbench.cli canonical-sweep \
   --suite official_alpha \
-  --methods baseline_goal,orca_expert \
+  --methods baseline_goal,orca_heuristic \
   --out-dir runs_official_alpha \
   --max-runs 6
 ```
@@ -320,7 +322,7 @@ Run the generated 3D stress suite:
 ```bash
 python -m microbench.cli canonical-sweep \
   --suite official_3d_stress \
-  --methods orca_expert \
+  --methods orca_heuristic \
   --out-dir runs_official_3d_stress \
   --max-runs 3
 ```
@@ -392,7 +394,7 @@ Run primary canonical suite:
 ```bash
 python -m microbench.cli canonical-sweep \
   --suite primary \
-  --methods baseline_goal,orca_expert \
+  --methods baseline_goal,orca_heuristic \
   --out-dir runs_primary_smoke \
   --max-runs 6
 ```
@@ -402,13 +404,13 @@ Run baseline sanity suite:
 ```bash
 python -m microbench.cli canonical-sweep \
   --suite baseline_sanity \
-  --methods baseline_goal,orca_expert \
+  --methods baseline_goal,orca_heuristic \
   --out-dir runs_baseline_sanity
 ```
 
 Expected baseline sanity behavior:
 - `baseline_goal`: high collisions in dense scenarios.
-- `orca_expert`: substantially lower collisions, especially in ideal comm.
+- `orca_heuristic`: substantially lower collisions, especially in ideal comm.
 
 Quick acceptance heuristic:
 - ORCA collision counts should be at least ~5x lower than baseline in `intersection` and `funnel` under `ideal_50hz`.
@@ -469,7 +471,7 @@ What they are for:
 ```bash
 python -m microbench.cli run \
   --scenario config/scenarios/stacked_swap_3d.yaml \
-  --method orca_expert \
+  --method orca_heuristic \
   --n 10 \
   --seed 0 \
   --comm ideal_50hz \
@@ -517,7 +519,7 @@ Stretch mode:
 - adds `N = 20`
 - extends seeds to `0..19`
 
-If `--methods` is omitted for `three_d`, it defaults to `orca_expert`.
+If `--methods` is omitted for `three_d`, it defaults to `orca_heuristic`.
 
 ### 7.4 3D Replay and Traces
 
@@ -554,7 +556,7 @@ What the interactive replay shows:
 
 ### 7.5 3D Profiling Notes
 
-- obstacle-aware `orca_expert` is heavier than `baseline_goal`
+- obstacle-aware `orca_heuristic` is heavier than `baseline_goal`
 - expect a few milliseconds per tick per agent on harder 3D scenes
 - use `results.csv` / `summary.csv` to compare:
   - `planner_ms_per_tick_per_agent_mean`
@@ -566,7 +568,7 @@ Quick profiling command:
 ```bash
 python -m microbench.cli run \
   --scenario config/scenarios/layered_intersection_3d.yaml \
-  --method orca_expert \
+  --method orca_heuristic \
   --n 6 \
   --seed 0 \
   --comm ideal_50hz \
@@ -585,7 +587,7 @@ Example:
 ```bash
 python -m microbench.cli generate-dataset \
   --scenario config/scenarios/layered_intersection_3d.yaml \
-  --method orca_expert \
+  --method orca_heuristic \
   --n 6 \
   --seeds 0:0 \
   --comm ideal_50hz \
@@ -605,7 +607,7 @@ Quick start:
 ```bash
 python -m microbench.cli canonical-sweep \
   --suite baseline_sanity \
-  --methods baseline_goal,orca_expert \
+  --methods baseline_goal,orca_heuristic \
   --out-dir runs_baseline_sanity_wandb \
   --wandb \
   --wandb-project daa-microbench \
@@ -785,14 +787,14 @@ Debugging intent-related failures:
 
 ## 11) Diffusion Dataset Generation
 
-`orca_expert` is used as the expert planner to generate training labels.
+`orca_heuristic` can be used to generate heuristic training labels. It is an ORCA-like reference baseline, not an expert oracle.
 
 Generate dataset shards:
 
 ```bash
 python -m microbench.cli generate-dataset \
   --scenario config/scenarios/intersection.yaml \
-  --method orca_expert \
+  --method orca_heuristic \
   --n 10 \
   --seeds 0:1 \
   --comm ideal_50hz,realistic_v2v_50hz \
@@ -800,14 +802,14 @@ python -m microbench.cli generate-dataset \
   --dt-plan-s 0.10 \
   --quality-filter safe_expert \
   --filter-min-sep-m 0.2 \
-  --out-dir datasets/orca_expert_v0
+  --out-dir datasets/orca_heuristic_v0
 ```
 
 Sanity-check one shard:
 
 ```bash
 python -m microbench.cli sanity-check-dataset \
-  --shard datasets/orca_expert_v0/orca_expert/intersection/ideal_50hz/shard_00000.npz
+  --shard datasets/orca_heuristic_v0/orca_heuristic/intersection/ideal_50hz/shard_00000.npz
 ```
 
 Stored fields include:

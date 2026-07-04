@@ -45,7 +45,7 @@ def test_mine_worst_cases_copies_ranked_artifacts(tmp_path: Path) -> None:
         },
         {
             "run_id": "demo",
-            "method": "orca_expert",
+            "method": "orca_heuristic",
             "scenario": "intersection",
             "comm_profile": "ideal_50hz",
             "N": 10,
@@ -76,4 +76,3 @@ def test_mine_worst_cases_copies_ranked_artifacts(tmp_path: Path) -> None:
     rank1 = next(worst_dir.glob("rank_01_*"))
     assert (rank1 / "events.jsonl").exists()
     assert (rank1 / "trace_collision_0_1_t1.00.jsonl").exists()
-

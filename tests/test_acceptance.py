@@ -40,7 +40,7 @@ def _smoke_manifest(tmp_path: Path) -> Path:
 
 def _summary_rows(*, include_all_methods: bool = True, slow_orca: bool = False) -> list[dict]:
     scenarios = ["head_on_2d_easy", "sphere_swap_3d_medium", "heterogeneous_priority_crossing_3d_medium"]
-    methods = ["baseline_goal", "orca_expert", "priority_yield"] if include_all_methods else ["baseline_goal"]
+    methods = ["baseline_goal", "orca_heuristic", "priority_yield"] if include_all_methods else ["baseline_goal"]
     rows = []
     for scenario in scenarios:
         for method in methods:
@@ -52,7 +52,7 @@ def _summary_rows(*, include_all_methods: bool = True, slow_orca: bool = False) 
                     "N": 4,
                     "completion_rate_mean": 0.5,
                     "collision_episode_rate": 0.0,
-                    "planner_ms_p95": 50.0 if slow_orca and method == "orca_expert" else 0.5,
+                    "planner_ms_p95": 50.0 if slow_orca and method == "orca_heuristic" else 0.5,
                     "comm_agent_msg_attempted_mean": 1.0 if method == "priority_yield" else 0.0,
                     "comm_agent_msg_delivered_mean": (
                         1.0 if method == "priority_yield" and scenario == "head_on_2d_easy" else 0.0
@@ -152,7 +152,7 @@ def test_check_acceptance_fails_threshold_violation(tmp_path: Path) -> None:
     assert report["status"] == "FAIL"
     assert report["rules_failed"] == 1
     failed = [check for check in report["checks"] if check["status"] == "fail"]
-    assert failed[0]["name"] == "orca_expert_smoke_runtime"
+    assert failed[0]["name"] == "orca_heuristic_smoke_runtime"
     assert len(failed[0]["violations"]) == 3
 
 

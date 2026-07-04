@@ -172,7 +172,7 @@ logging:
             result = run_episode(
                 RunSpec(
                     scenario_path=str(scenario_path),
-                    method="orca_expert",
+                    method="orca_heuristic",
                     n_agents=2,
                     seed=0,
                     comm_profile="ideal_50hz",
@@ -255,7 +255,7 @@ logging:
                 result = run_episode(
                     RunSpec(
                         scenario_path=str(smoke_path),
-                        method="orca_expert",
+                        method="orca_heuristic",
                         n_agents=2,
                         seed=i,
                         comm_profile="ideal_50hz",
