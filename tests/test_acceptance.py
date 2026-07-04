@@ -46,6 +46,11 @@ def _stress_manifest(tmp_path: Path) -> Path:
     return generated["manifest_path"]
 
 
+def _experimental_manifest(tmp_path: Path) -> Path:
+    generated = materialize_official_suite("official_experimental_baselines", tmp_path / "suite_exp", overwrite=True)
+    return generated["manifest_path"]
+
+
 def _summary_rows(*, include_all_methods: bool = True, slow_orca: bool = False) -> list[dict]:
     scenarios = ["head_on_2d_easy", "sphere_swap_3d_medium", "heterogeneous_priority_crossing_3d_medium"]
     methods = ["baseline_goal", "orca_heuristic", "priority_yield"] if include_all_methods else ["baseline_goal"]
@@ -90,6 +95,31 @@ def _stress_summary_rows() -> list[dict]:
             "planner_fallback_count_mean": 0.0,
         }
     ]
+
+
+def _experimental_summary_rows(*, mpc_only: bool = False, slow_mpc: bool = False) -> list[dict]:
+    scenarios = ["head_on_2d_easy", "sphere_swap_3d_medium"]
+    methods = ["mpc_local"] if mpc_only else ["cbf_qp", "mpc_local"]
+    rows = []
+    for scenario in scenarios:
+        for method in methods:
+            rows.append(
+                {
+                    "method": method,
+                    "scenario": scenario,
+                    "comm_profile": "ideal_50hz",
+                    "N": 4,
+                    "completion_rate_mean": 0.5,
+                    "collision_episode_rate": 0.0,
+                    "planner_ms_p95": 60.0 if slow_mpc and method == "mpc_local" else (10.0 if method == "mpc_local" else 0.1),
+                    "comm_agent_msg_attempted_mean": 0.0,
+                    "comm_agent_msg_delivered_mean": 0.0,
+                    "planner_timeout_count_mean": 0.0,
+                    "planner_error_count_mean": 0.0,
+                    "planner_fallback_count_mean": 0.0,
+                }
+            )
+    return rows
 
 
 def _fixture_projection(report: dict) -> dict:
@@ -196,6 +226,44 @@ def test_check_acceptance_filters_generated_3d_stress_baseline_rules(tmp_path: P
     assert report["status"] == "PASS"
     assert report["rules_passed"] == 4
     assert report["rules_skipped"] == 2
+
+
+def test_check_acceptance_passes_experimental_baseline_suite(tmp_path: Path) -> None:
+    manifest = _experimental_manifest(tmp_path)
+    summary = tmp_path / "summary.csv"
+    _write_csv(summary, _experimental_summary_rows())
+
+    report = check_acceptance(summary_csv=summary, suite_manifest=manifest)
+
+    assert report["status"] == "PASS"
+    assert report["rules_passed"] == 8
+    assert report["rules_failed"] == 0
+
+
+def test_check_acceptance_filters_experimental_baseline_methods(tmp_path: Path) -> None:
+    manifest = _experimental_manifest(tmp_path)
+    summary = tmp_path / "summary.csv"
+    _write_csv(summary, _experimental_summary_rows(mpc_only=True))
+
+    report = check_acceptance(summary_csv=summary, suite_manifest=manifest, methods=["mpc_local"])
+
+    assert report["status"] == "PASS"
+    assert report["rules_passed"] == 6
+    assert report["rules_skipped"] == 2
+
+
+def test_check_acceptance_warns_on_experimental_runtime_violation(tmp_path: Path) -> None:
+    manifest = _experimental_manifest(tmp_path)
+    summary = tmp_path / "summary.csv"
+    _write_csv(summary, _experimental_summary_rows(slow_mpc=True))
+
+    report = check_acceptance(summary_csv=summary, suite_manifest=manifest)
+
+    assert report["status"] == "WARN"
+    assert report["rules_warned"] == 1
+    warned = [check for check in report["checks"] if check["status"] == "warn"]
+    assert warned[0]["name"] == "mpc_local_experimental_runtime_p95"
+    assert len(warned[0]["violations"]) == 2
 
 
 def test_check_acceptance_supports_results_scoped_rules(tmp_path: Path) -> None:

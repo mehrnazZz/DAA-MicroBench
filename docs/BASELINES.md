@@ -100,6 +100,14 @@ python -m microbench.cli run \
   --out-dir runs_mpc_local_smoke
 ```
 
+Experimental baseline calibration:
+
+```bash
+python -m microbench.cli canonical-sweep \
+  --suite official_experimental_baselines \
+  --out-dir runs_experimental_baselines
+```
+
 ## Stale-Aware ORCA Preset
 
 `orca_with_staleness` uses the same planner implementation as `orca_heuristic`, but its default config is more conservative when neighbor tracks are old:
@@ -156,5 +164,11 @@ Requirements before promoting it to a reference baseline:
 - acceptance bands for safety, compute p95, completion, and guardrail counts
 - tests for degraded observations and dense 3D scenes
 - optional stronger solver-backed or shooting-method variant if needed
+
+Observed local calibration on tiny generated suites before public-alpha tuning:
+
+- generated experimental/smoke rows keep `cbf_qp` planner p95 around hundredths of a millisecond per tick per agent
+- generated experimental/smoke rows keep `mpc_local` planner p95 in the low tens of milliseconds per tick per agent on this machine
+- a single `official_3d_stress` `mpc_local` row can take around two minutes wall-clock locally, so it remains outside default CI smoke
 
 New baselines should include registry metadata, docs, focused tests, and at least one generated-suite smoke run before being recommended in official comparisons.

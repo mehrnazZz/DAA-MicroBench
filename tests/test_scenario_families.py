@@ -107,6 +107,9 @@ class TestScenarioFamilies(unittest.TestCase):
         self.assertIn("noncooperative_intruder_3d_hard", registry["official_3d_stress"]["scenarios"])
         self.assertIn("orca_with_staleness", registry["official_3d_stress"]["default_methods"])
         self.assertIn("orca_with_staleness", registry["official_agentic_stress"]["default_methods"])
+        self.assertEqual(registry["official_experimental_baselines"]["status"], "experimental")
+        self.assertEqual(registry["official_experimental_baselines"]["acceptance_rule_count"], 8)
+        self.assertEqual(registry["official_experimental_baselines"]["default_methods"], ["cbf_qp", "mpc_local"])
         self.assertEqual(registry["three_d"]["status"], "development")
         self.assertEqual(registry["primary"]["status"], "legacy_official")
 
@@ -166,6 +169,23 @@ class TestScenarioFamilies(unittest.TestCase):
             cfg = load_yaml(generated["scenario_paths"][0])
             self.assertEqual(cfg["scenario"]["duration_s"], 8.0)
 
+    def test_generated_experimental_baseline_suite_is_isolated_from_default_smoke(self):
+        with tempfile.TemporaryDirectory() as td:
+            generated = materialize_official_suite("official_experimental_baselines", Path(td), overwrite=True)
+            manifest = generated["manifest"]
+            rules = manifest["acceptance"]["rules"]
+
+            self.assertEqual(len(generated["scenario_paths"]), 2)
+            self.assertEqual(manifest["status"], "experimental")
+            self.assertEqual(manifest["dimensions"], ["2d", "3d"])
+            self.assertEqual(manifest["default_methods"], ["cbf_qp", "mpc_local"])
+            self.assertEqual(manifest["n_agents"], [4])
+            self.assertEqual(manifest["seeds"], [0])
+            self.assertEqual(manifest["duration_override_s"], 8.0)
+            self.assertEqual(len(rules), 8)
+            self.assertTrue(any(rule["name"] == "mpc_local_experimental_runtime_p95" for rule in rules))
+            self.assertTrue(any(rule["name"] == "experimental_planner_fallbacks_clear" for rule in rules))
+
     def test_list_suites_cli_reports_registry(self):
         proc = subprocess.run(
             [sys.executable, "-m", "microbench.cli", "list-suites"],
@@ -176,6 +196,7 @@ class TestScenarioFamilies(unittest.TestCase):
         )
 
         self.assertIn("official_agentic_stress,pre_v1_official,generated,3d", proc.stdout)
+        self.assertIn("official_experimental_baselines,experimental,generated,2d+3d,2,8", proc.stdout)
         self.assertIn("official_smoke_generated,smoke,generated,2d+3d,3,10", proc.stdout)
         self.assertIn("three_d,development,hand_written,3d", proc.stdout)
 

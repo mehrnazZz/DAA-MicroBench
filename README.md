@@ -338,6 +338,14 @@ python -m microbench.cli canonical-sweep \
   --max-runs 6
 ```
 
+Run the generated experimental-baseline calibration suite:
+
+```bash
+python -m microbench.cli canonical-sweep \
+  --suite official_experimental_baselines \
+  --out-dir runs_experimental_baselines
+```
+
 Run the generated agentic stress suite:
 
 ```bash
@@ -573,6 +581,7 @@ What the interactive replay shows:
 
 - obstacle-aware `orca_heuristic` is heavier than `baseline_goal`
 - `mpc_local` is deliberately bounded but heavier than reactive baselines because it scores short-horizon rollouts
+- keep `official_experimental_baselines` separate from CI smoke when profiling slow experimental methods
 - expect a few milliseconds per tick per agent on harder 3D scenes
 - use `results.csv` / `summary.csv` to compare:
   - `planner_ms_per_tick_per_agent_mean`

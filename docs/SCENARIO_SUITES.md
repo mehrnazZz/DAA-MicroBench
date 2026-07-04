@@ -18,6 +18,7 @@ See [BASELINES.md](BASELINES.md) for baseline roles and recommended method sets.
 | `legacy_official` | Older hand-written canonical suite retained for continuity. |
 | `development` | Useful for debugging or focused development, but not a single leaderboard ranking. |
 | `smoke` | Fast sanity check suite for local regression checks. |
+| `experimental` | Generated calibration lane for runnable but non-anchor baselines. Results are useful for development, not public ranking. |
 | `custom` | User-defined scenarios or modified official scenarios. Label results clearly. |
 
 ## Generated Official Suites
@@ -65,6 +66,21 @@ Families:
 - `sensor_volume_3d_hard`
 - `noncooperative_intruder_3d_hard`
 - `heterogeneous_priority_crossing_3d_medium`
+
+### `official_experimental_baselines`
+
+Generated calibration lane for experimental baselines such as `cbf_qp` and `mpc_local`. It is intentionally separate from `official_smoke_generated` so slow or still-maturing methods do not make install checks brittle.
+
+Families:
+- `head_on_2d_easy`
+- `sphere_swap_3d_medium`
+
+Default matrix:
+- methods: `cbf_qp`, `mpc_local`
+- N: `4`
+- seeds: `0`
+- comm: `ideal_50hz`
+- generated scenario duration override: `8.0s`
 
 ### `official_agentic_stress`
 
@@ -115,6 +131,7 @@ python -m microbench.cli check-acceptance \
 Use `--methods`, `--scenarios`, `--comm-profiles`, or `--n` when a run intentionally covers only part of a suite. `required` and `smoke` rule failures exit nonzero; `warning` and `informational` rule violations are reported without failing the command.
 
 `official_smoke_generated` includes calibrated smoke bands for baseline runtime, ORCA runtime, priority-yield message delivery, and zero planner guardrail events. The expected path-independent acceptance report lives in `golden/acceptance/official_smoke_generated_acceptance.json`.
+`official_experimental_baselines` includes broad informational checks for `cbf_qp` and `mpc_local` completion fields, runtime p95, collision-rate validity, and zero planner guardrail events.
 `official_3d_stress` includes pre-v1 informational checks for the `orca_heuristic` and `orca_with_staleness` 3D reference rows.
 
 `orca_heuristic` is the canonical ORCA-like reference baseline name. `orca_expert` is still accepted by the planner registry as a compatibility alias for older scripts and legacy result folders.
