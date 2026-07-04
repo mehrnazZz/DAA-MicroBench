@@ -22,6 +22,9 @@ SUMMARY_FIELDS = [
     "planner_ms_p95",
     "comm_agent_msg_attempted_mean",
     "comm_agent_msg_delivered_mean",
+    "planner_timeout_count_mean",
+    "planner_error_count_mean",
+    "planner_fallback_count_mean",
 ]
 
 
@@ -62,6 +65,9 @@ def _summary_rows(*, include_all_methods: bool = True, slow_orca: bool = False) 
                     "comm_agent_msg_delivered_mean": (
                         1.0 if method == "priority_yield" and scenario == "head_on_2d_easy" else 0.0
                     ),
+                    "planner_timeout_count_mean": 0.0,
+                    "planner_error_count_mean": 0.0,
+                    "planner_fallback_count_mean": 0.0,
                 }
             )
     return rows
@@ -79,6 +85,9 @@ def _stress_summary_rows() -> list[dict]:
             "planner_ms_p95": 2.5,
             "comm_agent_msg_attempted_mean": 0.0,
             "comm_agent_msg_delivered_mean": 0.0,
+            "planner_timeout_count_mean": 0.0,
+            "planner_error_count_mean": 0.0,
+            "planner_fallback_count_mean": 0.0,
         }
     ]
 
@@ -120,7 +129,7 @@ def test_check_acceptance_passes_generated_smoke_summary(tmp_path: Path) -> None
     report = check_acceptance(summary_csv=summary, suite_manifest=manifest)
 
     assert report["status"] == "PASS"
-    assert report["rules_passed"] == 7
+    assert report["rules_passed"] == 10
     assert report["rules_failed"] == 0
 
 
@@ -147,7 +156,7 @@ def test_check_acceptance_filters_to_run_method(tmp_path: Path) -> None:
     report = check_acceptance(summary_csv=summary, suite_manifest=manifest, methods=["baseline_goal"])
 
     assert report["status"] == "PASS"
-    assert report["rules_passed"] == 3
+    assert report["rules_passed"] == 6
     assert report["rules_skipped"] == 4
 
 

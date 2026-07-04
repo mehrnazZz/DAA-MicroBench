@@ -8,6 +8,7 @@ from microbench.planners.base import ILocalPlanner
 from microbench.planners.baseline_goal import BaselineGoalPlanner
 from microbench.planners.cbf_qp import CbfQpPlanner
 from microbench.planners.intent_dummy import IntentDummyPlanner
+from microbench.planners.mpc_local import MpcLocalPlanner
 from microbench.planners.negotiation_yield import NegotiationYieldPlanner
 from microbench.planners.orca_expert import OrcaExpertPlanner
 from microbench.planners.priority_yield import PriorityYieldPlanner
@@ -63,11 +64,17 @@ def _make_cbf_qp() -> ILocalPlanner:
     return CbfQpPlanner(cfg=defaults.get("cbf_qp", {}))
 
 
+def _make_mpc_local() -> ILocalPlanner:
+    defaults = load_defaults()
+    return MpcLocalPlanner(cfg=defaults.get("mpc_local", {}))
+
+
 _FACTORIES: dict[str, Callable[[], ILocalPlanner]] = {
     "baseline_goal": BaselineGoalPlanner,
     "orca_heuristic": _make_orca_heuristic,
     "orca_with_staleness": _make_orca_with_staleness,
     "cbf_qp": _make_cbf_qp,
+    "mpc_local": _make_mpc_local,
     "template": TemplatePlanner,
     "intent_dummy": IntentDummyPlanner,
     "priority_yield": PriorityYieldPlanner,
@@ -142,13 +149,34 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_local_sensing=True,
         uses_obstacles=True,
         description=(
-            "Solver-free control-barrier-function baseline skeleton using deterministic "
-            "halfspace projection with a bounded fallback."
+            "Control-barrier-function baseline skeleton with quiet projection by default "
+            "and an optional SciPy SLSQP solver path."
         ),
         limitations=(
-            "Not yet a solver-backed quadratic program.",
             "Experimental; not recommended as a leaderboard anchor until calibrated.",
+            "Projection fallback is not a substitute for a fully validated CBF-QP controller.",
             "Uses local tracks supplied by PlannerInput rather than raw sensor processing.",
+        ),
+    ),
+    "mpc_local": PlannerMetadata(
+        method="mpc_local",
+        display_name="Local MPC sampling baseline",
+        planner_type="predictive_sampling",
+        role="experimental_baseline",
+        status="experimental",
+        dimensions=("2d", "3d"),
+        observation_sources=("local_neighbors", "v2v", "sensor", "fused"),
+        uses_v2v=True,
+        uses_local_sensing=True,
+        uses_obstacles=True,
+        description=(
+            "Deterministic local predictive baseline that samples one-step-reachable velocity "
+            "commands and scores short-horizon rollouts against neighbors and obstacles."
+        ),
+        limitations=(
+            "Not a full nonlinear MPC solver.",
+            "Experimental; not recommended as a leaderboard anchor until calibrated.",
+            "Uses constant-velocity neighbor predictions from PlannerInput.",
         ),
     ),
     "template": PlannerMetadata(

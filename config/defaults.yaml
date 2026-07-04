@@ -101,3 +101,22 @@ cbf_qp:
   max_solver_iters: 40
   violation_tol: 1.0e-5
   fallback_speed_scale: 0.5
+
+mpc_local:
+  horizon_s: 2.0
+  rollout_dt_s: 0.2
+  max_neighbors: 8
+  candidate_samples_2d: 24
+  candidate_samples_3d: 42
+  safety_margin_m: 0.25
+  obstacle_margin_m: 0.2
+  stale_inflation_gain: 0.6
+  goal_slowdown_radius_m: 6.0
+  tracking_weight: 1.0
+  progress_weight: 0.2
+  smoothness_weight: 0.15
+  collision_weight: 3000.0
+  clearance_weight: 40.0
+  obstacle_weight: 80.0
+  approach_weight: 20000.0
+  low_speed_weight: 0.05

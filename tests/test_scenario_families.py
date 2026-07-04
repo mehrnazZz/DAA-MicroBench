@@ -98,7 +98,7 @@ class TestScenarioFamilies(unittest.TestCase):
 
         self.assertEqual(registry["official_smoke_generated"]["status"], "smoke")
         self.assertEqual(registry["official_smoke_generated"]["source"], "generated")
-        self.assertEqual(registry["official_smoke_generated"]["acceptance_rule_count"], 7)
+        self.assertEqual(registry["official_smoke_generated"]["acceptance_rule_count"], 10)
         self.assertIn("heterogeneous_priority_crossing_3d_medium", registry["official_smoke_generated"]["scenarios"])
         self.assertEqual(registry["official_3d_stress"]["status"], "pre_v1_official")
         self.assertEqual(registry["official_3d_stress"]["source"], "generated")
@@ -160,7 +160,8 @@ class TestScenarioFamilies(unittest.TestCase):
             self.assertEqual(manifest["seeds"], [0])
             self.assertEqual(manifest["duration_override_s"], 8.0)
             self.assertEqual(manifest["acceptance"]["schema_version"], "0.1")
-            self.assertEqual(len(manifest["acceptance"]["rules"]), 7)
+            self.assertEqual(len(manifest["acceptance"]["rules"]), 10)
+            self.assertTrue(any(rule["name"] == "smoke_planner_fallbacks_clear" for rule in manifest["acceptance"]["rules"]))
             self.assertEqual(suite_defaults("official_smoke_generated")["acceptance"]["schema_version"], "0.1")
             cfg = load_yaml(generated["scenario_paths"][0])
             self.assertEqual(cfg["scenario"]["duration_s"], 8.0)
@@ -175,7 +176,7 @@ class TestScenarioFamilies(unittest.TestCase):
         )
 
         self.assertIn("official_agentic_stress,pre_v1_official,generated,3d", proc.stdout)
-        self.assertIn("official_smoke_generated,smoke,generated,2d+3d,3,7", proc.stdout)
+        self.assertIn("official_smoke_generated,smoke,generated,2d+3d,3,10", proc.stdout)
         self.assertIn("three_d,development,hand_written,3d", proc.stdout)
 
     def test_generated_smoke_suite_canonical_plan_is_tiny(self):

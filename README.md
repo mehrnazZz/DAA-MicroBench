@@ -359,7 +359,7 @@ python -m microbench.cli check-acceptance \
   --suite-manifest runs_official_smoke_generated/_generated_scenarios/official_smoke_generated/suite_manifest.yaml
 ```
 
-The generated smoke suite currently has calibrated checks for baseline runtime, ORCA runtime, and priority-yield message delivery. A path-independent expected report is kept at `golden/acceptance/official_smoke_generated_acceptance.json`.
+The generated smoke suite currently has calibrated checks for baseline runtime, ORCA runtime, priority-yield message delivery, and zero planner guardrail events. A path-independent expected report is kept at `golden/acceptance/official_smoke_generated_acceptance.json`.
 
 If you only ran a subset of methods, filter the rule set:
 
@@ -424,6 +424,7 @@ Expected baseline sanity behavior:
 - `orca_heuristic`: substantially lower collisions, especially in ideal comm.
 - `orca_with_staleness`: more conservative behavior when observations are stale or degraded.
 - `cbf_qp`: experimental CBF projection baseline with optional SciPy solver mode, not a calibrated leaderboard anchor.
+- `mpc_local`: experimental local predictive sampling baseline, useful for bounded lookahead and smoothness comparisons.
 
 Quick acceptance heuristic:
 - ORCA collision counts should be at least ~5x lower than baseline in `intersection` and `funnel` under `ideal_50hz`.
@@ -571,6 +572,7 @@ What the interactive replay shows:
 ### 7.5 3D Profiling Notes
 
 - obstacle-aware `orca_heuristic` is heavier than `baseline_goal`
+- `mpc_local` is deliberately bounded but heavier than reactive baselines because it scores short-horizon rollouts
 - expect a few milliseconds per tick per agent on harder 3D scenes
 - use `results.csv` / `summary.csv` to compare:
   - `planner_ms_per_tick_per_agent_mean`

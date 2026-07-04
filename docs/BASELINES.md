@@ -15,6 +15,7 @@ python -m microbench.cli list-methods --json --include-aliases
 | `orca_heuristic` | reference baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Main ORCA-like geometric comparison baseline. |
 | `orca_with_staleness` | reference baseline | same as `orca_heuristic`, with stronger stale-track inflation | 2D, 3D | Degraded communication or stale sensor-track comparison baseline. |
 | `cbf_qp` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Dependency-free CBF projection baseline with optional SciPy solver mode. |
+| `mpc_local` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Deterministic short-horizon predictive sampling baseline. |
 | `priority_yield` | agentic reference baseline | local tracks, priority, agent messages | 2D, 3D | Simple decentralized right-of-way behavior. |
 | `negotiation_yield` | experimental agentic baseline | local tracks, proposal/ACK messages, priority | 2D, 3D | Structured negotiation plumbing and early agentic comparison. |
 | `intent_dummy` | illustrative/plumbing baseline | goal, intent-style messages | 2D, 3D | Message and trace plumbing checks, not scoring. |
@@ -37,6 +38,7 @@ Reference baselines are intended to appear in comparison tables:
 Experimental baselines are runnable but not leaderboard anchors yet:
 
 - `cbf_qp`
+- `mpc_local`
 
 Illustrative baselines are useful for sanity checks and tutorials but should not be treated as serious DAA competitors:
 
@@ -86,6 +88,18 @@ python -m microbench.cli run \
   --out-dir runs_cbf_qp_smoke
 ```
 
+MPC-local smoke:
+
+```bash
+python -m microbench.cli run \
+  --scenario config/scenarios/stacked_swap_3d.yaml \
+  --method mpc_local \
+  --n 2 \
+  --seed 0 \
+  --comm ideal_50hz \
+  --out-dir runs_mpc_local_smoke
+```
+
 ## Stale-Aware ORCA Preset
 
 `orca_with_staleness` uses the same planner implementation as `orca_heuristic`, but its default config is more conservative when neighbor tracks are old:
@@ -119,19 +133,28 @@ Requirements before promoting it to a reference baseline:
 - tests for infeasible constraints, solver failure, and stale/noisy observations
 - acceptance bands for safety, compute p95, and completion
 
-## Pending Strong Baselines
+## MPC-Local Skeleton
 
-The following names are intentionally not exposed as planner methods yet. They need implementation and validation before public use.
+`mpc_local` is currently an experimental local predictive baseline. It samples one-step-reachable velocity commands, rolls them forward over a short horizon, and scores goal tracking, progress, smoothness, predicted agent-agent clearance, static obstacle clearance, and approach-to-conflict costs.
 
-### `mpc_local`
+It is intentionally dependency-free and deterministic. Its command is bounded by `a_max * dt` from the current velocity, so the dynamics layer should not need to rescue it through acceleration saturation during normal operation.
 
-Requirements before adding:
+Useful debug fields include:
 
-- fixed-horizon local dynamics model matching benchmark command semantics
-- collision, obstacle, smoothness, and progress costs documented in config
-- deterministic optimizer settings and bounded runtime
-- fallback behavior on timeout or non-convergence
-- 2D and 3D support or explicit dimension metadata if staged
-- tests for degraded observations, dense 3D scenes, and compute limits
+- `mpc_candidates`
+- `mpc_horizon_steps`
+- `mpc_best_cost`
+- `mpc_min_pred_clearance_m`
+- `mpc_collision_penalty`
+- `mpc_obstacle_penalty`
+- `mpc_approach_penalty`
+- `mpc_accel_delta_norm`
+
+Requirements before promoting it to a reference baseline:
+
+- calibration across generated 3D stress and agentic stress suites
+- acceptance bands for safety, compute p95, completion, and guardrail counts
+- tests for degraded observations and dense 3D scenes
+- optional stronger solver-backed or shooting-method variant if needed
 
 New baselines should include registry metadata, docs, focused tests, and at least one generated-suite smoke run before being recommended in official comparisons.

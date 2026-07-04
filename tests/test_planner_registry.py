@@ -7,6 +7,7 @@ import sys
 
 from microbench.planners import canonical_method, list_methods, make_planner, planner_metadata
 from microbench.planners.cbf_qp import CbfQpPlanner
+from microbench.planners.mpc_local import MpcLocalPlanner
 from microbench.planners.orca_expert import OrcaExpertPlanner
 
 
@@ -17,11 +18,13 @@ def test_orca_heuristic_is_canonical_and_orca_expert_is_alias() -> None:
     assert "orca_heuristic" in list_methods()
     assert "orca_with_staleness" in list_methods()
     assert "cbf_qp" in list_methods()
+    assert "mpc_local" in list_methods()
     assert "orca_expert" not in list_methods()
     assert "orca_expert" in list_methods(include_aliases=True)
     assert isinstance(make_planner("orca_heuristic"), OrcaExpertPlanner)
     assert isinstance(make_planner("orca_with_staleness"), OrcaExpertPlanner)
     assert isinstance(make_planner("cbf_qp"), CbfQpPlanner)
+    assert isinstance(make_planner("mpc_local"), MpcLocalPlanner)
     assert isinstance(make_planner("orca_expert"), OrcaExpertPlanner)
 
 
@@ -39,6 +42,9 @@ def test_planner_metadata_includes_public_baseline_contract() -> None:
     assert by_method["cbf_qp"]["role"] == "experimental_baseline"
     assert by_method["cbf_qp"]["status"] == "experimental"
     assert by_method["cbf_qp"]["uses_obstacles"] is True
+    assert by_method["mpc_local"]["role"] == "experimental_baseline"
+    assert by_method["mpc_local"]["planner_type"] == "predictive_sampling"
+    assert by_method["mpc_local"]["uses_obstacles"] is True
     assert by_method["orca_expert"]["status"] == "alias"
     assert by_method["orca_expert"]["canonical_method"] == "orca_heuristic"
 
@@ -75,4 +81,5 @@ def test_list_methods_cli_can_emit_metadata_json() -> None:
     assert by_method["orca_heuristic"]["status"] == "pre_v1"
     assert by_method["orca_with_staleness"]["role"] == "reference_baseline"
     assert by_method["cbf_qp"]["status"] == "experimental"
+    assert by_method["mpc_local"]["status"] == "experimental"
     assert by_method["orca_expert"]["canonical_method"] == "orca_heuristic"

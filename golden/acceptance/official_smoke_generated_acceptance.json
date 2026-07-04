@@ -2,8 +2,8 @@
   "suite": "official_smoke_generated",
   "acceptance_schema_version": "0.1",
   "status": "PASS",
-  "rules_total": 7,
-  "rules_passed": 7,
+  "rules_total": 10,
+  "rules_passed": 10,
   "rules_warned": 0,
   "rules_failed": 0,
   "rules_skipped": 0,
@@ -98,6 +98,45 @@
       "value": 5.0,
       "matched_rows": 3,
       "passed_rows": 3
+    },
+    {
+      "name": "smoke_planner_timeouts_clear",
+      "status": "pass",
+      "severity": "smoke",
+      "scope": "summary",
+      "method": "*",
+      "scenario": "*",
+      "metric": "planner_timeout_count_mean",
+      "operator": "<=",
+      "value": 0.0,
+      "matched_rows": 9,
+      "passed_rows": 9
+    },
+    {
+      "name": "smoke_planner_errors_clear",
+      "status": "pass",
+      "severity": "smoke",
+      "scope": "summary",
+      "method": "*",
+      "scenario": "*",
+      "metric": "planner_error_count_mean",
+      "operator": "<=",
+      "value": 0.0,
+      "matched_rows": 9,
+      "passed_rows": 9
+    },
+    {
+      "name": "smoke_planner_fallbacks_clear",
+      "status": "pass",
+      "severity": "smoke",
+      "scope": "summary",
+      "method": "*",
+      "scenario": "*",
+      "metric": "planner_fallback_count_mean",
+      "operator": "<=",
+      "value": 0.0,
+      "matched_rows": 9,
+      "passed_rows": 9
     }
   ]
 }

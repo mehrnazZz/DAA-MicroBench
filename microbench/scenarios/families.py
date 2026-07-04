@@ -161,6 +161,36 @@ SMOKE_BASELINE_ACCEPTANCE: tuple[dict, ...] = (
         band="generated_smoke_calibrated",
         description="Priority-yield baseline should remain cheap enough for CI smoke coverage.",
     ),
+    _acceptance_rule(
+        name="smoke_planner_timeouts_clear",
+        method="*",
+        metric="planner_timeout_count_mean",
+        operator="<=",
+        value=0.0,
+        severity="smoke",
+        band="generated_smoke_guardrails",
+        description="Generated smoke baselines should not trigger planner soft-timeout guardrails.",
+    ),
+    _acceptance_rule(
+        name="smoke_planner_errors_clear",
+        method="*",
+        metric="planner_error_count_mean",
+        operator="<=",
+        value=0.0,
+        severity="smoke",
+        band="generated_smoke_guardrails",
+        description="Generated smoke baselines should not raise planner exceptions.",
+    ),
+    _acceptance_rule(
+        name="smoke_planner_fallbacks_clear",
+        method="*",
+        metric="planner_fallback_count_mean",
+        operator="<=",
+        value=0.0,
+        severity="smoke",
+        band="generated_smoke_guardrails",
+        description="Generated smoke baselines should not require engine fallback commands.",
+    ),
 )
 
 
