@@ -8,6 +8,7 @@ python -m microbench.cli list-suites --json
 ```
 
 The JSON form includes machine-readable `acceptance` metadata for generated suites.
+See [BASELINES.md](BASELINES.md) for baseline roles and recommended method sets.
 
 ## Registry Status
 
@@ -54,6 +55,7 @@ Families:
 ### `official_3d_stress`
 
 Generated 3D suite for volumetric, vertical, partial-sensing, merge, overtake, and noncooperative stress testing.
+Default methods: `orca_heuristic`, `orca_with_staleness`.
 
 Families:
 - `sphere_swap_3d_medium`
@@ -67,6 +69,7 @@ Families:
 ### `official_agentic_stress`
 
 Generated 3D suite focused on decentralized/agentic behavior: heterogeneous priorities, noncooperative traffic, partial sensing, intent/messages, and degraded communication.
+Default methods: `priority_yield`, `negotiation_yield`, `orca_heuristic`, `orca_with_staleness`.
 
 Families:
 - `heterogeneous_priority_crossing_3d_medium`
@@ -114,6 +117,7 @@ Use `--methods`, `--scenarios`, `--comm-profiles`, or `--n` when a run intention
 `official_smoke_generated` includes calibrated smoke bands for baseline runtime, ORCA runtime, and priority-yield message delivery. The expected path-independent acceptance report lives in `golden/acceptance/official_smoke_generated_acceptance.json`.
 
 `orca_heuristic` is the canonical ORCA-like reference baseline name. `orca_expert` is still accepted by the planner registry as a compatibility alias for older scripts and legacy result folders.
+Use `orca_with_staleness` when you want an explicit stale-aware ORCA-like preset for degraded communication or stale sensor-track comparisons.
 
 ## Validation
 

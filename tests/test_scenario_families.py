@@ -104,6 +104,8 @@ class TestScenarioFamilies(unittest.TestCase):
         self.assertEqual(registry["official_3d_stress"]["source"], "generated")
         self.assertIn("merge_3d_hard", registry["official_3d_stress"]["scenarios"])
         self.assertIn("noncooperative_intruder_3d_hard", registry["official_3d_stress"]["scenarios"])
+        self.assertIn("orca_with_staleness", registry["official_3d_stress"]["default_methods"])
+        self.assertIn("orca_with_staleness", registry["official_agentic_stress"]["default_methods"])
         self.assertEqual(registry["three_d"]["status"], "development")
         self.assertEqual(registry["primary"]["status"], "legacy_official")
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 
-from microbench.config import load_defaults
+from microbench.config import deep_merge, load_defaults
 from microbench.planners.base import ILocalPlanner
 from microbench.planners.baseline_goal import BaselineGoalPlanner
 from microbench.planners.intent_dummy import IntentDummyPlanner
@@ -38,16 +38,29 @@ class PlannerMetadata:
         return asdict(self)
 
 
+def _orca_cfg(defaults: dict, key: str) -> dict:
+    base = defaults.get("orca_heuristic", defaults.get("orca_expert", {}))
+    if key == "orca_heuristic":
+        return dict(base)
+    return deep_merge(base, defaults.get(key, {}))
+
+
 def _make_orca_heuristic() -> ILocalPlanner:
     defaults = load_defaults()
-    orca_cfg = defaults.get("orca_heuristic", defaults.get("orca_expert", {}))
     age_cap = float(defaults.get("comm", {}).get("age_cap_s", 0.75))
-    return OrcaExpertPlanner(cfg=orca_cfg, age_cap_s=age_cap)
+    return OrcaExpertPlanner(cfg=_orca_cfg(defaults, "orca_heuristic"), age_cap_s=age_cap)
+
+
+def _make_orca_with_staleness() -> ILocalPlanner:
+    defaults = load_defaults()
+    age_cap = float(defaults.get("comm", {}).get("age_cap_s", 0.75))
+    return OrcaExpertPlanner(cfg=_orca_cfg(defaults, "orca_with_staleness"), age_cap_s=age_cap)
 
 
 _FACTORIES: dict[str, Callable[[], ILocalPlanner]] = {
     "baseline_goal": BaselineGoalPlanner,
     "orca_heuristic": _make_orca_heuristic,
+    "orca_with_staleness": _make_orca_with_staleness,
     "template": TemplatePlanner,
     "intent_dummy": IntentDummyPlanner,
     "priority_yield": PriorityYieldPlanner,
@@ -86,6 +99,27 @@ _METADATA: dict[str, PlannerMetadata] = {
         limitations=(
             "Not a formally validated ORCA implementation.",
             "Not an expert oracle and should not be treated as ground-truth DAA behavior.",
+            "Uses the benchmark's provided local neighbor tracks rather than raw sensor processing.",
+        ),
+    ),
+    "orca_with_staleness": PlannerMetadata(
+        method="orca_with_staleness",
+        display_name="ORCA-like stale-aware heuristic",
+        planner_type="geometric_heuristic",
+        role="reference_baseline",
+        status="pre_v1",
+        dimensions=("2d", "3d"),
+        observation_sources=("local_neighbors", "v2v", "sensor", "fused"),
+        uses_v2v=True,
+        uses_local_sensing=True,
+        uses_obstacles=True,
+        description=(
+            "ORCA-like candidate-velocity planner preset with stronger stale-track inflation "
+            "and age-based responsibility for degraded communication or sensor-track runs."
+        ),
+        limitations=(
+            "Not a formally validated ORCA implementation.",
+            "May trade mission progress for conservative behavior under stale observations.",
             "Uses the benchmark's provided local neighbor tracks rather than raw sensor processing.",
         ),
     ),

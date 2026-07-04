@@ -169,20 +169,22 @@ logging:
             tmp = Path(td)
             scenario_path = self._smoke_copy("config/scenarios/stacked_swap_3d.yaml", tmp / "stacked_swap_3d_smoke.yaml")
             out_dir = Path(td) / "runs_3d_builtin"
-            result = run_episode(
-                RunSpec(
-                    scenario_path=str(scenario_path),
-                    method="orca_heuristic",
-                    n_agents=2,
-                    seed=0,
-                    comm_profile="ideal_50hz",
-                    out_dir=str(out_dir),
-                    save_trace=False,
+            for method in ("orca_heuristic", "orca_with_staleness"):
+                result = run_episode(
+                    RunSpec(
+                        scenario_path=str(scenario_path),
+                        method=method,
+                        n_agents=2,
+                        seed=0,
+                        comm_profile="ideal_50hz",
+                        out_dir=str(out_dir),
+                        save_trace=False,
+                    )
                 )
-            )
-            self.assertEqual(result["scenario"], "stacked_swap_3d_smoke")
-            self.assertEqual(int(result["N"]), 2)
-            self.assertIn("completion_rate", result)
+                self.assertEqual(result["scenario"], "stacked_swap_3d_smoke")
+                self.assertEqual(result["method"], method)
+                self.assertEqual(int(result["N"]), 2)
+                self.assertIn("completion_rate", result)
 
     def test_layered_spawn_goal_shift(self):
         rng = np.random.default_rng(0)

@@ -59,6 +59,7 @@ python -m microbench.cli list-methods --json --include-aliases
 
 You can also inspect `microbench/planners/` (each planner module maps to a method name in the planner registry).
 `orca_heuristic` is the canonical ORCA-like geometric baseline; `orca_expert` remains accepted as a compatibility alias for older scripts and result folders.
+See [docs/BASELINES.md](docs/BASELINES.md) for baseline roles, limitations, and recommended comparison sets.
 
 Run a heterogeneous episode with one explicit planner per drone:
 
@@ -327,6 +328,16 @@ python -m microbench.cli canonical-sweep \
   --max-runs 3
 ```
 
+Compare the ORCA-like baseline with its stale-aware preset:
+
+```bash
+python -m microbench.cli canonical-sweep \
+  --suite official_3d_stress \
+  --methods orca_heuristic,orca_with_staleness \
+  --out-dir runs_orca_staleness_comparison \
+  --max-runs 6
+```
+
 Run the generated agentic stress suite:
 
 ```bash
@@ -411,6 +422,7 @@ python -m microbench.cli canonical-sweep \
 Expected baseline sanity behavior:
 - `baseline_goal`: high collisions in dense scenarios.
 - `orca_heuristic`: substantially lower collisions, especially in ideal comm.
+- `orca_with_staleness`: more conservative behavior when observations are stale or degraded.
 
 Quick acceptance heuristic:
 - ORCA collision counts should be at least ~5x lower than baseline in `intersection` and `funnel` under `ideal_50hz`.
@@ -490,7 +502,8 @@ python -m microbench.cli canonical-sweep \
 ```
 
 Defaults:
-- scenarios: generated `sphere_swap_3d_medium`, `vertical_crossing_3d_hard`, and `sensor_volume_3d_hard`
+- scenarios: generated `sphere_swap_3d_medium`, `merge_3d_hard`, `overtake_3d_medium`, `vertical_crossing_3d_hard`, `sensor_volume_3d_hard`, `noncooperative_intruder_3d_hard`, and `heterogeneous_priority_crossing_3d_medium`
+- methods: `orca_heuristic`, `orca_with_staleness`
 - `N = [6, 10]`
 - seeds `0..9`
 - comm: `ideal_50hz`, `realistic_v2v_50hz`, `degraded_20hz`
