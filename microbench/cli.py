@@ -19,7 +19,7 @@ from microbench.metrics import append_result, write_summary
 from microbench.replay import render_interactive_trace, render_trace
 from microbench.dataset import generate_dataset, expand_scenarios, expand_list, sanity_check_shard
 from microbench.logging import wandb_logger
-from microbench.tools import mine_worst_cases
+from microbench.tools import mine_worst_cases, write_baseline_report
 from microbench.scenarios import (
     list_official_suites,
     materialize_official_suite,
@@ -485,6 +485,17 @@ def _check_acceptance(args) -> None:
         raise SystemExit(f"acceptance failed: {report['rules_failed']} rule(s) failed")
 
 
+def _baseline_report(args) -> None:
+    out = write_baseline_report(
+        summary_csv=args.summary,
+        results_csv=args.results,
+        suite=args.suite,
+        out=args.out,
+        generated_by=args.generated_by,
+    )
+    print(f"done: baseline comparison report saved to {out}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="microbench")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -610,6 +621,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_acc.add_argument("--json", action="store_true", help="Emit machine-readable acceptance report")
     p_acc.add_argument("--verbose", action="store_true", help="Print pass/skipped checks as well as failures/warnings")
 
+    p_br = sub.add_parser("baseline-report", help="Build a compact baseline comparison report from summary.csv")
+    p_br.add_argument("--summary", required=True, help="Path to summary.csv")
+    p_br.add_argument("--suite", required=True, help="Suite name used for the comparison run")
+    p_br.add_argument("--out", required=True, help="Output report JSON path")
+    p_br.add_argument("--results", default=None, help="Optional results.csv path for run_count")
+    p_br.add_argument("--generated-by", default=None, help="Optional reproducibility command or label")
+
     p_hc = sub.add_parser("mine-hard-cases", help="Collect trace artifacts for worst episodes")
     p_hc.add_argument("--results", required=True, help="Path to runs/<id>/results.csv")
     p_hc.add_argument("--top-k", type=int, default=20, help="Number of episodes to collect")
@@ -721,6 +739,9 @@ def main() -> None:
         return
     if args.cmd == "check-acceptance":
         _check_acceptance(args)
+        return
+    if args.cmd == "baseline-report":
+        _baseline_report(args)
         return
     if args.cmd == "mine-hard-cases":
         out = mine_worst_cases(results_csv=args.results, top_k=args.top_k)

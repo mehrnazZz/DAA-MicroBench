@@ -346,6 +346,16 @@ python -m microbench.cli canonical-sweep \
   --out-dir runs_experimental_baselines
 ```
 
+Build a compact baseline comparison report:
+
+```bash
+python -m microbench.cli baseline-report \
+  --summary runs_experimental_baselines/summary.csv \
+  --results runs_experimental_baselines/results.csv \
+  --suite official_experimental_baselines \
+  --out runs_experimental_baselines/baseline_report.json
+```
+
 Run the generated agentic stress suite:
 
 ```bash

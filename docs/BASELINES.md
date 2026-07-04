@@ -108,6 +108,18 @@ python -m microbench.cli canonical-sweep \
   --out-dir runs_experimental_baselines
 ```
 
+Build a compact comparison report from any run:
+
+```bash
+python -m microbench.cli baseline-report \
+  --summary runs_experimental_baselines/summary.csv \
+  --results runs_experimental_baselines/results.csv \
+  --suite official_experimental_baselines \
+  --out runs_experimental_baselines/baseline_report.json
+```
+
+The checked-in example lives at `golden/baseline_comparison/report.json`.
+
 ## Stale-Aware ORCA Preset
 
 `orca_with_staleness` uses the same planner implementation as `orca_heuristic`, but its default config is more conservative when neighbor tracks are old:
@@ -134,12 +146,12 @@ Use it for development and API comparison, not as a mature CBF baseline. It is u
 
 Requirements before promoting it to a reference baseline:
 
-- stronger solver-backed validation and documented pure-Python fallback behavior
-- explicit 2D and 3D barrier constraints for agent-agent and agent-obstacle separation
-- bounded solver timeout and deterministic fallback command
-- no privileged information beyond `PlannerInput`
-- tests for infeasible constraints, solver failure, and stale/noisy observations
-- acceptance bands for safety, compute p95, and completion
+- collision-free or clearly bounded-collision behavior on calibrated head-on, 3D swap, and obstacle cases
+- completion bands on at least one generated 3D suite without relying on privileged state
+- broad but explicit compute p95 bands on smoke and 3D stress rows
+- zero planner timeout/error/fallback counts in smoke and experimental baseline runs
+- stronger solver-backed validation, with documented deterministic projection fallback
+- tests for infeasible constraints, solver failure, stale/noisy observations, and 2D/3D obstacle barriers
 
 ## MPC-Local Skeleton
 
@@ -160,15 +172,28 @@ Useful debug fields include:
 
 Requirements before promoting it to a reference baseline:
 
-- calibration across generated 3D stress and agentic stress suites
-- acceptance bands for safety, compute p95, completion, and guardrail counts
-- tests for degraded observations and dense 3D scenes
-- optional stronger solver-backed or shooting-method variant if needed
+- collision-free or clearly bounded-collision behavior on calibrated head-on, 3D swap, and obstacle cases
+- completion bands on generated 3D stress slices that remain practical to run locally
+- broad but explicit compute p95 bands on smoke, experimental, and small 3D stress rows
+- zero planner timeout/error/fallback counts in smoke and experimental baseline runs
+- tests for degraded observations, dense 3D scenes, candidate capping, and public `PlannerInput`/`PlannerOutput` behavior
+- optional stronger shooting-method or solver-backed variant if needed
 
 Observed local calibration on tiny generated suites before public-alpha tuning:
 
 - generated experimental/smoke rows keep `cbf_qp` planner p95 around hundredths of a millisecond per tick per agent
 - generated experimental/smoke rows keep `mpc_local` planner p95 in the low single-digit milliseconds per tick per agent on this machine
 - a single `official_3d_stress` `mpc_local` row can still take tens of seconds wall-clock locally, so it remains outside default CI smoke
+
+## Baseline Comparison Fixture
+
+`golden/baseline_comparison/report.json` is a tiny, reproducible comparison fixture generated from `official_experimental_baselines` with:
+
+- `baseline_goal`
+- `orca_heuristic`
+- `cbf_qp`
+- `mpc_local`
+
+It is not a leaderboard. The suite duration is intentionally short, so the fixture emphasizes safety, compute cost, and guardrail behavior rather than final mission completion. Use it as a compact sanity check and a documentation example for the report schema.
 
 New baselines should include registry metadata, docs, focused tests, and at least one generated-suite smoke run before being recommended in official comparisons.

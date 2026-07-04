@@ -9,6 +9,7 @@ Note: the benchmark result schema has evolved since this bundle was first genera
 - `events/` and `traces/` sample failure artifacts for recorder/replay checks.
 - `current_schema/` contains a tiny fast golden smoke bundle for the current result schema.
 - `acceptance/` contains path-independent acceptance report fixtures for generated suites.
+- `baseline_comparison/` contains a compact generated report comparing built-in illustrative/reference/experimental baselines.
 
 ## Source Run
 - Copied from: `runs_leaderboard_smoke/`
