@@ -168,7 +168,7 @@ Requirements before promoting it to a reference baseline:
 Observed local calibration on tiny generated suites before public-alpha tuning:
 
 - generated experimental/smoke rows keep `cbf_qp` planner p95 around hundredths of a millisecond per tick per agent
-- generated experimental/smoke rows keep `mpc_local` planner p95 in the low tens of milliseconds per tick per agent on this machine
-- a single `official_3d_stress` `mpc_local` row can take around two minutes wall-clock locally, so it remains outside default CI smoke
+- generated experimental/smoke rows keep `mpc_local` planner p95 in the low single-digit milliseconds per tick per agent on this machine
+- a single `official_3d_stress` `mpc_local` row can still take tens of seconds wall-clock locally, so it remains outside default CI smoke
 
 New baselines should include registry metadata, docs, focused tests, and at least one generated-suite smoke run before being recommended in official comparisons.

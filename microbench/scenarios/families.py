@@ -309,7 +309,7 @@ EXPERIMENTAL_BASELINE_ACCEPTANCE: tuple[dict, ...] = (
         method="mpc_local",
         metric="planner_ms_p95",
         operator="<=",
-        value=50.0,
+        value=25.0,
         severity="informational",
         band="experimental_baseline_calibrated",
         description="MPC-local should stay within a broad experimental smoke compute band.",

@@ -66,10 +66,11 @@ class MpcLocalPlanner(ILocalPlanner):
     def __init__(self, cfg: dict | None = None):
         cfg = cfg or {}
         self.horizon_s = float(cfg.get("horizon_s", 2.0))
-        self.rollout_dt_s = float(cfg.get("rollout_dt_s", 0.2))
+        self.rollout_dt_s = float(cfg.get("rollout_dt_s", 0.5))
         self.max_neighbors = int(cfg.get("max_neighbors", 8))
-        self.candidate_samples_2d = int(cfg.get("candidate_samples_2d", 24))
-        self.candidate_samples_3d = int(cfg.get("candidate_samples_3d", 42))
+        self.candidate_samples_2d = int(cfg.get("candidate_samples_2d", 12))
+        self.candidate_samples_3d = int(cfg.get("candidate_samples_3d", 18))
+        self.max_candidates = int(cfg.get("max_candidates", 48))
         self.safety_margin_m = float(cfg.get("safety_margin_m", 0.25))
         self.obstacle_margin_m = float(cfg.get("obstacle_margin_m", 0.2))
         self.stale_inflation_gain = float(cfg.get("stale_inflation_gain", 0.6))
@@ -96,7 +97,7 @@ class MpcLocalPlanner(ILocalPlanner):
             current[1] = 0.0
         v_pref = self._preferred_velocity(planner_input)
         max_delta = max(0.0, float(ego.a_max) * float(planner_input.dt))
-        candidates = self._candidates(planner_input, current, v_pref, max_delta)
+        candidates, raw_candidate_count = self._candidates(planner_input, current, v_pref, max_delta)
 
         best_idx = 0
         best_cost = float("inf")
@@ -120,6 +121,8 @@ class MpcLocalPlanner(ILocalPlanner):
                 "mpc_horizon_s": float(self.horizon_s),
                 "mpc_horizon_steps": int(self._horizon_steps()),
                 "mpc_candidates": int(len(candidates)),
+                "mpc_candidates_raw": int(raw_candidate_count),
+                "mpc_candidate_limit": int(self.max_candidates),
                 "mpc_best_index": int(best_idx),
                 "mpc_best_cost": float(best_cost),
                 "mpc_min_pred_clearance_m": min_clearance,
@@ -153,7 +156,7 @@ class MpcLocalPlanner(ILocalPlanner):
         current: np.ndarray,
         v_pref: np.ndarray,
         max_delta: float,
-    ) -> list[np.ndarray]:
+    ) -> tuple[list[np.ndarray], int]:
         ego = planner_input.ego
         directions = self._candidate_directions(planner_input, current, v_pref)
         candidates: list[np.ndarray] = []
@@ -169,7 +172,8 @@ class MpcLocalPlanner(ILocalPlanner):
                 if planner_input.planar:
                     candidate[1] = 0.0
                 candidates.append(candidate.astype(np.float32))
-        return self._dedupe(candidates, planner_input.planar)
+        deduped = self._dedupe(candidates, planner_input.planar)
+        return self._cap_candidates(deduped), len(deduped)
 
     def _candidate_directions(self, planner_input: PlannerInput, current: np.ndarray, v_pref: np.ndarray) -> list[np.ndarray]:
         directions: list[np.ndarray] = []
@@ -234,6 +238,11 @@ class MpcLocalPlanner(ILocalPlanner):
             seen.add(key)
             out.append(v)
         return out
+
+    def _cap_candidates(self, candidates: list[np.ndarray]) -> list[np.ndarray]:
+        if self.max_candidates <= 0 or len(candidates) <= self.max_candidates:
+            return candidates
+        return candidates[: self.max_candidates]
 
     def _score_candidate(
         self,

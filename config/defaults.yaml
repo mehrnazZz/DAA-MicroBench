@@ -104,10 +104,11 @@ cbf_qp:
 
 mpc_local:
   horizon_s: 2.0
-  rollout_dt_s: 0.2
+  rollout_dt_s: 0.5
   max_neighbors: 8
-  candidate_samples_2d: 24
-  candidate_samples_3d: 42
+  candidate_samples_2d: 12
+  candidate_samples_3d: 18
+  max_candidates: 48
   safety_margin_m: 0.25
   obstacle_margin_m: 0.2
   stale_inflation_gain: 0.6
@@ -120,3 +121,4 @@ mpc_local:
   obstacle_weight: 80.0
   approach_weight: 20000.0
   low_speed_weight: 0.05
+  direction_scales: [1.0, 0.5]

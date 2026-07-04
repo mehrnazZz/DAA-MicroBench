@@ -104,3 +104,26 @@ def test_mpc_local_preserves_3d_command_shape() -> None:
     assert out.v_cmd[1] > 0.0
     assert np.linalg.norm(out.v_cmd - ego.vel) <= ego.a_max * 0.02 + 1e-6
     assert out.debug_info["mpc_planar"] is False
+
+
+def test_mpc_local_reports_and_enforces_candidate_cap() -> None:
+    ego = _agent((0.0, 0.0, 0.0), goal=(10.0, 4.0, 0.0))
+    planner = MpcLocalPlanner(
+        cfg={
+            "candidate_samples_3d": 40,
+            "max_candidates": 12,
+            "direction_scales": [1.0, 0.5],
+        }
+    )
+
+    out = planner.compute_cmd(
+        _planner_input(
+            ego=ego,
+            planar=False,
+            goal_dir=(0.8, 0.6, 0.0),
+        )
+    )
+
+    assert out.debug_info["mpc_candidates"] <= 12
+    assert out.debug_info["mpc_candidates_raw"] >= out.debug_info["mpc_candidates"]
+    assert out.debug_info["mpc_candidate_limit"] == 12
