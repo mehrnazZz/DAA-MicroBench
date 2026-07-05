@@ -243,7 +243,7 @@ microbench/
   metrics/              # episode metrics, CSV writer, failure recorder, ring buffer
   replay/               # matplotlib replay renderer for trace files
   dataset/              # diffusion dataset generation + shard sanity checks
-  tools/                # utilities (hard-case miner)
+  tools/                # utilities (hard-case miner, reports, golden checks)
 config/
   defaults.yaml         # global defaults
   comm_profiles.yaml    # named V2V profiles
@@ -915,6 +915,12 @@ Quick local execution sanity (CI-style):
 bash scripts/ci_sanity.sh
 ```
 
+Current result-schema golden check:
+
+```bash
+python -m microbench.cli golden-current-schema --golden-dir golden/current_schema
+```
+
 ## 13) Contribution Workflow
 
 Project governance and contribution docs:
@@ -958,5 +964,6 @@ Suggested run naming pattern:
 - Scenario schema examples: `config/scenarios/*.yaml`
 - Diffusion dataset implementation: `microbench/dataset/generate.py`
 - Leaderboard CSV schema: `microbench/metrics/io.py`
+- Current schema golden policy: `golden/current_schema/README.md`
 - Comm profile definitions: `config/comm_profiles.yaml`
 - Planner template: `microbench/planners/template.py`

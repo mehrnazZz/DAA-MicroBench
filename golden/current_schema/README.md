@@ -7,25 +7,30 @@ This folder freezes a tiny deterministic smoke reference for the current leaderb
 - `summary.csv`: grouped leaderboard summary, including planner timeout/error/fallback count means.
 - `result_schema.json`: explicit schema id/version and ordered CSV field lists.
 
-## Source Commands
-```bash
-python -m microbench.cli run \
-  --scenario config/scenarios/corridor.yaml \
-  --method baseline_goal \
-  --n 4 \
-  --seed 0 \
-  --comm ideal_50hz \
-  --out-dir golden/current_schema
+## Check Or Regenerate
+Check the checked-in fixture against a fresh deterministic run:
 
-python -m microbench.cli run \
-  --scenario config/scenarios/corridor.yaml \
-  --method mixed \
-  --agent-methods baseline_goal,template,baseline_goal,template \
-  --n 4 \
-  --seed 1 \
-  --comm ideal_50hz \
-  --out-dir golden/current_schema
+```bash
+python -m microbench.cli golden-current-schema \
+  --golden-dir golden/current_schema
 ```
+
+Regenerate the checked-in fixture after an intentional schema or semantic metric change:
+
+```bash
+python -m microbench.cli golden-current-schema \
+  --golden-dir golden/current_schema \
+  --update
+```
+
+The helper runs the source episodes in a temporary directory named `daa_current_schema_m64` so the checked-in `run_id` remains stable, then copies `results.csv`, `summary.csv`, and `result_schema.json` into this folder.
+
+## Review Policy
+- Headers and `result_schema.json` must match the declared schema exactly.
+- Semantic columns are compared exactly after sorting rows by method/scenario/comm/N/seed.
+- Timing columns are only checked for finite nonnegative values because they are machine-dependent:
+  - `results.csv`: `planner_ms_per_tick_per_agent_mean`, `planner_ms_per_tick_per_agent_p95`, `episode_runtime_s`
+  - `summary.csv`: `planner_ms_mean`, `planner_ms_p95`
 
 ## Purpose
 - Exercises the current result and summary schemas.

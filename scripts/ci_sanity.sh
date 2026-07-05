@@ -24,6 +24,9 @@ python -m microbench.cli check-acceptance \
   --suite-manifest "${OUT_DIR}/_generated_scenarios/official_smoke_generated/suite_manifest.yaml" \
   --methods "${METHOD}"
 
+python -m microbench.cli golden-current-schema \
+  --golden-dir golden/current_schema
+
 export OUT_DIR
 python - <<'PY'
 import csv

@@ -19,7 +19,13 @@ from microbench.metrics import append_result, write_summary
 from microbench.replay import render_interactive_trace, render_trace
 from microbench.dataset import generate_dataset, expand_scenarios, expand_list, sanity_check_shard
 from microbench.logging import wandb_logger
-from microbench.tools import mine_worst_cases, write_baseline_report
+from microbench.tools import (
+    build_current_schema_candidate,
+    compare_current_schema_golden,
+    mine_worst_cases,
+    write_baseline_report,
+    write_current_schema_golden,
+)
 from microbench.scenarios import (
     list_official_suites,
     materialize_official_suite,
@@ -496,6 +502,41 @@ def _baseline_report(args) -> None:
     print(f"done: baseline comparison report saved to {out}")
 
 
+def _golden_current_schema(args) -> None:
+    if args.update and args.candidate:
+        raise SystemExit("--update cannot be combined with --candidate")
+
+    if args.update:
+        out = write_current_schema_golden(args.golden_dir)
+        report = compare_current_schema_golden(candidate_dir=out, golden_dir=args.golden_dir)
+    elif args.candidate:
+        report = compare_current_schema_golden(candidate_dir=args.candidate, golden_dir=args.golden_dir)
+    else:
+        with tempfile.TemporaryDirectory(prefix="daa_current_schema_check_") as td:
+            candidate = build_current_schema_candidate(td)
+            report = compare_current_schema_golden(candidate_dir=candidate, golden_dir=args.golden_dir)
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        print(
+            f"current-schema golden: {status} "
+            f"schema={report['schema_version']} candidate={report['candidate_dir']} golden={report['golden_dir']}"
+        )
+        if report["mismatches"]:
+            for mismatch in report["mismatches"][:20]:
+                print(
+                    f"  {mismatch.get('reason')}: file={mismatch.get('file')} "
+                    f"row={mismatch.get('row')} field={mismatch.get('field')} "
+                    f"expected={mismatch.get('expected')} actual={mismatch.get('actual')}"
+                )
+            if len(report["mismatches"]) > 20:
+                print(f"  ... {len(report['mismatches']) - 20} more mismatch(es)")
+    if not report["ok"]:
+        raise SystemExit(f"current-schema golden check failed: {len(report['mismatches'])} mismatch(es)")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="microbench")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -628,6 +669,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_br.add_argument("--results", default=None, help="Optional results.csv path for run_count")
     p_br.add_argument("--generated-by", default=None, help="Optional reproducibility command or label")
 
+    p_golden = sub.add_parser("golden-current-schema", help="Check or regenerate the current result-schema fixture")
+    p_golden.add_argument("--golden-dir", default="golden/current_schema", help="Path to checked-in fixture")
+    p_golden.add_argument("--candidate", default=None, help="Compare an existing candidate directory instead of running")
+    p_golden.add_argument("--update", action="store_true", help="Overwrite the fixture with a fresh deterministic run")
+    p_golden.add_argument("--json", action="store_true", help="Emit machine-readable comparison report")
+
     p_hc = sub.add_parser("mine-hard-cases", help="Collect trace artifacts for worst episodes")
     p_hc.add_argument("--results", required=True, help="Path to runs/<id>/results.csv")
     p_hc.add_argument("--top-k", type=int, default=20, help="Number of episodes to collect")
@@ -742,6 +789,9 @@ def main() -> None:
         return
     if args.cmd == "baseline-report":
         _baseline_report(args)
+        return
+    if args.cmd == "golden-current-schema":
+        _golden_current_schema(args)
         return
     if args.cmd == "mine-hard-cases":
         out = mine_worst_cases(results_csv=args.results, top_k=args.top_k)

@@ -56,6 +56,7 @@ Before opening a PR:
 - update README or docs when user-facing behavior changes
 - add or update tests for new planner, metric, scenario, or schema behavior
 - keep result schema changes explicit in `microbench/metrics/io.py`
+- run `python -m microbench.cli golden-current-schema --golden-dir golden/current_schema` for schema or metric-semantics changes
 - avoid unrelated refactors in benchmark-critical code paths
 
 ## Scenario Contributions
