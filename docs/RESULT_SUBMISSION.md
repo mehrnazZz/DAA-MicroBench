@@ -26,10 +26,13 @@ Attach or link:
 
 - `results.csv`
 - `summary.csv`
+- `result_schema.json`
 - `_generated_scenarios/<suite>/suite_manifest.yaml` when using a generated official suite
 - any changed scenario/config files
 - any planner source or package version needed to reproduce
 - representative failure traces for nonzero collision or near-miss-heavy results
+
+`result_schema.json` is generated next to the CSV files and records the explicit result schema version plus the ordered `results.csv` and `summary.csv` fields. Results without this sidecar should be treated as legacy or unofficial unless the benchmark commit unambiguously identifies the schema.
 
 Run validation before submitting:
 

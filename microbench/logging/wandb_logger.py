@@ -6,6 +6,8 @@ from pathlib import Path
 import math
 from typing import Any
 
+from microbench.metrics.io import RESULT_SCHEMA_FILENAME
+
 
 def _warn(msg: str) -> None:
     print(f"[wandb] warning: {msg}")
@@ -186,10 +188,13 @@ def log_summary(
             art = wandb.Artifact(name=f"microbench_results_{method}_{run_id}", type="microbench-results")
             sp = Path(summary_csv_path)
             rp = Path(results_csv_path)
+            schema_path = sp.with_name(RESULT_SCHEMA_FILENAME)
             if sp.exists():
                 art.add_file(str(sp))
             if rp.exists():
                 art.add_file(str(rp))
+            if schema_path.exists():
+                art.add_file(str(schema_path))
             run.log_artifact(art)
 
         if bool(extra.get("upload_traces", False)):

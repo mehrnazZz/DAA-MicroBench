@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 import csv
+import json
 import math
 from collections import defaultdict
 
+
+RESULT_SCHEMA_VERSION = "0.4.0"
+RESULT_SCHEMA_FILENAME = "result_schema.json"
 
 RESULT_FIELDS = [
     "run_id",
@@ -119,6 +123,42 @@ SUMMARY_FIELDS = [
 ]
 
 
+def result_schema_manifest() -> dict:
+    return {
+        "schema": "daa_microbench.results",
+        "schema_version": RESULT_SCHEMA_VERSION,
+        "results": {
+            "filename": "results.csv",
+            "fields": list(RESULT_FIELDS),
+        },
+        "summary": {
+            "filename": "summary.csv",
+            "fields": list(SUMMARY_FIELDS),
+        },
+    }
+
+
+def write_result_schema_manifest(out_dir: str | Path) -> Path:
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / RESULT_SCHEMA_FILENAME
+    manifest = result_schema_manifest()
+
+    if path.exists():
+        try:
+            existing = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"Existing {RESULT_SCHEMA_FILENAME} is not valid JSON: {path}") from exc
+        if existing != manifest:
+            raise RuntimeError(
+                f"Existing {RESULT_SCHEMA_FILENAME} schema mismatch in {path}. "
+                "Use a new out_dir or remove the old schema manifest."
+            )
+
+    path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
 def _to_float(x) -> float | None:
     try:
         v = float(x)
@@ -144,6 +184,7 @@ def _p95(vals: list[float]) -> float:
 def append_result(out_dir: str | Path, row: dict) -> Path:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    write_result_schema_manifest(out)
     path = out / "results.csv"
     exists = path.exists()
     if exists:
@@ -169,6 +210,7 @@ def write_summary(out_dir: str | Path) -> Path:
     summary_path = out / "summary.csv"
     if not results_path.exists():
         return summary_path
+    write_result_schema_manifest(out)
 
     with results_path.open("r", newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))

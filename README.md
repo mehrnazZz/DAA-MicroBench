@@ -45,7 +45,7 @@ python -m microbench.cli canonical-sweep \
 
 ```bash
 ls runs_readme_smoke
-# results.csv, summary.csv, episodes/, worst_cases/ (if mined)
+# results.csv, summary.csv, result_schema.json, episodes/, worst_cases/ (if mined)
 ```
 
 If your editable install exposed the entrypoint, replace `python -m microbench.cli` with `daa-microbench` or the compatibility alias `microbench`.
@@ -672,7 +672,7 @@ What gets logged:
 - optional `top_failures` table from `worst_cases/index.csv` when present
 
 Artifacts:
-- default: one results artifact containing `summary.csv` and `results.csv`
+- default: one results artifact containing `summary.csv`, `results.csv`, and `result_schema.json`
 - optional: traces and replays from `worst_cases/` when corresponding upload flags are enabled
 
 Failure safety:
@@ -927,7 +927,7 @@ Project governance and contribution docs:
 When reporting a method result, include:
 - method name and commit hash
 - run command used
-- `summary.csv` and relevant slice of `results.csv`
+- `result_schema.json`, `summary.csv`, and the relevant slice of `results.csv`
 - key failure traces or mined worst-cases
 - compute metrics (`planner_ms_*`)
 

@@ -4,7 +4,17 @@ This document defines the intended public leaderboard policy for DAA Microbench.
 
 ## Status
 
-The benchmark is currently pre-v1. Leaderboard fields and official suites may still change. Public results should include the benchmark commit hash and schema version implied by `results.csv`.
+The benchmark is currently pre-v1. Leaderboard fields and official suites may still change. Public results should include the benchmark commit hash and the explicit schema version in `result_schema.json`.
+
+## Result Schema
+
+Every run directory written by the CLI includes:
+
+- `results.csv`: per-episode records.
+- `summary.csv`: grouped leaderboard records.
+- `result_schema.json`: schema id, schema version, and ordered field lists for both CSV files.
+
+The current result schema version is `0.4.0`. Any change to the ordered CSV fields should update this version and the current-schema golden fixture.
 
 ## Official Dimensions
 
@@ -23,6 +33,7 @@ No single scalar can fully describe DAA behavior. When a scalar ranking is neede
 Every submitted result should include:
 
 - benchmark commit hash
+- `result_schema.json`
 - method name and version
 - full command used
 - `results.csv`

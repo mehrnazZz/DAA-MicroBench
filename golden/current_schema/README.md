@@ -5,6 +5,7 @@ This folder freezes a tiny deterministic smoke reference for the current leaderb
 ## Contents
 - `results.csv`: per-episode outputs with explicit collision, communication, negotiation, and planner guardrail semantics.
 - `summary.csv`: grouped leaderboard summary, including planner timeout/error/fallback count means.
+- `result_schema.json`: explicit schema id/version and ordered CSV field lists.
 
 ## Source Commands
 ```bash
@@ -28,6 +29,7 @@ python -m microbench.cli run \
 
 ## Purpose
 - Exercises the current result and summary schemas.
+- Freezes the current explicit result schema version (`0.4.0`).
 - Exercises both single-method and heterogeneous-agent method labels.
 - Exercises zero-traffic communication and negotiation metric columns for schema stability.
 - Stays fast enough to regenerate during normal development.
