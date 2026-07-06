@@ -21,6 +21,7 @@ python -m microbench.cli validate-scenarios --all-builtins --all-generated-suite
 python -m microbench.cli baseline-audit --require-public-alpha-ready --json >"${WORK_DIR}/baseline_audit.json"
 python -m microbench.cli baseline-smoke --out-dir "${WORK_DIR}/baseline_smoke" --require-pass --json >"${WORK_DIR}/baseline_smoke.json"
 python -m microbench.cli baseline-promotion --out-dir "${WORK_DIR}/baseline_promotion" --behavior-report "${WORK_DIR}/baseline_smoke.json" --require-calibrated --json >"${WORK_DIR}/baseline_promotion.json"
+python -m microbench.cli baseline-evidence --out-dir "${WORK_DIR}/baseline_evidence" --require-pass --json >"${WORK_DIR}/baseline_evidence.json"
 python -m microbench.cli list-suites --json >"${WORK_DIR}/suites.json"
 python -m microbench.cli list-methods --json --include-aliases >"${WORK_DIR}/methods.json"
 

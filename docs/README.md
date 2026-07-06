@@ -72,6 +72,12 @@ Calibrate experimental baseline promotion status:
 python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 ```
 
+Run targeted CBF/MPC reference-evidence checks:
+
+```bash
+python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass
+```
+
 Plan optional longer stable-metadata review rows:
 
 ```bash

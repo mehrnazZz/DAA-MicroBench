@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import warnings
 import numpy as np
 
@@ -198,7 +200,7 @@ class CbfQpPlanner(ILocalPlanner):
         planar: bool,
     ) -> tuple[np.ndarray, str] | None:
         try:
-            with warnings.catch_warnings():
+            with warnings.catch_warnings(), contextlib.redirect_stderr(io.StringIO()):
                 warnings.simplefilter("ignore")
                 from scipy.optimize import minimize
         except Exception:

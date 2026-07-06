@@ -25,6 +25,7 @@ from microbench.tools import (
     compare_current_schema_golden,
     mine_worst_cases,
     run_baseline_behavior_smoke,
+    run_baseline_reference_evidence,
     run_baseline_promotion_calibration,
     run_baseline_stable_review,
     write_baseline_report,
@@ -610,6 +611,35 @@ def _baseline_promotion(args) -> None:
         raise SystemExit(f"baseline promotion stable-v1 blockers present: {blockers}")
 
 
+def _baseline_evidence(args) -> None:
+    report = run_baseline_reference_evidence(
+        mpc_profile_iters=int(args.mpc_profile_iters),
+        mpc_p95_max_ms=float(args.max_mpc_p95_ms),
+    )
+    report_path = Path(args.out_dir) / "baseline_evidence.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        summary = report["summary"]
+        print(
+            "baseline-evidence: "
+            f"{status} checks={summary['check_count']} failed={summary['failed_count']} "
+            f"methods={','.join(report['methods'])}"
+        )
+        for check in report["checks"]:
+            check_status = "ok" if check["ok"] else "FAIL"
+            print(f"  {check_status}: {check['method']} {check['name']}")
+        print(f"  report: {report_path}")
+
+    if args.require_pass and not report["ok"]:
+        failed = [f"{check['method']}:{check['name']}" for check in report["checks"] if not check["ok"]]
+        raise SystemExit(f"baseline evidence checks failed: {','.join(failed)}")
+
+
 def _baseline_review(args) -> None:
     duration_s = None if args.full_duration else float(args.duration_s)
     report = run_baseline_stable_review(
@@ -874,6 +904,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_bp.add_argument("--require-calibrated", action="store_true", help="Fail if public-alpha calibration evidence is missing")
     p_bp.add_argument("--require-stable-v1-ready", action="store_true", help="Fail if stable-v1 promotion blockers remain")
 
+    p_be = sub.add_parser("baseline-evidence", help="Run targeted CBF/MPC reference-evidence checks")
+    p_be.add_argument("--out-dir", required=True, help="Fresh output directory for evidence artifacts")
+    p_be.add_argument("--mpc-profile-iters", type=int, default=20, help="Dense 3D MPC timing samples")
+    p_be.add_argument("--max-mpc-p95-ms", type=float, default=50.0, help="Allowed dense 3D MPC p95 per-call latency")
+    p_be.add_argument("--json", action="store_true", help="Emit machine-readable evidence report")
+    p_be.add_argument("--require-pass", action="store_true", help="Fail if any evidence check fails")
+
     p_brv = sub.add_parser("baseline-review", help="Run optional longer stable-metadata review lanes for baseline candidates")
     p_brv.add_argument("--out-dir", required=True, help="Fresh output directory for review artifacts")
     p_brv.add_argument("--root", default=".", help="Repository root used for docs/tests coverage checks")
@@ -1028,6 +1065,9 @@ def main() -> None:
         return
     if args.cmd == "baseline-promotion":
         _baseline_promotion(args)
+        return
+    if args.cmd == "baseline-evidence":
+        _baseline_evidence(args)
         return
     if args.cmd == "baseline-review":
         _baseline_review(args)

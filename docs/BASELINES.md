@@ -9,6 +9,7 @@ python -m microbench.cli baseline-audit
 python -m microbench.cli baseline-audit --require-public-alpha-ready --json
 python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
 python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
+python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass
 python -m microbench.cli baseline-review --out-dir runs_baseline_review --duration-s 20
 ```
 
@@ -199,6 +200,16 @@ Requirements before promoting it to a reference baseline:
 - stronger solver-backed validation, with documented deterministic projection fallback
 - tests for infeasible constraints, solver failure, stale/noisy observations, and 2D/3D obstacle barriers
 
+Targeted evidence gate:
+
+```bash
+python -m microbench.cli baseline-evidence \
+  --out-dir runs_baseline_evidence \
+  --require-pass
+```
+
+For `cbf_qp`, this records feasible projection behavior, forced fallback behavior with residual violation reporting, and optional solver-path status. Passing it supports continued public-alpha use, but the report intentionally recommends keeping CBF experimental until solver backends and infeasible-constraint behavior are validated beyond these skeleton cases.
+
 ## MPC-Local Skeleton
 
 `mpc_local` is currently an experimental local predictive baseline. It samples one-step-reachable velocity commands, rolls them forward over a short horizon, and scores goal tracking, progress, smoothness, predicted agent-agent clearance, static obstacle clearance, and approach-to-conflict costs.
@@ -225,6 +236,8 @@ Requirements before promoting it to a reference baseline:
 - tests for degraded observations, dense 3D scenes, candidate capping, and public `PlannerInput`/`PlannerOutput` behavior
 - optional stronger shooting-method or solver-backed variant if needed
 
+`baseline-evidence` exercises a dense nonplanar local scene with nearby traffic and an obstacle, checks candidate capping/debug signals, and records per-call p50/p95 timing for the sampled planner call. Passing it supports public-alpha comparison, but the report intentionally recommends keeping MPC experimental until dense-3D compute bands and stress behavior are calibrated on official suites.
+
 Observed local calibration on tiny generated suites before public-alpha tuning:
 
 - generated experimental/smoke rows keep `cbf_qp` planner p95 around hundredths of a millisecond per tick per agent
@@ -232,6 +245,7 @@ Observed local calibration on tiny generated suites before public-alpha tuning:
 - a single `official_3d_stress` `mpc_local` row can still take tens of seconds wall-clock locally, so it remains outside default CI smoke
 - a 20-second stable-metadata prep review with `baseline-review --methods cbf_qp,mpc_local --duration-s 20` passes the selected 3D/degraded review lanes for both methods, but reports `needs_reference_role_decision` because both remain `experimental_baseline`
 - passing that review is evidence for promotion discussion, not promotion by itself; CBF still needs stronger solver/fallback validation, and MPC still needs broader compute and dense-3D stress characterization before either should become a public reference baseline
+- `baseline-evidence` adds a cheap dense-3D MPC candidate-cap and p95 profiling check; passing it is a local evidence point, not a substitute for generated-suite stress characterization
 
 ## Promotion Calibration
 
