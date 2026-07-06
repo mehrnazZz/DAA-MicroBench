@@ -1,5 +1,8 @@
 # DAA Microbench
 
+[![CI](https://github.com/mehrnazZz/DAA-MicroBench/actions/workflows/ci.yml/badge.svg)](https://github.com/mehrnazZz/DAA-MicroBench/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 DAA Microbench is a deterministic Python harness for evaluating local multi-drone detect-and-avoid planners at 50 Hz under configurable V2V communication impairment (rate, delay/jitter, loss, staleness). It models the local planning contract (velocity commands into a clamped dynamics step) without a full high-fidelity Sim/ROS/PX4 stack. Use it for fast, fair planner implementation and comparisons, agentic multi-drone DAA experiments, and diffusion-training dataset generation from baseline planners.
 
 ## 1) What This Is (and Is Not)
@@ -253,6 +256,7 @@ config/
 scripts/
   ci_sanity.sh          # quick CI-style execution sanity check
   package_smoke.sh      # wheel/install smoke check from outside the checkout
+  release_readiness.sh  # public-alpha release dry run
 docs/
   README.md             # documentation map
   DESIGN_V1.md          # public benchmark contract
@@ -927,6 +931,12 @@ Quick local execution sanity (CI-style):
 bash scripts/ci_sanity.sh
 ```
 
+Public-alpha release dry run:
+
+```bash
+bash scripts/release_readiness.sh
+```
+
 Current result-schema golden check:
 
 ```bash
@@ -939,6 +949,7 @@ Project governance and contribution docs:
 - License: `LICENSE` (Apache-2.0)
 - Contributing guide: `CONTRIBUTING.md`
 - Documentation map: `docs/README.md`
+- Public alpha release notes: `docs/PUBLIC_ALPHA_NOTES.md`
 - Public alpha release checklist: `docs/RELEASE_CHECKLIST.md`
 - Design contract: `docs/DESIGN_V1.md`
 - Planner API tutorial: `docs/PLANNER_API.md`

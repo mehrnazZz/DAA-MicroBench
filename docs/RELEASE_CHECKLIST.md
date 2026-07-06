@@ -8,9 +8,11 @@ Use this checklist before tagging a public alpha, announcing a leaderboard run, 
 - [ ] `python -m pytest -q` passes.
 - [ ] `bash scripts/ci_sanity.sh` passes.
 - [ ] `bash scripts/package_smoke.sh` passes.
+- [ ] `bash scripts/release_readiness.sh` passes.
+- [ ] `DAA_REQUIRE_CLEAN=1 bash scripts/release_readiness.sh` passes before tagging.
 - [ ] `python -m microbench.cli golden-current-schema --golden-dir golden/current_schema` passes.
 - [ ] GitHub Actions CI is green for Python 3.10, 3.11, and 3.12.
-- [ ] `docs/README.md`, `docs/DESIGN_V1.md`, `docs/PLANNER_API.md`, `docs/SCENARIO_SUITES.md`, `docs/BASELINES.md`, `docs/LEADERBOARD.md`, and `docs/RESULT_SUBMISSION.md` reflect the release behavior.
+- [ ] `docs/README.md`, `docs/PUBLIC_ALPHA_NOTES.md`, `docs/DESIGN_V1.md`, `docs/PLANNER_API.md`, `docs/SCENARIO_SUITES.md`, `docs/BASELINES.md`, `docs/LEADERBOARD.md`, and `docs/RESULT_SUBMISSION.md` reflect the release behavior.
 - [ ] Issue templates and pull request template still match the current public contract.
 - [ ] Generated official suites validate with `python -m microbench.cli validate-scenarios --all-builtins --all-generated-suites --quiet`.
 - [ ] Any metric/schema change has an updated `result_schema.json` and current-schema golden fixture.
@@ -25,6 +27,7 @@ Before tagging, write a short release note with:
 - leaderboard policy version
 - known limitations
 - exact reproduction commands for the smoke and package checks
+- whether the release is a public alpha or stable v1
 
 ## Do Not Release If
 

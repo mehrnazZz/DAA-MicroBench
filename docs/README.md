@@ -13,6 +13,7 @@ Start here when navigating the public docs.
 - [BASELINES.md](BASELINES.md): built-in baseline roles, limitations, recommended comparison sets, and promotion criteria.
 - [LEADERBOARD.md](LEADERBOARD.md): ranking policy, primary metrics, result categories, reproducibility rules, and review policy.
 - [RESULT_SUBMISSION.md](RESULT_SUBMISSION.md): result submission template, required artifacts, validation commands, and disclosure checklist.
+- [PUBLIC_ALPHA_NOTES.md](PUBLIC_ALPHA_NOTES.md): current public-alpha status, known limitations, and reproducibility commands.
 - [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md): public-alpha release checks, packaging smoke, CI expectations, and release-note requirements.
 
 ## Contributing
@@ -45,6 +46,12 @@ Run installed-package smoke:
 
 ```bash
 bash scripts/package_smoke.sh
+```
+
+Run the public-alpha readiness dry run:
+
+```bash
+bash scripts/release_readiness.sh
 ```
 
 Check the current result-schema fixture:
