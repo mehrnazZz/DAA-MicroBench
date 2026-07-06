@@ -5,7 +5,17 @@ DAA Microbench ships baselines for calibration, debugging, and reference compari
 ```bash
 python -m microbench.cli list-methods
 python -m microbench.cli list-methods --json --include-aliases
+python -m microbench.cli baseline-audit
+python -m microbench.cli baseline-audit --require-public-alpha-ready --json
 ```
+
+The public-alpha baseline gate is intentionally stricter than "the code imports":
+
+- required public-alpha reference baselines: `orca_heuristic`, `orca_with_staleness`, `priority_yield`
+- experimental but runnable baselines: `cbf_qp`, `mpc_local`, `negotiation_yield`
+- illustrative or template methods: `baseline_goal`, `intent_dummy`, `template`
+
+Run `baseline-audit --require-public-alpha-ready` before inviting external baseline comparisons. Stable v1 still requires promotion work; `baseline-audit --require-stable-v1-ready` is expected to fail while experimental baselines remain experimental.
 
 ## Current Methods
 

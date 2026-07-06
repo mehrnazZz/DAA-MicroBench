@@ -11,6 +11,7 @@ Use this checklist before tagging a public alpha, announcing a leaderboard run, 
 - [ ] `bash scripts/release_readiness.sh` passes.
 - [ ] `DAA_REQUIRE_CLEAN=1 bash scripts/release_readiness.sh` passes before tagging.
 - [ ] `python -m microbench.cli golden-current-schema --golden-dir golden/current_schema` passes.
+- [ ] `python -m microbench.cli baseline-audit --require-public-alpha-ready` passes.
 - [ ] GitHub Actions CI is green for Python 3.10, 3.11, and 3.12.
 - [ ] `docs/README.md`, `docs/PUBLIC_ALPHA_NOTES.md`, `docs/DESIGN_V1.md`, `docs/PLANNER_API.md`, `docs/SCENARIO_SUITES.md`, `docs/BASELINES.md`, `docs/LEADERBOARD.md`, and `docs/RESULT_SUBMISSION.md` reflect the release behavior.
 - [ ] Issue templates and pull request template still match the current public contract.

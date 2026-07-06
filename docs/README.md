@@ -54,6 +54,12 @@ Run the public-alpha readiness dry run:
 bash scripts/release_readiness.sh
 ```
 
+Audit baseline readiness:
+
+```bash
+python -m microbench.cli baseline-audit --require-public-alpha-ready
+```
+
 Check the current result-schema fixture:
 
 ```bash

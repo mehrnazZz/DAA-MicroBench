@@ -18,6 +18,7 @@ bash scripts/ci_sanity.sh "${WORK_DIR}/ci_sanity"
 bash scripts/package_smoke.sh "${WORK_DIR}/package_smoke"
 python -m microbench.cli golden-current-schema --golden-dir golden/current_schema
 python -m microbench.cli validate-scenarios --all-builtins --all-generated-suites --quiet
+python -m microbench.cli baseline-audit --require-public-alpha-ready --json >"${WORK_DIR}/baseline_audit.json"
 python -m microbench.cli list-suites --json >"${WORK_DIR}/suites.json"
 python -m microbench.cli list-methods --json --include-aliases >"${WORK_DIR}/methods.json"
 

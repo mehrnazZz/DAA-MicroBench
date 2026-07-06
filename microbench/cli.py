@@ -20,6 +20,7 @@ from microbench.replay import render_interactive_trace, render_trace
 from microbench.dataset import generate_dataset, expand_scenarios, expand_list, sanity_check_shard
 from microbench.logging import wandb_logger
 from microbench.tools import (
+    build_baseline_audit,
     build_current_schema_candidate,
     compare_current_schema_golden,
     mine_worst_cases,
@@ -506,6 +507,32 @@ def _baseline_report(args) -> None:
     print(f"done: baseline comparison report saved to {out}")
 
 
+def _baseline_audit(args) -> None:
+    report = build_baseline_audit(root=args.root)
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        summary = report["summary"]
+        print(
+            "baseline-audit: "
+            f"public_alpha_ready={report['public_alpha_ready']} "
+            f"stable_v1_ready={report['stable_v1_ready']} "
+            f"methods={summary['method_count']} "
+            f"reference_ready={summary['public_alpha_reference_ready_count']} "
+            f"experimental={summary['experimental_runnable_count']}"
+        )
+        for entry in report["methods"]:
+            blockers = ",".join(entry["blockers"]) if entry["blockers"] else "-"
+            print(
+                f"{entry['method']}: readiness={entry['readiness']} "
+                f"role={entry['role']} status={entry['status']} blockers={blockers}"
+            )
+    if args.require_public_alpha_ready and not report["public_alpha_ready"]:
+        raise SystemExit("baseline audit failed: public-alpha reference baseline blockers present")
+    if args.require_stable_v1_ready and not report["stable_v1_ready"]:
+        raise SystemExit("baseline audit failed: stable-v1 baseline blockers present")
+
+
 def _golden_current_schema(args) -> None:
     if args.update and args.candidate:
         raise SystemExit("--update cannot be combined with --candidate")
@@ -673,6 +700,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_br.add_argument("--results", default=None, help="Optional results.csv path for run_count")
     p_br.add_argument("--generated-by", default=None, help="Optional reproducibility command or label")
 
+    p_ba = sub.add_parser("baseline-audit", help="Audit built-in baseline metadata, docs, tests, and suite coverage")
+    p_ba.add_argument("--root", default=".", help="Repository root used for docs/tests coverage checks")
+    p_ba.add_argument("--json", action="store_true", help="Emit machine-readable audit report")
+    p_ba.add_argument(
+        "--require-public-alpha-ready",
+        action="store_true",
+        help="Fail if required public-alpha reference baselines are blocked",
+    )
+    p_ba.add_argument(
+        "--require-stable-v1-ready",
+        action="store_true",
+        help="Fail if any baseline still has stable-v1 promotion blockers",
+    )
+
     p_golden = sub.add_parser("golden-current-schema", help="Check or regenerate the current result-schema fixture")
     p_golden.add_argument("--golden-dir", default="golden/current_schema", help="Path to checked-in fixture")
     p_golden.add_argument("--candidate", default=None, help="Compare an existing candidate directory instead of running")
@@ -793,6 +834,9 @@ def main() -> None:
         return
     if args.cmd == "baseline-report":
         _baseline_report(args)
+        return
+    if args.cmd == "baseline-audit":
+        _baseline_audit(args)
         return
     if args.cmd == "golden-current-schema":
         _golden_current_schema(args)

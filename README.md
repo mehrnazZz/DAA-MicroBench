@@ -58,6 +58,7 @@ Available planners / how to list methods:
 ```bash
 python -m microbench.cli list-methods
 python -m microbench.cli list-methods --json --include-aliases
+python -m microbench.cli baseline-audit
 ```
 
 You can also inspect `microbench/planners/` (each planner module maps to a method name in the planner registry).

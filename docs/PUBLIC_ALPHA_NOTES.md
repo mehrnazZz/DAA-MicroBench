@@ -4,7 +4,7 @@ Status date: 2026-07-06
 
 DAA Microbench is ready for public-alpha evaluation: the repository has a documented planner contract, generated 2D/3D/agentic scenario suites, baseline metadata, result-schema manifests, issue templates, package smoke checks, and GitHub Actions CI.
 
-This is not yet a stable v1 release. The public contract is intended to be reviewable and usable, but official suite membership, acceptance bands, experimental baselines, and leaderboard scoring may still change before v1.
+This is not yet a stable v1 release. The public contract is intended to be reviewable and usable, but official suite membership, acceptance bands, experimental baselines, and leaderboard scoring may still change before v1. In particular, `cbf_qp`, `mpc_local`, and `negotiation_yield` are runnable experimental baselines, not mature leaderboard anchors.
 
 ## Supported Environment
 
@@ -43,6 +43,7 @@ bash scripts/ci_sanity.sh
 bash scripts/package_smoke.sh
 python -m microbench.cli golden-current-schema --golden-dir golden/current_schema
 python -m microbench.cli validate-scenarios --all-builtins --all-generated-suites --quiet
+python -m microbench.cli baseline-audit --require-public-alpha-ready
 ```
 
 ## Known Public Alpha Limitations
