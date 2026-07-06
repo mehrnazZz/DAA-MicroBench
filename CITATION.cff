@@ -5,7 +5,7 @@ version: "0.1.0"
 date-released: 2026-07-03
 license: "Apache-2.0"
 authors:
-  - name: "DAA Microbench contributors"
+  - name: "Mehrnaz Sabet"
 repository-code: "https://github.com/mehrnazZz/DAA-MicroBench"
 abstract: "DAA Microbench is a deterministic Python benchmark for local multi-drone detect-and-avoid planners under configurable communication impairment, perception limits, agentic messages, and reproducible scenario suites."
 keywords:
