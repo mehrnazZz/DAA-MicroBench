@@ -61,6 +61,7 @@ You can also inspect `microbench/planners/` (each planner module maps to a metho
 `orca_heuristic` is the canonical ORCA-like geometric baseline; `orca_expert` remains accepted as a compatibility alias for older scripts and result folders.
 See [docs/BASELINES.md](docs/BASELINES.md) for baseline roles, limitations, and recommended comparison sets.
 See [docs/DESIGN_V1.md](docs/DESIGN_V1.md) for the benchmark contract and [docs/PLANNER_API.md](docs/PLANNER_API.md) for a planner implementation tutorial.
+See [docs/README.md](docs/README.md) for the full documentation map.
 
 Run a heterogeneous episode with one explicit planner per drone:
 
@@ -252,6 +253,7 @@ config/
 scripts/
   ci_sanity.sh          # quick CI-style execution sanity check
 docs/
+  README.md             # documentation map
   DESIGN_V1.md          # public benchmark contract
   PLANNER_API.md        # planner tutorial and API guide
 examples/
@@ -935,6 +937,7 @@ python -m microbench.cli golden-current-schema --golden-dir golden/current_schem
 Project governance and contribution docs:
 - License: `LICENSE` (Apache-2.0)
 - Contributing guide: `CONTRIBUTING.md`
+- Documentation map: `docs/README.md`
 - Design contract: `docs/DESIGN_V1.md`
 - Planner API tutorial: `docs/PLANNER_API.md`
 - Result submission template: `docs/RESULT_SUBMISSION.md`

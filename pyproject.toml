@@ -5,9 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "daa-microbench"
 version = "0.1.0"
-description = "Deterministic microbenchmark for multi-agent local deconfliction"
+description = "Deterministic benchmark for agentic multi-drone detect-and-avoid planners"
+readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
+keywords = ["drones", "detect-and-avoid", "collision-avoidance", "multi-agent", "benchmark"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Science/Research",
