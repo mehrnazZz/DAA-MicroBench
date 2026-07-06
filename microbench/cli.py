@@ -26,6 +26,7 @@ from microbench.tools import (
     mine_worst_cases,
     run_baseline_behavior_smoke,
     run_baseline_promotion_calibration,
+    run_baseline_stable_review,
     write_baseline_report,
     write_current_schema_golden,
 )
@@ -609,6 +610,49 @@ def _baseline_promotion(args) -> None:
         raise SystemExit(f"baseline promotion stable-v1 blockers present: {blockers}")
 
 
+def _baseline_review(args) -> None:
+    duration_s = None if args.full_duration else float(args.duration_s)
+    report = run_baseline_stable_review(
+        out_dir=args.out_dir,
+        root=args.root,
+        methods=_parse_str_list(args.methods) if args.methods else None,
+        lanes=_parse_str_list(args.lanes) if args.lanes else None,
+        duration_s=duration_s,
+        max_runs=args.max_runs,
+        plan_only=bool(args.plan_only),
+    )
+    report_path = Path(args.out_dir) / "baseline_review.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["review_checks_pass"] else "REVIEW"
+        if report["plan_only"]:
+            status = "PLAN"
+        print(
+            "baseline-review: "
+            f"{status} runs={report['run_count']}/{report['planned_run_count']} "
+            f"methods={len(report['methods'])} lanes={len(report['lanes'])}"
+        )
+        for entry in report["methods_detail"]:
+            failed = ",".join(check["name"] for check in entry["failed_checks"]) if entry["failed_checks"] else "-"
+            print(
+                f"{entry['method']}: checks={entry['review_checks_pass']} "
+                f"recommendation={entry['metadata_recommendation']} failed={failed}"
+            )
+        print(f"  report: {report_path}")
+
+    if args.require_pass and not report["plan_only"] and not report["review_checks_pass"]:
+        failed = {
+            entry["method"]: entry["failed_checks"]
+            for entry in report["methods_detail"]
+            if entry["failed_checks"] or not entry["review_checks_pass"]
+        }
+        raise SystemExit(f"baseline review checks failed: {failed}")
+
+
 def _golden_current_schema(args) -> None:
     if args.update and args.candidate:
         raise SystemExit("--update cannot be combined with --candidate")
@@ -830,6 +874,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_bp.add_argument("--require-calibrated", action="store_true", help="Fail if public-alpha calibration evidence is missing")
     p_bp.add_argument("--require-stable-v1-ready", action="store_true", help="Fail if stable-v1 promotion blockers remain")
 
+    p_brv = sub.add_parser("baseline-review", help="Run optional longer stable-metadata review lanes for baseline candidates")
+    p_brv.add_argument("--out-dir", required=True, help="Fresh output directory for review artifacts")
+    p_brv.add_argument("--root", default=".", help="Repository root used for docs/tests coverage checks")
+    p_brv.add_argument(
+        "--methods",
+        default=None,
+        help="Comma-separated promotion candidates; defaults to cbf_qp,mpc_local,negotiation_yield",
+    )
+    p_brv.add_argument(
+        "--lanes",
+        default=None,
+        help="Comma-separated review lane ids; defaults to all stable-metadata prep lanes",
+    )
+    p_brv.add_argument(
+        "--duration-s",
+        type=float,
+        default=20.0,
+        help="Scenario duration override for review lanes; use --full-duration for official generated durations",
+    )
+    p_brv.add_argument("--full-duration", action="store_true", help="Use official generated scenario durations")
+    p_brv.add_argument("--max-runs", type=int, default=None, help="Run only the first K planned review episodes")
+    p_brv.add_argument("--plan-only", action="store_true", help="Write/print the review plan without running episodes")
+    p_brv.add_argument("--json", action="store_true", help="Emit machine-readable review report")
+    p_brv.add_argument("--require-pass", action="store_true", help="Fail if any executed review check fails")
+
     p_golden = sub.add_parser("golden-current-schema", help="Check or regenerate the current result-schema fixture")
     p_golden.add_argument("--golden-dir", default="golden/current_schema", help="Path to checked-in fixture")
     p_golden.add_argument("--candidate", default=None, help="Compare an existing candidate directory instead of running")
@@ -959,6 +1028,9 @@ def main() -> None:
         return
     if args.cmd == "baseline-promotion":
         _baseline_promotion(args)
+        return
+    if args.cmd == "baseline-review":
+        _baseline_review(args)
         return
     if args.cmd == "golden-current-schema":
         _golden_current_schema(args)

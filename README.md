@@ -961,6 +961,13 @@ Experimental baseline promotion calibration:
 python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 ```
 
+Optional longer stable-metadata review:
+
+```bash
+python -m microbench.cli baseline-review --out-dir runs_baseline_review --plan-only
+python -m microbench.cli baseline-review --out-dir runs_baseline_review --duration-s 20
+```
+
 Current result-schema golden check:
 
 ```bash

@@ -221,6 +221,16 @@ Observed local calibration on tiny generated suites before public-alpha tuning:
 
 `baseline-promotion --require-calibrated` is the current public-alpha gate for experimental baselines. Passing it means the method imports, has docs/tests coverage, supports 2D and 3D, runs the behavior smoke without planner guardrail failures, emits its expected signal/debug contract, and passes compact promotion-calibration acceptance on an 8-second 3D stress lane plus an 8-second degraded fused-sensing lane. For `cbf_qp` and `mpc_local`, it also runs `official_experimental_baselines` and checks that suite acceptance metadata.
 
+Optional stable-metadata review:
+
+```bash
+python -m microbench.cli baseline-review \
+  --out-dir runs_baseline_review \
+  --duration-s 20
+```
+
+This is intentionally outside release readiness. It runs longer selected rows from `official_3d_stress` and `official_agentic_stress`, records `baseline_review.json`, and reports per-method metadata recommendations such as `review_for_pre_v1_metadata`, `needs_reference_role_decision`, or `keep_experimental_until_review_checks_pass`. Use `--plan-only` before running, `--lanes` / `--methods` to narrow scope, and `--full-duration` when you want the official generated scenario durations instead of the default 20-second review override.
+
 Passing this gate does not make a method a stable reference baseline. Stable-v1 promotion still requires:
 
 - method metadata changed out of `experimental` status after review

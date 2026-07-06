@@ -72,6 +72,12 @@ Calibrate experimental baseline promotion status:
 python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 ```
 
+Plan optional longer stable-metadata review rows:
+
+```bash
+python -m microbench.cli baseline-review --out-dir runs_baseline_review --plan-only
+```
+
 Check the current result-schema fixture:
 
 ```bash
