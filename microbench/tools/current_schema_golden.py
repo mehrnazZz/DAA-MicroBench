@@ -35,6 +35,7 @@ CURRENT_SCHEMA_FLOAT_REL_TOL = 1e-9
 
 RESULT_FLOAT_TOLERANCE_FIELDS = frozenset(
     {
+        "jerk_mean",
         "min_sep_min_m",
         "min_sep_p05_m",
     }

@@ -78,12 +78,13 @@ def test_current_schema_comparison_tolerates_timing_drift(tmp_path: Path) -> Non
     assert report["ok"], report["mismatches"]
 
 
-def test_current_schema_comparison_tolerates_clearance_roundoff(tmp_path: Path) -> None:
+def test_current_schema_comparison_tolerates_continuous_metric_roundoff(tmp_path: Path) -> None:
     candidate = _copy_fixture(tmp_path)
 
     def mutate_results(rows):
         for row in rows:
             row["min_sep_p05_m"] = str(float(row["min_sep_p05_m"]) + CURRENT_SCHEMA_FLOAT_ABS_TOL * 0.5)
+            row["jerk_mean"] = str(float(row["jerk_mean"]) - CURRENT_SCHEMA_FLOAT_ABS_TOL * 0.5)
 
     def mutate_summary(rows):
         for row in rows:
