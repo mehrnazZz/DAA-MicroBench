@@ -46,6 +46,25 @@ Observations are fixed-size local vectors:
 
 The vector intentionally uses the same local information surface exposed to planners, not privileged global state for all drones.
 
+Base observation layout:
+
+| Field | Indices | Meaning |
+| --- | ---: | --- |
+| `ego_pos` | `0:3` | ego position `(x, y, z)` in meters |
+| `ego_vel` | `3:6` | ego velocity `(vx, vy, vz)` in m/s |
+| `goal_dir` | `6:9` | unit direction from ego to goal |
+| `goal_dist` | `9` | distance to goal in meters |
+| `done` | `10` | simulator goal-completion flag |
+| `time_s` | `11` | episode time in seconds |
+| `agent_id_norm` | `12` | agent id normalized to `[0, 1]` |
+| `priority` | `13` | scenario priority value |
+| `radius_m` | `14` | collision radius |
+| `v_max_mps` | `15` | speed limit |
+| `a_max_mps2` | `16` | acceleration limit |
+| `neighbors` | `17:` | padded top-k neighbor blocks |
+
+Each neighbor block has 9 values: present flag, relative position `(3)`, relative velocity `(3)`, neighbor radius, and message age.
+
 ## Background Traffic
 
 The default controlled method is `rl_policy`. Scenario-configured agents with another method remain background traffic. This matters for official agentic stress cases such as `multi_intruder_3d_hard`, where noncooperative intruders can be configured as `baseline_goal` while cooperative agents are controlled by the learner.
@@ -91,6 +110,34 @@ The default reward is intentionally simple:
 - goal-completion bonus
 
 Override weights with `reward_config` on `DaaParallelEnv`. Stable leaderboard comparisons should still use benchmark metrics and official suite reports, not training reward alone.
+
+## Smoke Evaluation
+
+Run a compact 2D/3D wrapper check before handing the environment to a trainer:
+
+```bash
+python -m microbench.cli rl-smoke \
+  --out-dir runs_rl_smoke \
+  --policy goal_direction \
+  --require-pass
+```
+
+The command materializes `official_smoke_generated`, runs one 2D and one 3D scenario through the RL wrapper, writes `rl_smoke.json`, and writes per-episode rows to `rl_smoke_episodes.csv`. Built-in smoke policies are `zero`, `random`, and `goal_direction`.
+
+The same runner is available from Python:
+
+```python
+from microbench.rl import run_rl_policy_smoke
+
+report = run_rl_policy_smoke(
+    out_dir="runs_rl_smoke",
+    policy="random",
+    max_steps=100,
+)
+assert report["ok"]
+```
+
+See `examples/rl_random_policy.py` for a minimal runnable script.
 
 ## Public Alpha Caveats
 

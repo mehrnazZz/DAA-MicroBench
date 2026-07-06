@@ -28,6 +28,32 @@ RL_POLICY_METHOD = "rl_policy"
 AGENT_NAME_PREFIX = "agent_"
 OBS_BASE_DIM = 17
 OBS_NEIGHBOR_DIM = 9
+OBS_POS_SLICE = slice(0, 3)
+OBS_VEL_SLICE = slice(3, 6)
+OBS_GOAL_DIR_SLICE = slice(6, 9)
+OBS_GOAL_DIST_INDEX = 9
+OBS_DONE_INDEX = 10
+OBS_TIME_INDEX = 11
+OBS_AGENT_ID_NORM_INDEX = 12
+OBS_PRIORITY_INDEX = 13
+OBS_RADIUS_INDEX = 14
+OBS_V_MAX_INDEX = 15
+OBS_A_MAX_INDEX = 16
+OBS_NEIGHBOR_START = OBS_BASE_DIM
+OBSERVATION_LAYOUT = {
+    "ego_pos": (0, 3),
+    "ego_vel": (3, 6),
+    "goal_dir": (6, 9),
+    "goal_dist": (9, 10),
+    "done": (10, 11),
+    "time_s": (11, 12),
+    "agent_id_norm": (12, 13),
+    "priority": (13, 14),
+    "radius_m": (14, 15),
+    "v_max_mps": (15, 16),
+    "a_max_mps2": (16, 17),
+    "neighbors": (OBS_NEIGHBOR_START, None),
+}
 
 
 def agent_name(agent_id: int) -> str:
@@ -379,6 +405,14 @@ class DaaParallelEnv(_PettingZooParallelEnv):
         if self._last_step is None:
             return None
         return self._last_step.trace_frame()
+
+    @property
+    def episode_step_limit(self) -> int | None:
+        return None if self._engine is None else int(self._engine.steps)
+
+    @property
+    def planar(self) -> bool | None:
+        return None if self._engine is None else bool(self._engine.planar)
 
     def close(self) -> None:
         if self._engine is not None:

@@ -89,6 +89,7 @@ Smoke-test the RL interface:
 
 ```bash
 python -m pytest tests/test_rl_interface.py -q
+python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
 ```
 
 Check the current result-schema fixture:

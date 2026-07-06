@@ -48,6 +48,7 @@ python -m microbench.cli baseline-audit --require-public-alpha-ready
 python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
 python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass
+python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
 ```
 
 ## Known Public Alpha Limitations
@@ -57,6 +58,7 @@ python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --re
 - `cbf_qp` and `mpc_local` also pass the longer stable-metadata prep lanes in `baseline-review`, but they remain experimental until the reference-role decision, CBF validation, and MPC compute/stress characterization are stronger.
 - `baseline-evidence` adds targeted CBF fallback/solver-status checks and dense-3D MPC profiling; it is evidence for review, not a stable-v1 promotion by itself.
 - The PettingZoo/Gymnasium-style RL interface is available for public-alpha experimentation, but observation vectors and reward defaults are not stable-v1 contracts yet.
+- `rl-smoke` checks wrapper API health and 2D/3D coverage, not policy quality or leaderboard safety.
 - The benchmark models local planning and simplified dynamics; it is not a full flight stack, airspace model, PX4/ROS simulator, or certification tool.
 - Generated official suites are pre-v1 and may be adjusted as external users stress-test the benchmark.
 - Leaderboard policy and scoring dimensions are documented, but public submissions should still be reviewed manually during alpha.

@@ -19,6 +19,8 @@ from microbench.metrics import append_result, write_summary
 from microbench.replay import render_interactive_trace, render_trace
 from microbench.dataset import generate_dataset, expand_scenarios, expand_list, sanity_check_shard
 from microbench.logging import wandb_logger
+from microbench.rl.evaluate import run_rl_policy_smoke
+from microbench.rl.policies import POLICY_NAMES
 from microbench.tools import (
     build_baseline_audit,
     build_current_schema_candidate,
@@ -683,6 +685,38 @@ def _baseline_review(args) -> None:
         raise SystemExit(f"baseline review checks failed: {failed}")
 
 
+def _rl_smoke(args) -> None:
+    report = run_rl_policy_smoke(
+        out_dir=args.out_dir,
+        policy=str(args.policy),
+        scenario_ids=_parse_str_list(args.scenarios) if args.scenarios else None,
+        n_agents=int(args.n),
+        seeds=_parse_int_list(args.seeds),
+        comm_profile=str(args.comm),
+        max_steps=args.max_steps,
+    )
+    report_path = Path(args.out_dir) / "rl_smoke.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        print(
+            f"rl-smoke: {status} policy={report['policy']} runs={report['run_count']} "
+            f"scenarios={','.join(report['scenario_ids'])} dimensions={'+'.join(report['dimensions'])}"
+        )
+        for check in report["checks"]:
+            check_status = "ok" if check["ok"] else "FAIL"
+            print(f"  {check_status}: {check['name']}")
+        print(f"  report: {report_path}")
+
+    if args.require_pass and not report["ok"]:
+        failed = [check["name"] for check in report["checks"] if not check["ok"]]
+        raise SystemExit(f"RL smoke failed: {','.join(failed)}")
+
+
 def _golden_current_schema(args) -> None:
     if args.update and args.candidate:
         raise SystemExit("--update cannot be combined with --candidate")
@@ -936,6 +970,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_brv.add_argument("--json", action="store_true", help="Emit machine-readable review report")
     p_brv.add_argument("--require-pass", action="store_true", help="Fail if any executed review check fails")
 
+    p_rl = sub.add_parser("rl-smoke", help="Run compact PettingZoo/Gymnasium wrapper smoke checks")
+    p_rl.add_argument("--out-dir", required=True, help="Fresh output directory for RL smoke artifacts")
+    p_rl.add_argument("--policy", choices=POLICY_NAMES, default="goal_direction", help="Built-in smoke policy")
+    p_rl.add_argument(
+        "--scenarios",
+        default=None,
+        help="Comma-separated generated smoke scenario ids; defaults to one 2D and one 3D case",
+    )
+    p_rl.add_argument("--n", type=int, default=4, help="Agent count for each RL smoke episode")
+    p_rl.add_argument("--seeds", default="0", help="Seed list/range, e.g. 0:2")
+    p_rl.add_argument("--comm", default="ideal_50hz", help="Communication profile for each RL smoke episode")
+    p_rl.add_argument("--max-steps", type=int, default=None, help="Optional cap for each episode")
+    p_rl.add_argument("--json", action="store_true", help="Emit machine-readable RL smoke report")
+    p_rl.add_argument("--require-pass", action="store_true", help="Fail if any RL smoke check fails")
+
     p_golden = sub.add_parser("golden-current-schema", help="Check or regenerate the current result-schema fixture")
     p_golden.add_argument("--golden-dir", default="golden/current_schema", help="Path to checked-in fixture")
     p_golden.add_argument("--candidate", default=None, help="Compare an existing candidate directory instead of running")
@@ -1071,6 +1120,9 @@ def main() -> None:
         return
     if args.cmd == "baseline-review":
         _baseline_review(args)
+        return
+    if args.cmd == "rl-smoke":
+        _rl_smoke(args)
         return
     if args.cmd == "golden-current-schema":
         _golden_current_schema(args)
