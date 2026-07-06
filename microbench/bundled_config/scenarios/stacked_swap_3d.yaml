@@ -1,0 +1,32 @@
+scenario:
+  name: "stacked_swap_3d"
+  description: "Non-planar two-sided swap through a shared 3D volume."
+  duration_s: 30.0
+
+world:
+  planar: false
+  bounds:
+    xmin: -40.0
+    xmax: 40.0
+    ymin: -12.0
+    ymax: 12.0
+    zmin: -12.0
+    zmax: 12.0
+
+agent_params:
+  radius_m: 0.55
+  v_max_mps: 3.0
+  a_max_mps2: 2.0
+  goal_tolerance_m: 1.0
+
+goals:
+  min_goal_distance_m: 45.0
+
+spawn:
+  type: "rect_to_rect"
+  start_region:
+    center: [-28.0, 0.0, 0.0]
+    half: [4.0, 8.0, 8.0]
+  goal_region:
+    center: [28.0, 0.0, 0.0]
+    half: [4.0, 8.0, 8.0]

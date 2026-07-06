@@ -252,6 +252,7 @@ config/
   scenarios/*.yaml      # benchmark scenarios
 scripts/
   ci_sanity.sh          # quick CI-style execution sanity check
+  package_smoke.sh      # wheel/install smoke check from outside the checkout
 docs/
   README.md             # documentation map
   DESIGN_V1.md          # public benchmark contract
@@ -938,6 +939,7 @@ Project governance and contribution docs:
 - License: `LICENSE` (Apache-2.0)
 - Contributing guide: `CONTRIBUTING.md`
 - Documentation map: `docs/README.md`
+- Public alpha release checklist: `docs/RELEASE_CHECKLIST.md`
 - Design contract: `docs/DESIGN_V1.md`
 - Planner API tutorial: `docs/PLANNER_API.md`
 - Result submission template: `docs/RESULT_SUBMISSION.md`

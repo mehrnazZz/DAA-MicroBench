@@ -1,0 +1,124 @@
+# config/defaults.yaml
+sim:
+  dt_s: 0.02                # 50 Hz fixed-step
+  duration_s: 60.0          # default episode length
+  planar: true              # planar mode = move in XZ, keep Y fixed
+  fixed_y_m: 0.0            # used when planar=true
+  goal_tolerance_m: 1.0     # agent considered "done" if within this distance of goal
+  goal_hold_time_s: 0.5     # must remain within goal_tolerance for this long
+  near_miss_margin_m: 0.5   # near-miss threshold = r_i + r_j + near_miss_margin_m
+
+dynamics:
+  # Defaults (can be overridden per scenario or per agent)
+  v_max_mps: 3.0
+  a_max_mps2: 2.0
+
+neighbors:
+  # Shared neighbor selection for all planners (fair comparison)
+  range_m: 30.0
+  top_k: 8
+  threat_metric: "ttc"      # "ttc" or "distance"
+  ttc_horizon_s: 6.0        # only used if threat_metric="ttc"
+  # If a neighbor message is older than this, still pass it but clamp age to age_cap (comm.age_cap_s)
+  # Planners can treat old messages as "uncooperative" and inflate buffers.
+
+perception:
+  # Observation source for planner neighbors: "v2v", "sensor", or "fused".
+  mode: "v2v"
+  sensor:
+    range_m: 30.0
+    fov_deg: 360.0
+    occlusion: false
+    occlusion_margin_m: 0.0
+    false_negative_p: 0.0
+    noise_sigma_pos_m: 0.0
+    noise_sigma_vel_mps: 0.0
+    track_ttl_s: 0.0       # hold last-seen local sensor tracks for this long after missed detections
+
+comm:
+  profile: "ideal_50hz"     # name in comm_profiles.yaml
+  age_cap_s: 0.75           # clamp msgAgeSec to this for planner inputs
+  noise_sigma_pos_m: 0.0    # optional; override per comm profile if desired
+  noise_sigma_vel_mps: 0.0
+
+intent:
+  enabled: false
+  tx_rate_hz: 10.0
+  max_points: 12
+  age_cap_s: 0.75
+
+logging:
+  out_dir: "runs"
+  save_trace: false
+  trace_max_steps: 4000     # cap trace size (60s @50Hz = 3000 steps)
+  trace_save_failures_only: true
+  save_events: false
+  save_trace_on_collision: false
+  trace_window_s: 3.0
+  trace_agents_mode: "collision_pair_plus_neighbors"   # all | collision_pair_plus_neighbors
+  near_miss_record_threshold_m: 0.2
+
+batch:
+  # CLI can override these
+  seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  n_agents_list: [10, 20, 50, 100]
+
+planner_guardrails:
+  timeout_ms: 100.0       # soft timeout; slow outputs are discarded after the call returns
+  fallback_speed_scale: 0.5
+
+
+orca_heuristic: &orca_heuristic_defaults
+  time_horizon_s: 3.0
+  max_neighbors: 8
+  neighbor_range_m: 30.0
+  safety_margin_m: 0.2
+  stale_age_cap_s: 0.75
+  stale_inflation_gain: 0.8
+  closing_speed_buffer_s: 0.1
+  sidestep_bias_gain: 0.2
+
+# Backward-compatible config key for older local overlays. New runs should use
+# the `orca_heuristic` planner method and config key.
+orca_expert:
+  <<: *orca_heuristic_defaults
+
+orca_with_staleness:
+  <<: *orca_heuristic_defaults
+  stale_age_cap_s: 1.25
+  stale_inflation_gain: 1.5
+  responsibility_age_gain: 0.55
+  closing_speed_buffer_s: 0.15
+  sidestep_bias_gain: 0.24
+
+cbf_qp:
+  solver: "projection"     # "projection", "auto", or "scipy"; projection is quiet and dependency-free
+  alpha: 2.0
+  safety_margin_m: 0.25
+  obstacle_margin_m: 0.2
+  max_neighbors: 8
+  max_projection_iters: 8
+  max_solver_iters: 40
+  violation_tol: 1.0e-5
+  fallback_speed_scale: 0.5
+
+mpc_local:
+  horizon_s: 2.0
+  rollout_dt_s: 0.5
+  max_neighbors: 8
+  candidate_samples_2d: 12
+  candidate_samples_3d: 18
+  max_candidates: 48
+  safety_margin_m: 0.25
+  obstacle_margin_m: 0.2
+  stale_inflation_gain: 0.6
+  goal_slowdown_radius_m: 6.0
+  tracking_weight: 1.0
+  progress_weight: 0.2
+  smoothness_weight: 0.15
+  collision_weight: 3000.0
+  clearance_weight: 40.0
+  obstacle_weight: 80.0
+  approach_weight: 20000.0
+  low_speed_weight: 0.05
+  direction_scales: [1.0, 0.5]

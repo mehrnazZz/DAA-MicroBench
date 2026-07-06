@@ -1,0 +1,23 @@
+scenario:
+  name: "crowd_swap"
+  description: "Agents spawn on a ring and swap to opposite goals through the center."
+  duration_s: 60.0
+
+world:
+  planar: true
+  fixed_y_m: 0.0
+
+agent_params:
+  radius_m: 0.5
+  v_max_mps: 3.2
+  a_max_mps2: 2.5
+  goal_tolerance_m: 1.0
+
+goals:
+  min_goal_distance_m: 45.0
+
+spawn:
+  type: "circle_swap"
+  center: [0.0, 0.0, 0.0]
+  radius_m: 30.0
+  jitter_m: 1.5

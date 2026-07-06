@@ -1,0 +1,48 @@
+scenario:
+  name: "negotiation_headon"
+  duration_s: 20.0
+
+world:
+  planar: true
+  fixed_y_m: 0.0
+
+agent_params:
+  radius_m: 0.35
+  v_max_mps: 2.0
+  a_max_mps2: 3.0
+  goal_tolerance_m: 0.75
+
+neighbors:
+  range_m: 30.0
+  top_k: 4
+  threat_metric: "distance"
+
+goals:
+  min_goal_distance_m: 10.0
+
+spawn:
+  type: "circle_swap"
+  center: [0.0, 0.0, 0.0]
+  radius_m: 8.0
+  jitter_m: 0.0
+
+agents:
+  by_id:
+    0:
+      role: "right_of_way"
+      priority: 0
+    1:
+      role: "yield_candidate"
+      priority: 1
+
+comm:
+  agent_messages:
+    rate_limit_hz: 10
+    bandwidth_limit_Bps: 4096
+
+logging:
+  save_events: true
+  save_trace: false
+  trace_save_failures_only: true
+  save_trace_on_collision: true
+  trace_window_s: 3.0

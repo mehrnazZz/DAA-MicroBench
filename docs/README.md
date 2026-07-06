@@ -13,6 +13,7 @@ Start here when navigating the public docs.
 - [BASELINES.md](BASELINES.md): built-in baseline roles, limitations, recommended comparison sets, and promotion criteria.
 - [LEADERBOARD.md](LEADERBOARD.md): ranking policy, primary metrics, result categories, reproducibility rules, and review policy.
 - [RESULT_SUBMISSION.md](RESULT_SUBMISSION.md): result submission template, required artifacts, validation commands, and disclosure checklist.
+- [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md): public-alpha release checks, packaging smoke, CI expectations, and release-note requirements.
 
 ## Contributing
 
@@ -38,6 +39,12 @@ Run CI-style sanity:
 
 ```bash
 bash scripts/ci_sanity.sh
+```
+
+Run installed-package smoke:
+
+```bash
+bash scripts/package_smoke.sh
 ```
 
 Check the current result-schema fixture:

@@ -1,0 +1,74 @@
+# config/scenarios/funnel.yaml
+scenario:
+  name: "funnel_gate"
+  description: "Many agents must pass through a narrow gate at x=0; stresses dense deconfliction."
+  duration_s: 60.0
+
+world:
+  planar: true
+  fixed_y_m: 0.0
+  bounds:
+    xmin: -60.0
+    xmax:  60.0
+    ymin:  -1.0
+    ymax:   1.0
+    zmin: -30.0
+    zmax:  30.0
+
+agent_params:
+  radius_m: 0.6
+  v_max_mps: 3.0        # configurable; CLI can override or you can sweep this
+  a_max_mps2: 2.0
+  goal_tolerance_m: 1.0
+
+# Goal generation controls (ensures goals aren't trivially close to spawns)
+goals:
+  min_goal_distance_m: 40.0  # reject goal assignments closer than this
+
+# Simple obstacle primitives. Use AABBs only in v1.0 for speed.
+# The "gate" is created by two barrier slabs at x=0 leaving a gap around z=0.
+obstacles:
+  # World boundary walls (optional but helps keep flows contained)
+  - aabb:
+      center: [0.0, 0.0,  32.0]
+      half:   [70.0, 2.0,  2.0]
+  - aabb:
+      center: [0.0, 0.0, -32.0]
+      half:   [70.0, 2.0,  2.0]
+
+  # Gate barriers at x=0, leaving opening z in [-3.5, +3.5]
+  - aabb:
+      center: [0.0, 0.0,  16.75]   # covers z ~ [3.5, 30]
+      half:   [2.0,  2.0,  13.25]
+  - aabb:
+      center: [0.0, 0.0, -16.75]   # covers z ~ [-30, -3.5]
+      half:   [2.0,  2.0,  13.25]
+
+spawn:
+  # Spawn agents in a start rectangle on the west side; goals on the east side.
+  # The runner will set count = N from CLI.
+  type: "rect_to_rect"
+  start_region:
+    center: [-45.0, 0.0, 0.0]
+    half:   [6.0,   0.0, 24.0]
+  goal_region:
+    center: [ 45.0, 0.0, 0.0]
+    half:   [6.0,   0.0, 24.0]
+  # Optional: bias spawns toward the gate line to make it harder
+  spawn_bias:
+    type: "gaussian_z"
+    sigma_m: 12.0
+
+events:
+  # Sudden maneuver (“weather”) event: pick a small set of agents and force a sharp behavior
+  # for a short window (others must react).
+  - type: "weather_maneuver"
+    enabled: true
+    t_start_s: 10.0
+    duration_s: 3.0
+    n_agents: 1
+    selection: "closest_to_gate"      # choose agent(s) closest to x=0 at event start
+    forced_policy:
+      type: "hard_turn_and_slow"      # implemented in scenarios/events.py
+      turn_deg: 70.0                  # instantaneous desired heading change (planar)
+      speed_scale: 0.35               # multiply current speed by this during event

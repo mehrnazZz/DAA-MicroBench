@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install package and test tools
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e .
+          python -m pip install pytest
+
+      - name: Run pytest
+        run: python -m pytest -q
+
+      - name: Run benchmark sanity checks
+        run: bash scripts/ci_sanity.sh
+
+      - name: Run package smoke test
+        run: bash scripts/package_smoke.sh

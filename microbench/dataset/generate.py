@@ -8,7 +8,7 @@ import math
 import hashlib
 import numpy as np
 
-from microbench.config import load_defaults
+from microbench.config import load_defaults, resolve_config_path
 from microbench.core import EpisodeEngine
 from microbench.scenarios import load_scenario
 from microbench.types import AgentState, NeighborObs
@@ -586,7 +586,7 @@ def expand_scenarios(spec: str) -> list[str]:
         if matches:
             out.extend(matches)
         else:
-            out.append(token)
+            out.append(str(resolve_config_path(token)))
     return out
 
 

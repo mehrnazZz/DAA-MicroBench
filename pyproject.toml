@@ -51,6 +51,12 @@ Issues = "https://github.com/mehrnazZz/DAA-MicroBench/issues"
 [tool.setuptools]
 include-package-data = true
 
+[tool.setuptools.package-data]
+microbench = [
+  "bundled_config/*.yaml",
+  "bundled_config/scenarios/*.yaml",
+]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["microbench*"]

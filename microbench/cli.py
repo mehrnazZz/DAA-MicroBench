@@ -11,7 +11,7 @@ import tempfile
 from tqdm import tqdm
 
 from microbench.acceptance import check_acceptance
-from microbench.config import load_defaults
+from microbench.config import builtin_scenario_paths, load_defaults, resolve_config_path
 from microbench.planners import list_methods, planner_metadata
 from microbench.types import RunSpec
 from microbench.runner import run_episode
@@ -87,8 +87,12 @@ def _expand_scenarios(spec: str) -> list[str]:
         if matches:
             scenarios.extend(matches)
         else:
-            scenarios.append(token)
+            scenarios.append(str(resolve_config_path(token)))
     return scenarios
+
+
+def _resolve_scenario_list(paths: list[str]) -> list[str]:
+    return [str(resolve_config_path(p)) for p in paths]
 
 
 def _git_commit() -> str | None:
@@ -271,7 +275,7 @@ def _run_canonical_sweep(args) -> None:
         seeds = [int(x) for x in defaults_for_suite["seeds"]]
         comm_profiles = [str(x) for x in defaults_for_suite["comm_profiles"]]
     elif suite == "primary":
-        scenarios = CANONICAL_SCENARIOS
+        scenarios = _resolve_scenario_list(CANONICAL_SCENARIOS)
         methods = _parse_str_list(args.methods or "")
         if not methods:
             raise ValueError("canonical-sweep --suite primary requires --methods")
@@ -279,19 +283,19 @@ def _run_canonical_sweep(args) -> None:
         seeds = list(range(0, 100 if stretch else 50))
         comm_profiles = ["ideal_50hz", "realistic_v2v_50hz", "degraded_20hz"]
     elif suite == "baseline_sanity":
-        scenarios = CANONICAL_SCENARIOS
+        scenarios = _resolve_scenario_list(CANONICAL_SCENARIOS)
         methods = _parse_str_list(args.methods) if args.methods else ["baseline_goal", "orca_heuristic"]
         n_agents = [10, 20] + ([100] if stretch else [])
         seeds = list(range(0, 100 if stretch else 20))
         comm_profiles = ["ideal_50hz", "realistic_v2v_50hz"]
     elif suite == "three_d":
-        scenarios = CANONICAL_3D_SCENARIOS
+        scenarios = _resolve_scenario_list(CANONICAL_3D_SCENARIOS)
         methods = _parse_str_list(args.methods) if args.methods else ["orca_heuristic"]
         n_agents = [6, 10] + ([20] if stretch else [])
         seeds = list(range(0, 20 if stretch else 10))
         comm_profiles = ["ideal_50hz"]
     elif suite == "perception_stress":
-        scenarios = CANONICAL_PERCEPTION_SCENARIOS
+        scenarios = _resolve_scenario_list(CANONICAL_PERCEPTION_SCENARIOS)
         methods = _parse_str_list(args.methods) if args.methods else ["priority_yield"]
         n_agents = [6, 10] + ([20] if stretch else [])
         seeds = list(range(0, 20 if stretch else 10))
@@ -385,7 +389,7 @@ def _validate_scenarios(args) -> None:
     if args.scenario:
         scenario_paths.extend(_expand_scenarios(args.scenario))
     if args.all_builtins:
-        scenario_paths.extend(sorted(glob.glob("config/scenarios/*.yaml")))
+        scenario_paths.extend(builtin_scenario_paths())
     if args.suite_manifest:
         manifest_paths.extend(_expand_scenarios(args.suite_manifest))
     if args.generated_suite:
@@ -394,7 +398,7 @@ def _validate_scenarios(args) -> None:
         generated_suites.extend(list_official_suites())
 
     if not scenario_paths and not manifest_paths and not generated_suites:
-        scenario_paths.extend(sorted(glob.glob("config/scenarios/*.yaml")))
+        scenario_paths.extend(builtin_scenario_paths())
 
     for path in dict.fromkeys(scenario_paths):
         reports.append(validate_scenario_file(path))

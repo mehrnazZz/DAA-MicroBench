@@ -1,0 +1,82 @@
+# config/comm_profiles.yaml
+# All delays are applied as: deliver_time = send_time + delay_sample
+# msg_age_sec = now - last_received.timestamp
+profiles:
+  ideal_50hz:
+    tx_rate_hz: 50
+    delay:
+      type: "constant_ms"
+      value_ms: 0
+    loss:
+      type: "iid"
+      p: 0.0
+    noise:
+      sigma_pos_m: 0.0
+      sigma_vel_mps: 0.0
+
+  low_latency_50hz:
+    tx_rate_hz: 50
+    delay:
+      type: "normal_trunc_ms"
+      mean_ms: 8
+      std_ms: 3
+      min_ms: 0
+      max_ms: 25
+    loss:
+      type: "iid"
+      p: 0.002
+    noise:
+      sigma_pos_m: 0.02
+      sigma_vel_mps: 0.02
+
+  realistic_v2v_50hz:
+    tx_rate_hz: 50
+    delay:
+      type: "normal_trunc_ms"
+      mean_ms: 30
+      std_ms: 10
+      min_ms: 0
+      max_ms: 120
+    loss:
+      type: "iid"
+      p: 0.01
+    noise:
+      sigma_pos_m: 0.05
+      sigma_vel_mps: 0.05
+
+  degraded_20hz:
+    tx_rate_hz: 20
+    delay:
+      type: "normal_trunc_ms"
+      mean_ms: 60
+      std_ms: 25
+      min_ms: 0
+      max_ms: 200
+    loss:
+      type: "iid"
+      p: 0.05
+    noise:
+      sigma_pos_m: 0.08
+      sigma_vel_mps: 0.08
+
+  bursty_stress_50hz:
+    tx_rate_hz: 50
+    delay:
+      type: "normal_trunc_ms"
+      mean_ms: 80
+      std_ms: 40
+      min_ms: 0
+      max_ms: 350
+    loss:
+      type: "gilbert_elliott"
+      # Two-state burst model:
+      #   Good state: low loss
+      #   Bad state: high loss
+      # Transition probabilities per message:
+      p_good_to_bad: 0.02
+      p_bad_to_good: 0.20
+      p_loss_good: 0.01
+      p_loss_bad: 0.35
+    noise:
+      sigma_pos_m: 0.10
+      sigma_vel_mps: 0.10
