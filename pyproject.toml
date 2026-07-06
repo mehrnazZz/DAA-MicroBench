@@ -32,6 +32,10 @@ dependencies = [
 ml = [
   "torch>=2.3,<2.7",
 ]
+rl = [
+  "gymnasium>=0.29,<1.1",
+  "pettingzoo>=1.24,<1.26",
+]
 opt = [
   "scipy==1.12.0",
   "osqp==0.6.7.post3",

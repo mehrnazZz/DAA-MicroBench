@@ -12,6 +12,7 @@ Start here when navigating the public docs.
 - [SCENARIO_SUITES.md](SCENARIO_SUITES.md): official/generated suite registry, suite materialization, validation, and acceptance metadata.
 - [BASELINES.md](BASELINES.md): built-in baseline roles, limitations, recommended comparison sets, and promotion criteria.
 - [LEADERBOARD.md](LEADERBOARD.md): ranking policy, primary metrics, result categories, reproducibility rules, and review policy.
+- [RL_INTERFACE.md](RL_INTERFACE.md): PettingZoo/Gymnasium-style wrappers for learning researchers.
 - [RESULT_SUBMISSION.md](RESULT_SUBMISSION.md): result submission template, required artifacts, validation commands, and disclosure checklist.
 - [PUBLIC_ALPHA_NOTES.md](PUBLIC_ALPHA_NOTES.md): current public-alpha status, known limitations, and reproducibility commands.
 - [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md): public-alpha release checks, packaging smoke, CI expectations, and release-note requirements.
@@ -82,6 +83,12 @@ Plan optional longer stable-metadata review rows:
 
 ```bash
 python -m microbench.cli baseline-review --out-dir runs_baseline_review --plan-only
+```
+
+Smoke-test the RL interface:
+
+```bash
+python -m pytest tests/test_rl_interface.py -q
 ```
 
 Check the current result-schema fixture:

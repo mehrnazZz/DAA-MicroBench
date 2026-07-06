@@ -25,6 +25,7 @@ def test_public_alpha_notes_cover_release_contract() -> None:
     assert "official_3d_stress" in notes
     assert "official_agentic_stress" in notes
     assert "bash scripts/release_readiness.sh" in notes
+    assert "PettingZoo/Gymnasium-style RL interface" in notes
     assert "not yet a stable v1 release" in notes
 
 
@@ -50,6 +51,7 @@ def test_docs_index_and_checklist_reference_alpha_notes_and_dry_run() -> None:
     checklist = (ROOT / "docs/RELEASE_CHECKLIST.md").read_text(encoding="utf-8")
 
     assert "PUBLIC_ALPHA_NOTES.md" in docs_index
+    assert "RL_INTERFACE.md" in docs_index
     assert "baseline-evidence --out-dir" in docs_index
     assert "bash scripts/release_readiness.sh" in docs_index
     assert "bash scripts/release_readiness.sh" in checklist
