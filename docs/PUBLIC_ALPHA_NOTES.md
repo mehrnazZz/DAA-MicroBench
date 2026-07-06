@@ -20,6 +20,7 @@ This is not yet a stable v1 release. The public contract is intended to be revie
 - `official_3d_stress`: volumetric and vertical DAA stress cases.
 - `official_agentic_stress`: heterogeneous priorities, noncooperative traffic, partial sensing, and agentic coordination.
 - `official_experimental_baselines`: compact calibration suite for experimental CBF-QP and MPC-local baselines.
+- `official_promotion_calibration`: compact 3D and degraded sensing/communication calibration suite used by `baseline-promotion`.
 
 ## Reproducibility Commands
 
@@ -51,7 +52,7 @@ python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --
 ## Known Public Alpha Limitations
 
 - `orca_heuristic` and `orca_with_staleness` are geometric reference heuristics, not expert or certified DAA controllers.
-- `cbf_qp`, `mpc_local`, and `negotiation_yield` are public-alpha calibrated but still have stable-v1 promotion blockers; do not treat them as leaderboard anchors yet.
+- `cbf_qp`, `mpc_local`, and `negotiation_yield` pass compact public-alpha promotion calibration, including 3D/degraded lanes, but still have stable-v1 promotion blockers; do not treat them as leaderboard anchors yet.
 - The benchmark models local planning and simplified dynamics; it is not a full flight stack, airspace model, PX4/ROS simulator, or certification tool.
 - Generated official suites are pre-v1 and may be adjusted as external users stress-test the benchmark.
 - Leaderboard policy and scoring dimensions are documented, but public submissions should still be reviewed manually during alpha.

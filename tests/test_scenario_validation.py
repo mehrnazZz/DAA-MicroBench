@@ -120,7 +120,7 @@ class TestScenarioValidation(unittest.TestCase):
         )
 
         self.assertIn("validation: PASS", proc.stdout)
-        self.assertIn("suite_manifests=5", proc.stdout)
+        self.assertIn("suite_manifests=6", proc.stdout)
 
     def test_suite_manifest_validation_rejects_bad_acceptance_metric(self):
         with tempfile.TemporaryDirectory() as td:

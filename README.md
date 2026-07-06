@@ -362,6 +362,14 @@ python -m microbench.cli canonical-sweep \
   --out-dir runs_experimental_baselines
 ```
 
+Run the compact promotion-calibration suite for 3D and degraded sensing/communication evidence:
+
+```bash
+python -m microbench.cli canonical-sweep \
+  --suite official_promotion_calibration \
+  --out-dir runs_promotion_calibration
+```
+
 Build a compact baseline comparison report:
 
 ```bash
@@ -393,7 +401,7 @@ python -m microbench.cli check-acceptance \
   --suite-manifest runs_official_smoke_generated/_generated_scenarios/official_smoke_generated/suite_manifest.yaml
 ```
 
-The generated smoke suite currently has calibrated checks for baseline runtime, ORCA runtime, priority-yield message delivery, and zero planner guardrail events. A path-independent expected report is kept at `golden/acceptance/official_smoke_generated_acceptance.json`.
+The generated smoke suite currently has calibrated checks for baseline runtime, ORCA runtime, priority-yield message delivery, and zero planner guardrail events. A path-independent expected report is kept at `golden/acceptance/official_smoke_generated_acceptance.json`. `official_promotion_calibration` adds compact acceptance bands for candidate baseline 3D stress behavior, degraded fused-sensing diagnostics, stale-observation signal, runtime, and guardrail counts; `baseline-promotion` runs it automatically.
 
 If you only ran a subset of methods, filter the rule set:
 
@@ -608,6 +616,7 @@ What the interactive replay shows:
 - obstacle-aware `orca_heuristic` is heavier than `baseline_goal`
 - `mpc_local` is deliberately bounded but heavier than reactive baselines because it scores short-horizon rollouts
 - keep `official_experimental_baselines` separate from CI smoke when profiling slow experimental methods
+- use `official_promotion_calibration` for compact candidate-baseline 3D/degraded evidence before attempting longer stress sweeps
 - expect a few milliseconds per tick per agent on harder 3D scenes
 - use `results.csv` / `summary.csv` to compare:
   - `planner_ms_per_tick_per_agent_mean`

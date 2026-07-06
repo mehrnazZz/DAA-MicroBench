@@ -117,6 +117,7 @@ def _rule_summary(rule: dict[str, Any]) -> dict[str, Any]:
     return {
         "name": rule.get("name"),
         "severity": rule.get("severity"),
+        "band": rule.get("band", "pre_v1"),
         "scope": rule.get("scope", "summary"),
         "method": rule.get("method", "*"),
         "scenario": rule.get("scenario", "*"),

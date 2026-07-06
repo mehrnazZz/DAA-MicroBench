@@ -22,6 +22,8 @@ def test_baseline_promotion_calibrates_experimentals_but_blocks_stable_v1(tmp_pa
     assert report["summary"]["stable_v1_ready_count"] == 0
     assert report["experimental_suite"]["status"] == "PASS"
     assert report["experimental_suite"]["run_count"] == 4
+    assert report["promotion_suite"]["status"] == "PASS"
+    assert report["promotion_suite"]["run_count"] == 6
 
     for method in ("cbf_qp", "mpc_local", "negotiation_yield"):
         entry = by_method[method]
@@ -30,9 +32,12 @@ def test_baseline_promotion_calibrates_experimentals_but_blocks_stable_v1(tmp_pa
         assert entry["calibration_blockers"] == []
         assert entry["behavior_metrics"]["guardrail_total"] == 0
         assert entry["behavior_metrics"]["collision_episode_count"] == 0
+        assert entry["promotion_acceptance_status"] == "PASS"
+        assert entry["promotion_3d_stress_band_pass"] is True
+        assert entry["promotion_degraded_comm_sensor_band_pass"] is True
         assert "metadata_status_not_stable" in entry["stable_v1_blockers"]
-        assert "stable_3d_stress_acceptance_bands_missing" in entry["stable_v1_blockers"]
-        assert "degraded_comm_or_sensor_calibration_missing" in entry["stable_v1_blockers"]
+        assert "stable_3d_stress_acceptance_not_pass" not in entry["stable_v1_blockers"]
+        assert "degraded_comm_or_sensor_calibration_not_pass" not in entry["stable_v1_blockers"]
         assert "smoke_collision_episode_present" not in entry["stable_v1_blockers"]
 
     assert "role_not_reference_baseline" in by_method["cbf_qp"]["stable_v1_blockers"]
@@ -68,6 +73,7 @@ def test_baseline_promotion_cli_json_and_calibrated_gate(tmp_path: Path) -> None
     assert report["public_alpha_calibrated"] is True
     assert report["stable_v1_ready"] is False
     assert report["methods"] == ["negotiation_yield"]
+    assert report["promotion_suite"]["status"] == "PASS"
     assert (out_dir / "baseline_promotion.json").exists()
 
 

@@ -82,6 +82,21 @@ Default matrix:
 - comm: `ideal_50hz`
 - generated scenario duration override: `8.0s`
 
+### `official_promotion_calibration`
+
+Compact generated 3D promotion lane for `cbf_qp`, `mpc_local`, and `negotiation_yield`. It is intentionally smaller than `official_3d_stress`: use it for `baseline-promotion`, then use the longer 3D suites for manual stable-v1 review before changing baseline metadata.
+
+Families:
+- `sphere_swap_3d_medium` with `ideal_50hz`
+- `sensor_volume_3d_hard` with `degraded_20hz`
+
+Default matrix:
+- methods: `cbf_qp`, `mpc_local`, `negotiation_yield`
+- N: `4`
+- seeds: `0`
+- comm: `ideal_50hz`, `degraded_20hz`
+- generated scenario duration override: `8.0s`
+
 ### `official_agentic_stress`
 
 Generated 3D suite focused on decentralized/agentic behavior: heterogeneous priorities, noncooperative traffic, partial sensing, intent/messages, and degraded communication.
@@ -132,6 +147,7 @@ Use `--methods`, `--scenarios`, `--comm-profiles`, or `--n` when a run intention
 
 `official_smoke_generated` includes calibrated smoke bands for baseline runtime, ORCA runtime, priority-yield message delivery, and zero planner guardrail events. The expected path-independent acceptance report lives in `golden/acceptance/official_smoke_generated_acceptance.json`.
 `official_experimental_baselines` includes broad informational checks for `cbf_qp` and `mpc_local` completion fields, runtime p95, collision-rate validity, and zero planner guardrail events.
+`official_promotion_calibration` includes compact 3D collision/clearance/runtime checks plus degraded fused-sensing and stale-observation diagnostics for `cbf_qp`, `mpc_local`, and `negotiation_yield`.
 `official_3d_stress` includes pre-v1 informational checks for the `orca_heuristic` and `orca_with_staleness` 3D reference rows.
 
 `orca_heuristic` is the canonical ORCA-like reference baseline name. `orca_expert` is still accepted by the planner registry as a compatibility alias for older scripts and legacy result folders.

@@ -34,6 +34,7 @@ def test_module_cli_smoke_for_public_alpha() -> None:
     assert "official_smoke_generated" in by_name
     assert "official_3d_stress" in by_name
     assert "official_agentic_stress" in by_name
+    assert "official_promotion_calibration" in by_name
 
 
 def test_public_docs_index_and_templates_exist() -> None:

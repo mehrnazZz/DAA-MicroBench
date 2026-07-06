@@ -88,7 +88,7 @@ python -m microbench.cli baseline-promotion \
   --require-calibrated
 ```
 
-This produces `baseline_promotion.json`. It should report `public_alpha_calibrated=true` and `stable_v1_ready=false` for `cbf_qp`, `mpc_local`, and `negotiation_yield` during public alpha. The report records smoke metrics, generated experimental-suite acceptance for CBF/MPC, method-specific signal contracts, and stable-v1 blockers such as experimental metadata status, missing calibrated 3D stress bands, and missing degraded sensing/communication calibration.
+This produces `baseline_promotion.json`. It should report `public_alpha_calibrated=true` and `stable_v1_ready=false` for `cbf_qp`, `mpc_local`, and `negotiation_yield` during public alpha. The report records smoke metrics, generated experimental-suite acceptance for CBF/MPC, compact `official_promotion_calibration` 3D/degraded acceptance for all promotion candidates, method-specific signal contracts, and stable-v1 blockers such as experimental metadata status or non-reference roles.
 
 Geometric comparison under degraded communication:
 
@@ -219,15 +219,15 @@ Observed local calibration on tiny generated suites before public-alpha tuning:
 
 ## Promotion Calibration
 
-`baseline-promotion --require-calibrated` is the current public-alpha gate for experimental baselines. Passing it means the method imports, has docs/tests coverage, supports 2D and 3D, runs the behavior smoke without planner guardrail failures, and emits its expected signal/debug contract. For `cbf_qp` and `mpc_local`, it also runs `official_experimental_baselines` and checks the suite acceptance metadata.
+`baseline-promotion --require-calibrated` is the current public-alpha gate for experimental baselines. Passing it means the method imports, has docs/tests coverage, supports 2D and 3D, runs the behavior smoke without planner guardrail failures, emits its expected signal/debug contract, and passes compact promotion-calibration acceptance on an 8-second 3D stress lane plus an 8-second degraded fused-sensing lane. For `cbf_qp` and `mpc_local`, it also runs `official_experimental_baselines` and checks that suite acceptance metadata.
 
 Passing this gate does not make a method a stable reference baseline. Stable-v1 promotion still requires:
 
 - method metadata changed out of `experimental` status after review
 - reference or agentic-reference role assignment where appropriate
 - collision-free or explicitly bounded-collision behavior on calibrated head-on, obstacle, and 3D stress slices
-- calibrated 3D stress acceptance bands
-- degraded communication and sensor calibration
+- passing compact promotion-calibration bands plus longer `official_3d_stress` / `official_agentic_stress` review
+- degraded communication and sensor calibration beyond the compact 8-second lane when the method is meant to be a leaderboard anchor
 - updated docs, fixtures, and leaderboard policy language
 
 ## Baseline Comparison Fixture

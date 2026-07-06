@@ -18,6 +18,13 @@ BASELINE_PROMOTION_SCHEMA_VERSION = "0.1"
 PROMOTION_METHODS = ("cbf_qp", "mpc_local", "negotiation_yield")
 EXPERIMENTAL_SUITE = "official_experimental_baselines"
 EXPERIMENTAL_SUITE_METHODS = ("cbf_qp", "mpc_local")
+PROMOTION_CALIBRATION_SUITE = "official_promotion_calibration"
+PROMOTION_CALIBRATION_SCENARIO_COMM = (
+    ("sphere_swap_3d_medium", "ideal_50hz"),
+    ("sensor_volume_3d_hard", "degraded_20hz"),
+)
+PROMOTION_3D_BAND = "promotion_3d_stress"
+PROMOTION_DEGRADED_BAND = "promotion_degraded_sensing_comm"
 METHOD_SIGNAL_CHECKS = {
     "cbf_qp": "cbf_qp_debug_contract",
     "mpc_local": "mpc_local_debug_contract",
@@ -156,11 +163,114 @@ def _method_acceptance(experimental_suite: dict[str, Any] | None, method: str) -
     )
 
 
+def _run_promotion_calibration_suite(*, out_dir: Path, methods: list[str]) -> dict[str, Any] | None:
+    suite_methods = [method for method in methods if method in PROMOTION_METHODS]
+    if not suite_methods:
+        return None
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if (out_dir / "results.csv").exists():
+        raise RuntimeError(f"baseline promotion output already exists: {out_dir / 'results.csv'}")
+
+    generated = materialize_official_suite(
+        PROMOTION_CALIBRATION_SUITE,
+        out_dir / "_generated_scenarios" / PROMOTION_CALIBRATION_SUITE,
+        overwrite=True,
+    )
+    defaults = suite_defaults(PROMOTION_CALIBRATION_SUITE)
+    n_agents = int(defaults["n_agents"][0])
+    seed = int(defaults["seeds"][0])
+    scenario_paths = {Path(path).stem: Path(path) for path in generated["scenario_paths"]}
+
+    rows: list[dict[str, Any]] = []
+    for scenario_id, comm_profile in PROMOTION_CALIBRATION_SCENARIO_COMM:
+        scenario_path = scenario_paths[scenario_id]
+        for method in suite_methods:
+            spec = RunSpec(
+                scenario_path=str(scenario_path),
+                method=method,
+                n_agents=n_agents,
+                seed=seed,
+                comm_profile=comm_profile,
+                out_dir=str(out_dir),
+                save_trace=False,
+            )
+            row = run_episode(spec)
+            append_result(out_dir, row)
+            rows.append(row)
+    summary_csv = write_summary(out_dir)
+
+    acceptance = check_acceptance(
+        summary_csv=summary_csv,
+        results_csv=out_dir / "results.csv",
+        suite_manifest=generated["manifest_path"],
+        methods=suite_methods,
+    )
+
+    return {
+        "suite": PROMOTION_CALIBRATION_SUITE,
+        "methods": suite_methods,
+        "run_count": len(rows),
+        "scenario_comm_pairs": [
+            {"scenario": scenario_id, "comm_profile": comm_profile}
+            for scenario_id, comm_profile in PROMOTION_CALIBRATION_SCENARIO_COMM
+        ],
+        "results_csv": str(out_dir / "results.csv"),
+        "summary_csv": str(summary_csv),
+        "suite_manifest": str(generated["manifest_path"]),
+        "acceptance": acceptance,
+        "rows": [
+            {
+                "method": row.get("method"),
+                "scenario": row.get("scenario"),
+                "comm_profile": row.get("comm_profile"),
+                "collision_episode": row.get("collision_episode"),
+                "min_sep_min_m": row.get("min_sep_min_m"),
+                "completion_rate": row.get("completion_rate"),
+                "planner_ms_per_tick_per_agent_p95": row.get("planner_ms_per_tick_per_agent_p95"),
+                "obs_v2v_fraction": row.get("obs_v2v_fraction"),
+                "obs_sensor_fraction": row.get("obs_sensor_fraction"),
+                "obs_stale_fraction": row.get("obs_stale_fraction"),
+                "comm_agent_msg_delivery_fraction": row.get("comm_agent_msg_delivery_fraction"),
+                "comm_negotiation_proposals": row.get("comm_negotiation_proposals"),
+                "comm_negotiation_acks": row.get("comm_negotiation_acks"),
+                "planner_timeout_count": row.get("planner_timeout_count"),
+                "planner_error_count": row.get("planner_error_count"),
+                "planner_fallback_count": row.get("planner_fallback_count"),
+            }
+            for row in rows
+        ],
+    }
+
+
+def _method_promotion_acceptance(promotion_suite: dict[str, Any] | None, method: str) -> dict[str, Any] | None:
+    if not promotion_suite:
+        return None
+    return check_acceptance(
+        summary_csv=promotion_suite["summary_csv"],
+        results_csv=promotion_suite["results_csv"],
+        suite_manifest=promotion_suite["suite_manifest"],
+        methods=[method],
+    )
+
+
+def _band_passed(acceptance: dict[str, Any] | None, band: str) -> bool:
+    if acceptance is None:
+        return False
+    checks = [
+        check
+        for check in acceptance.get("checks", [])
+        if check.get("band") == band and check.get("status") != "skipped"
+    ]
+    return bool(checks) and all(check.get("status") == "pass" for check in checks)
+
+
 def _stable_v1_blockers(
     *,
     audit_entry: dict[str, Any],
     behavior_metrics: dict[str, Any],
     method_acceptance: dict[str, Any] | None,
+    promotion_acceptance: dict[str, Any] | None,
 ) -> list[str]:
     blockers: list[str] = []
     if str(audit_entry.get("status")) != "stable":
@@ -171,9 +281,10 @@ def _stable_v1_blockers(
         blockers.append("smoke_collision_episode_present")
     if method_acceptance is not None and method_acceptance.get("status") != "PASS":
         blockers.append("experimental_suite_acceptance_not_pass")
-
-    blockers.append("stable_3d_stress_acceptance_bands_missing")
-    blockers.append("degraded_comm_or_sensor_calibration_missing")
+    if not _band_passed(promotion_acceptance, PROMOTION_3D_BAND):
+        blockers.append("stable_3d_stress_acceptance_not_pass")
+    if not _band_passed(promotion_acceptance, PROMOTION_DEGRADED_BAND):
+        blockers.append("degraded_comm_or_sensor_calibration_not_pass")
     return blockers
 
 
@@ -206,6 +317,7 @@ def run_baseline_promotion_calibration(
         if include_experimental_suite
         else None
     )
+    promotion = _run_promotion_calibration_suite(out_dir=out / "promotion_calibration", methods=methods_list)
 
     audit = build_baseline_audit(root=root)
     audit_by_method = {entry["method"]: entry for entry in audit["methods"]}
@@ -217,6 +329,9 @@ def run_baseline_promotion_calibration(
         behavior_metrics = _metric_summary(behavior_rows)
         method_signal = METHOD_SIGNAL_CHECKS[method]
         method_acceptance = _method_acceptance(experimental, method)
+        promotion_acceptance = _method_promotion_acceptance(promotion, method)
+        promotion_3d_pass = _band_passed(promotion_acceptance, PROMOTION_3D_BAND)
+        promotion_degraded_pass = _band_passed(promotion_acceptance, PROMOTION_DEGRADED_BAND)
 
         audit_checks = audit_entry.get("checks", {})
         calibration_checks = {
@@ -234,12 +349,18 @@ def run_baseline_promotion_calibration(
             "experimental_suite_acceptance_pass": (
                 True if method not in EXPERIMENTAL_SUITE_METHODS else bool(method_acceptance and method_acceptance["status"] == "PASS")
             ),
+            "promotion_suite_acceptance_pass": bool(
+                promotion_acceptance and promotion_acceptance["status"] == "PASS"
+            ),
+            "promotion_3d_stress_band_pass": promotion_3d_pass,
+            "promotion_degraded_comm_sensor_band_pass": promotion_degraded_pass,
         }
         calibration_blockers = [key for key, ok in calibration_checks.items() if not ok]
         stable_blockers = _stable_v1_blockers(
             audit_entry=audit_entry,
             behavior_metrics=behavior_metrics,
             method_acceptance=method_acceptance,
+            promotion_acceptance=promotion_acceptance,
         )
 
         method_entries.append(
@@ -259,6 +380,12 @@ def run_baseline_promotion_calibration(
                 "experimental_acceptance_rules_passed": method_acceptance.get("rules_passed") if method_acceptance else None,
                 "experimental_acceptance_rules_warned": method_acceptance.get("rules_warned") if method_acceptance else None,
                 "experimental_acceptance_rules_failed": method_acceptance.get("rules_failed") if method_acceptance else None,
+                "promotion_acceptance_status": promotion_acceptance.get("status") if promotion_acceptance else None,
+                "promotion_acceptance_rules_passed": promotion_acceptance.get("rules_passed") if promotion_acceptance else None,
+                "promotion_acceptance_rules_warned": promotion_acceptance.get("rules_warned") if promotion_acceptance else None,
+                "promotion_acceptance_rules_failed": promotion_acceptance.get("rules_failed") if promotion_acceptance else None,
+                "promotion_3d_stress_band_pass": promotion_3d_pass,
+                "promotion_degraded_comm_sensor_band_pass": promotion_degraded_pass,
             }
         )
 
@@ -292,6 +419,15 @@ def run_baseline_promotion_calibration(
             "results_csv": experimental.get("results_csv") if experimental else None,
             "summary_csv": experimental.get("summary_csv") if experimental else None,
             "suite_manifest": experimental.get("suite_manifest") if experimental else None,
+        },
+        "promotion_suite": {
+            "included": promotion is not None,
+            "status": promotion.get("acceptance", {}).get("status") if promotion else None,
+            "run_count": promotion.get("run_count") if promotion else 0,
+            "scenario_comm_pairs": promotion.get("scenario_comm_pairs") if promotion else [],
+            "results_csv": promotion.get("results_csv") if promotion else None,
+            "summary_csv": promotion.get("summary_csv") if promotion else None,
+            "suite_manifest": promotion.get("suite_manifest") if promotion else None,
         },
         "methods_detail": method_entries,
     }

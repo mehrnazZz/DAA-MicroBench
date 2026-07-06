@@ -19,7 +19,10 @@ SUMMARY_FIELDS = [
     "N",
     "completion_rate_mean",
     "collision_episode_rate",
+    "min_sep_min_mean",
     "planner_ms_p95",
+    "obs_sensor_fraction_mean",
+    "obs_stale_fraction_mean",
     "comm_agent_msg_attempted_mean",
     "comm_agent_msg_delivered_mean",
     "planner_timeout_count_mean",
@@ -48,6 +51,11 @@ def _stress_manifest(tmp_path: Path) -> Path:
 
 def _experimental_manifest(tmp_path: Path) -> Path:
     generated = materialize_official_suite("official_experimental_baselines", tmp_path / "suite_exp", overwrite=True)
+    return generated["manifest_path"]
+
+
+def _promotion_manifest(tmp_path: Path) -> Path:
+    generated = materialize_official_suite("official_promotion_calibration", tmp_path / "suite_promo", overwrite=True)
     return generated["manifest_path"]
 
 
@@ -114,6 +122,38 @@ def _experimental_summary_rows(*, mpc_only: bool = False, slow_mpc: bool = False
                     "planner_ms_p95": 60.0 if slow_mpc and method == "mpc_local" else (10.0 if method == "mpc_local" else 0.1),
                     "comm_agent_msg_attempted_mean": 0.0,
                     "comm_agent_msg_delivered_mean": 0.0,
+                    "planner_timeout_count_mean": 0.0,
+                    "planner_error_count_mean": 0.0,
+                    "planner_fallback_count_mean": 0.0,
+                }
+            )
+    return rows
+
+
+def _promotion_summary_rows(*, mpc_only: bool = False, stale_missing: bool = False) -> list[dict]:
+    scenario_comm = [
+        ("sphere_swap_3d_medium", "ideal_50hz"),
+        ("sensor_volume_3d_hard", "degraded_20hz"),
+    ]
+    methods = ["mpc_local"] if mpc_only else ["cbf_qp", "mpc_local", "negotiation_yield"]
+    rows = []
+    for scenario, comm_profile in scenario_comm:
+        degraded = scenario == "sensor_volume_3d_hard"
+        for method in methods:
+            rows.append(
+                {
+                    "method": method,
+                    "scenario": scenario,
+                    "comm_profile": comm_profile,
+                    "N": 4,
+                    "completion_rate_mean": 0.5,
+                    "collision_episode_rate": 0.0,
+                    "min_sep_min_mean": 1.0,
+                    "planner_ms_p95": 4.0 if method == "mpc_local" else 0.1,
+                    "obs_sensor_fraction_mean": 0.4 if degraded else 0.0,
+                    "obs_stale_fraction_mean": 0.0 if stale_missing else (0.02 if degraded else 0.0),
+                    "comm_agent_msg_attempted_mean": 1.0 if method == "negotiation_yield" else 0.0,
+                    "comm_agent_msg_delivered_mean": 1.0 if method == "negotiation_yield" else 0.0,
                     "planner_timeout_count_mean": 0.0,
                     "planner_error_count_mean": 0.0,
                     "planner_fallback_count_mean": 0.0,
@@ -264,6 +304,45 @@ def test_check_acceptance_warns_on_experimental_runtime_violation(tmp_path: Path
     warned = [check for check in report["checks"] if check["status"] == "warn"]
     assert warned[0]["name"] == "mpc_local_experimental_runtime_p95"
     assert len(warned[0]["violations"]) == 2
+
+
+def test_check_acceptance_passes_promotion_calibration_suite(tmp_path: Path) -> None:
+    manifest = _promotion_manifest(tmp_path)
+    summary = tmp_path / "summary.csv"
+    _write_csv(summary, _promotion_summary_rows())
+
+    report = check_acceptance(summary_csv=summary, suite_manifest=manifest)
+
+    assert report["status"] == "PASS"
+    assert report["rules_passed"] == 10
+    assert report["rules_failed"] == 0
+    bands = {check["band"] for check in report["checks"]}
+    assert {"promotion_3d_stress", "promotion_degraded_sensing_comm", "promotion_guardrails"} <= bands
+
+
+def test_check_acceptance_filters_promotion_calibration_methods(tmp_path: Path) -> None:
+    manifest = _promotion_manifest(tmp_path)
+    summary = tmp_path / "summary.csv"
+    _write_csv(summary, _promotion_summary_rows(mpc_only=True))
+
+    report = check_acceptance(summary_csv=summary, suite_manifest=manifest, methods=["mpc_local"])
+
+    assert report["status"] == "PASS"
+    assert report["rules_passed"] == 10
+    assert report["rules_skipped"] == 0
+
+
+def test_check_acceptance_warns_when_promotion_degraded_lane_has_no_stale_signal(tmp_path: Path) -> None:
+    manifest = _promotion_manifest(tmp_path)
+    summary = tmp_path / "summary.csv"
+    _write_csv(summary, _promotion_summary_rows(stale_missing=True))
+
+    report = check_acceptance(summary_csv=summary, suite_manifest=manifest)
+
+    assert report["status"] == "WARN"
+    warned = [check for check in report["checks"] if check["status"] == "warn"]
+    assert warned[0]["name"] == "promotion_degraded_stale_fraction_present"
+    assert warned[0]["band"] == "promotion_degraded_sensing_comm"
 
 
 def test_check_acceptance_supports_results_scoped_rules(tmp_path: Path) -> None:
