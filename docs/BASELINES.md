@@ -9,6 +9,7 @@ python -m microbench.cli baseline-audit
 python -m microbench.cli baseline-audit --require-public-alpha-ready --json
 python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
 python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
+python -m microbench.cli baseline-review --out-dir runs_baseline_review --duration-s 20
 ```
 
 The public-alpha baseline gate is intentionally stricter than "the code imports":
@@ -229,6 +230,8 @@ Observed local calibration on tiny generated suites before public-alpha tuning:
 - generated experimental/smoke rows keep `cbf_qp` planner p95 around hundredths of a millisecond per tick per agent
 - generated experimental/smoke rows keep `mpc_local` planner p95 in the low single-digit milliseconds per tick per agent on this machine
 - a single `official_3d_stress` `mpc_local` row can still take tens of seconds wall-clock locally, so it remains outside default CI smoke
+- a 20-second stable-metadata prep review with `baseline-review --methods cbf_qp,mpc_local --duration-s 20` passes the selected 3D/degraded review lanes for both methods, but reports `needs_reference_role_decision` because both remain `experimental_baseline`
+- passing that review is evidence for promotion discussion, not promotion by itself; CBF still needs stronger solver/fallback validation, and MPC still needs broader compute and dense-3D stress characterization before either should become a public reference baseline
 
 ## Promotion Calibration
 

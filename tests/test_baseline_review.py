@@ -54,6 +54,27 @@ def test_baseline_review_runs_short_3d_lane(tmp_path: Path) -> None:
     assert detail["failed_checks"] == []
 
 
+def test_baseline_review_cbf_mpc_pass_but_need_reference_role_decision(tmp_path: Path) -> None:
+    report = run_baseline_stable_review(
+        out_dir=tmp_path / "cbf_mpc_review",
+        root=ROOT,
+        methods=["cbf_qp", "mpc_local"],
+        lanes=["3d_sphere_swap"],
+        duration_s=2.0,
+    )
+
+    assert report["review_checks_pass"] is True
+    assert report["run_count"] == 2
+    by_method = {detail["method"]: detail for detail in report["methods_detail"]}
+    assert set(by_method) == {"cbf_qp", "mpc_local"}
+    for detail in by_method.values():
+        assert detail["review_checks_pass"] is True
+        assert detail["role"] == "experimental_baseline"
+        assert detail["status"] == "experimental"
+        assert detail["metadata_recommendation"] == "needs_reference_role_decision"
+        assert detail["failed_checks"] == []
+
+
 def test_baseline_review_negotiation_yield_passes_longer_review_lanes(tmp_path: Path) -> None:
     report = run_baseline_stable_review(
         out_dir=tmp_path / "negotiation_review",

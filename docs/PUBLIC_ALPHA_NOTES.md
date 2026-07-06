@@ -53,6 +53,7 @@ python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --
 
 - `orca_heuristic` and `orca_with_staleness` are geometric reference heuristics, not expert or certified DAA controllers.
 - `cbf_qp`, `mpc_local`, and `negotiation_yield` pass compact public-alpha promotion calibration, including 3D/degraded lanes, but still have stable-v1 promotion blockers; do not treat them as stable-v1 leaderboard anchors yet.
+- `cbf_qp` and `mpc_local` also pass the longer stable-metadata prep lanes in `baseline-review`, but they remain experimental until the reference-role decision, CBF validation, and MPC compute/stress characterization are stronger.
 - The benchmark models local planning and simplified dynamics; it is not a full flight stack, airspace model, PX4/ROS simulator, or certification tool.
 - Generated official suites are pre-v1 and may be adjusted as external users stress-test the benchmark.
 - Leaderboard policy and scoring dimensions are documented, but public submissions should still be reviewed manually during alpha.
