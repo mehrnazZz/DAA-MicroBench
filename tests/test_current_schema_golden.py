@@ -9,8 +9,11 @@ from pathlib import Path
 
 from microbench.metrics.io import RESULT_SCHEMA_FILENAME
 from microbench.tools.current_schema_golden import (
+    CURRENT_SCHEMA_FLOAT_ABS_TOL,
     RESULT_TIMING_FIELDS,
+    RESULT_FLOAT_TOLERANCE_FIELDS,
     SUMMARY_TIMING_FIELDS,
+    SUMMARY_FLOAT_TOLERANCE_FIELDS,
     build_current_schema_candidate,
     compare_current_schema_golden,
 )
@@ -49,6 +52,8 @@ def test_current_schema_golden_matches_fresh_regeneration(tmp_path: Path) -> Non
     assert report["schema_version"] == "0.4.0"
     assert set(report["ignored_or_tolerated_timing_fields"]["results.csv"]) == set(RESULT_TIMING_FIELDS)
     assert set(report["ignored_or_tolerated_timing_fields"]["summary.csv"]) == set(SUMMARY_TIMING_FIELDS)
+    assert set(report["tolerated_float_fields"]["results.csv"]) == set(RESULT_FLOAT_TOLERANCE_FIELDS)
+    assert set(report["tolerated_float_fields"]["summary.csv"]) == set(SUMMARY_FLOAT_TOLERANCE_FIELDS)
 
 
 def test_current_schema_comparison_tolerates_timing_drift(tmp_path: Path) -> None:
@@ -73,6 +78,25 @@ def test_current_schema_comparison_tolerates_timing_drift(tmp_path: Path) -> Non
     assert report["ok"], report["mismatches"]
 
 
+def test_current_schema_comparison_tolerates_clearance_roundoff(tmp_path: Path) -> None:
+    candidate = _copy_fixture(tmp_path)
+
+    def mutate_results(rows):
+        for row in rows:
+            row["min_sep_p05_m"] = str(float(row["min_sep_p05_m"]) + CURRENT_SCHEMA_FLOAT_ABS_TOL * 0.5)
+
+    def mutate_summary(rows):
+        for row in rows:
+            row["min_sep_p05_mean"] = str(float(row["min_sep_p05_mean"]) - CURRENT_SCHEMA_FLOAT_ABS_TOL * 0.5)
+
+    _rewrite_csv(candidate / "results.csv", mutate_results)
+    _rewrite_csv(candidate / "summary.csv", mutate_summary)
+
+    report = compare_current_schema_golden(candidate_dir=candidate, golden_dir=GOLDEN_DIR)
+
+    assert report["ok"], report["mismatches"]
+
+
 def test_current_schema_comparison_fails_semantic_drift(tmp_path: Path) -> None:
     candidate = _copy_fixture(tmp_path)
 
@@ -87,6 +111,25 @@ def test_current_schema_comparison_fails_semantic_drift(tmp_path: Path) -> None:
     assert any(
         mismatch["file"] == "results.csv"
         and mismatch["field"] == "collisions"
+        and mismatch["reason"] == "semantic_value_mismatch"
+        for mismatch in report["mismatches"]
+    )
+
+
+def test_current_schema_comparison_fails_large_clearance_drift(tmp_path: Path) -> None:
+    candidate = _copy_fixture(tmp_path)
+
+    def mutate(rows):
+        rows[0]["min_sep_p05_m"] = str(float(rows[0]["min_sep_p05_m"]) + CURRENT_SCHEMA_FLOAT_ABS_TOL * 100.0)
+
+    _rewrite_csv(candidate / "results.csv", mutate)
+
+    report = compare_current_schema_golden(candidate_dir=candidate, golden_dir=GOLDEN_DIR)
+
+    assert not report["ok"]
+    assert any(
+        mismatch["file"] == "results.csv"
+        and mismatch["field"] == "min_sep_p05_m"
         and mismatch["reason"] == "semantic_value_mismatch"
         for mismatch in report["mismatches"]
     )

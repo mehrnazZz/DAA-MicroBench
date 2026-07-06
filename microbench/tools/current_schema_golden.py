@@ -30,6 +30,21 @@ RESULT_TIMING_FIELDS = frozenset(
     }
 )
 SUMMARY_TIMING_FIELDS = frozenset({"planner_ms_mean", "planner_ms_p95"})
+CURRENT_SCHEMA_FLOAT_ABS_TOL = 1e-5
+CURRENT_SCHEMA_FLOAT_REL_TOL = 1e-9
+
+RESULT_FLOAT_TOLERANCE_FIELDS = frozenset(
+    {
+        "min_sep_min_m",
+        "min_sep_p05_m",
+    }
+)
+SUMMARY_FLOAT_TOLERANCE_FIELDS = frozenset(
+    {
+        "min_sep_min_mean",
+        "min_sep_p05_mean",
+    }
+)
 
 CURRENT_SCHEMA_RUNS = (
     {
@@ -135,6 +150,24 @@ def _timing_value_ok(value: Any) -> bool:
     return math.isfinite(out) and out >= 0.0
 
 
+def _numeric_values_close(expected: Any, actual: Any) -> bool:
+    try:
+        expected_f = float(expected)
+        actual_f = float(actual)
+    except (TypeError, ValueError):
+        return False
+    if math.isnan(expected_f) or math.isnan(actual_f):
+        return math.isnan(expected_f) and math.isnan(actual_f)
+    if not math.isfinite(expected_f) or not math.isfinite(actual_f):
+        return False
+    return math.isclose(
+        expected_f,
+        actual_f,
+        rel_tol=CURRENT_SCHEMA_FLOAT_REL_TOL,
+        abs_tol=CURRENT_SCHEMA_FLOAT_ABS_TOL,
+    )
+
+
 def _missing_file_mismatch(path: Path, file_name: str, role: str) -> dict[str, Any] | None:
     if path.exists():
         return None
@@ -194,6 +227,7 @@ def _compare_csv(
     file_name: str,
     fields: list[str],
     timing_fields: frozenset[str],
+    tolerance_fields: frozenset[str],
     summary: bool,
 ) -> list[dict[str, Any]]:
     mismatches: list[dict[str, Any]] = []
@@ -279,6 +313,9 @@ def _compare_csv(
                     )
                 continue
 
+            if field in tolerance_fields and _numeric_values_close(expected.get(field), actual.get(field)):
+                continue
+
             if expected.get(field) != actual.get(field):
                 mismatches.append(
                     {
@@ -311,6 +348,7 @@ def compare_current_schema_golden(
             file_name="results.csv",
             fields=RESULT_FIELDS,
             timing_fields=RESULT_TIMING_FIELDS,
+            tolerance_fields=RESULT_FLOAT_TOLERANCE_FIELDS,
             summary=False,
         )
     )
@@ -321,6 +359,7 @@ def compare_current_schema_golden(
             file_name="summary.csv",
             fields=SUMMARY_FIELDS,
             timing_fields=SUMMARY_TIMING_FIELDS,
+            tolerance_fields=SUMMARY_FLOAT_TOLERANCE_FIELDS,
             summary=True,
         )
     )
@@ -334,6 +373,12 @@ def compare_current_schema_golden(
         "ignored_or_tolerated_timing_fields": {
             "results.csv": sorted(RESULT_TIMING_FIELDS),
             "summary.csv": sorted(SUMMARY_TIMING_FIELDS),
+        },
+        "tolerated_float_fields": {
+            "abs_tol": CURRENT_SCHEMA_FLOAT_ABS_TOL,
+            "rel_tol": CURRENT_SCHEMA_FLOAT_REL_TOL,
+            "results.csv": sorted(RESULT_FLOAT_TOLERANCE_FIELDS),
+            "summary.csv": sorted(SUMMARY_FLOAT_TOLERANCE_FIELDS),
         },
         "mismatches": mismatches,
     }
