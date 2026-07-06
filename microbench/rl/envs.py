@@ -9,6 +9,18 @@ import numpy as np
 from microbench.core import EpisodeEngine, EpisodeStep
 from microbench.planners import make_planner
 from microbench.planners.base import ILocalPlanner
+from microbench.rl.schema import (
+    AGENT_NAME_PREFIX,
+    DEFAULT_REWARD_WEIGHTS,
+    OBS_BASE_DIM,
+    OBS_NEIGHBOR_DIM,
+    OBSERVATION_LAYOUT,
+    RL_POLICY_METHOD,
+    action_schema,
+    interface_contract,
+    observation_schema,
+    reward_schema,
+)
 from microbench.rl.spaces import box
 from microbench.types import PlannerInput, PlannerOutput
 
@@ -22,38 +34,6 @@ try:  # pragma: no cover - exercised when gymnasium is installed.
     import gymnasium as _gymnasium
 except Exception:  # pragma: no cover - default test env uses the lightweight fallback.
     _gymnasium = None
-
-
-RL_POLICY_METHOD = "rl_policy"
-AGENT_NAME_PREFIX = "agent_"
-OBS_BASE_DIM = 17
-OBS_NEIGHBOR_DIM = 9
-OBS_POS_SLICE = slice(0, 3)
-OBS_VEL_SLICE = slice(3, 6)
-OBS_GOAL_DIR_SLICE = slice(6, 9)
-OBS_GOAL_DIST_INDEX = 9
-OBS_DONE_INDEX = 10
-OBS_TIME_INDEX = 11
-OBS_AGENT_ID_NORM_INDEX = 12
-OBS_PRIORITY_INDEX = 13
-OBS_RADIUS_INDEX = 14
-OBS_V_MAX_INDEX = 15
-OBS_A_MAX_INDEX = 16
-OBS_NEIGHBOR_START = OBS_BASE_DIM
-OBSERVATION_LAYOUT = {
-    "ego_pos": (0, 3),
-    "ego_vel": (3, 6),
-    "goal_dir": (6, 9),
-    "goal_dist": (9, 10),
-    "done": (10, 11),
-    "time_s": (11, 12),
-    "agent_id_norm": (12, 13),
-    "priority": (13, 14),
-    "radius_m": (14, 15),
-    "v_max_mps": (15, 16),
-    "a_max_mps2": (16, 17),
-    "neighbors": (OBS_NEIGHBOR_START, None),
-}
 
 
 def agent_name(agent_id: int) -> str:
@@ -167,14 +147,7 @@ class DaaParallelEnv(_PettingZooParallelEnv):
         self.agent_methods = list(agent_methods) if agent_methods is not None else None
         self.terminate_on_collision = bool(terminate_on_collision)
         self.strict_actions = bool(strict_actions)
-        self.reward_config = {
-            "progress": 1.0,
-            "time": -0.01,
-            "collision": -10.0,
-            "near_miss": -1.0,
-            "goal": 10.0,
-            **(reward_config or {}),
-        }
+        self.reward_config = {**DEFAULT_REWARD_WEIGHTS, **(reward_config or {})}
 
         self._engine: EpisodeEngine | None = None
         self._last_step: EpisodeStep | None = None
@@ -400,6 +373,21 @@ class DaaParallelEnv(_PettingZooParallelEnv):
             self._action_space = box(low=-1.0, high=1.0, shape=(3,), dtype=np.float32)
         _ = agent
         return self._action_space
+
+    def observation_schema(self) -> dict[str, Any]:
+        return observation_schema(top_k=(self._observation_dim() - OBS_BASE_DIM) // OBS_NEIGHBOR_DIM)
+
+    def action_schema(self) -> dict[str, Any]:
+        return action_schema()
+
+    def reward_schema(self) -> dict[str, Any]:
+        return reward_schema(self.reward_config)
+
+    def interface_contract(self) -> dict[str, Any]:
+        return interface_contract(
+            top_k=(self._observation_dim() - OBS_BASE_DIM) // OBS_NEIGHBOR_DIM,
+            reward_config=self.reward_config,
+        )
 
     def render(self):
         if self._last_step is None:

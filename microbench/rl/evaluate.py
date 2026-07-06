@@ -9,6 +9,13 @@ import numpy as np
 
 from microbench.rl.envs import DaaParallelEnv
 from microbench.rl.policies import make_policy
+from microbench.rl.schema import (
+    RL_ACTION_SCHEMA_VERSION,
+    RL_INTERFACE_VERSION,
+    RL_OBSERVATION_SCHEMA_VERSION,
+    RL_REWARD_SCHEMA_VERSION,
+    interface_contract,
+)
 from microbench.scenarios import materialize_official_suite
 
 
@@ -105,6 +112,7 @@ def run_rl_policy_smoke(
 
     rows: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
+    observed_contract: dict[str, Any] | None = None
     for scenario_id in scenario_id_list:
         for seed in seed_list:
             env = DaaParallelEnv(
@@ -118,6 +126,8 @@ def run_rl_policy_smoke(
             infos: dict[str, dict[str, Any]] = {}
             try:
                 observations, infos = env.reset(seed=int(seed))
+                if observed_contract is None:
+                    observed_contract = env.interface_contract()
                 agent_names = list(env.agents)
                 controlled_count = len(agent_names)
                 policy_obj = make_policy(policy, seed=int(seed))
@@ -247,11 +257,22 @@ def run_rl_policy_smoke(
             {"controlled_agents": [int(row["controlled_agents"]) for row in rows]},
         ),
         _check("episodes_progressed", all(int(row["steps"]) > 0 for row in rows), {"steps": [int(row["steps"]) for row in rows]}),
+        _check(
+            "schema_versions_present",
+            bool(RL_INTERFACE_VERSION)
+            and bool(RL_ACTION_SCHEMA_VERSION)
+            and bool(RL_OBSERVATION_SCHEMA_VERSION)
+            and bool(RL_REWARD_SCHEMA_VERSION),
+        ),
     ]
 
     ok = all(check["ok"] for check in checks)
     return {
         "schema_version": RL_SMOKE_SCHEMA_VERSION,
+        "interface_version": RL_INTERFACE_VERSION,
+        "action_schema_version": RL_ACTION_SCHEMA_VERSION,
+        "observation_schema_version": RL_OBSERVATION_SCHEMA_VERSION,
+        "reward_schema_version": RL_REWARD_SCHEMA_VERSION,
         "ok": bool(ok),
         "suite": RL_SMOKE_SUITE,
         "policy": str(policy),
@@ -264,6 +285,7 @@ def run_rl_policy_smoke(
         "dimensions": dimensions,
         "episode_csv": str(episode_csv),
         "suite_manifest": str(generated["manifest_path"]),
+        "interface_contract": observed_contract or interface_contract(top_k=8),
         "episodes": rows,
         "checks": checks,
     }

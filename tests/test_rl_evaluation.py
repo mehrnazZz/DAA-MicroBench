@@ -7,7 +7,14 @@ import sys
 
 import numpy as np
 
-from microbench.rl import OBSERVATION_LAYOUT, GoalDirectionPolicy, RandomPolicy, run_rl_policy_smoke
+from microbench.rl import (
+    OBSERVATION_LAYOUT,
+    RL_INTERFACE_VERSION,
+    GoalDirectionPolicy,
+    RandomPolicy,
+    interface_contract,
+    run_rl_policy_smoke,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +32,8 @@ def test_rl_policy_smoke_runs_2d_and_3d(tmp_path: Path) -> None:
     )
 
     assert report["schema_version"] == "0.1"
+    assert report["interface_version"] == RL_INTERFACE_VERSION
+    assert report["observation_schema_version"] == "0.1.0"
     assert report["ok"] is True
     assert report["run_count"] == 2
     assert report["scenario_ids"] == ["head_on_2d_easy", "sphere_swap_3d_medium"]
@@ -33,6 +42,7 @@ def test_rl_policy_smoke_runs_2d_and_3d(tmp_path: Path) -> None:
     assert _check(report, "two_d_and_three_d_coverage")["ok"] is True
     assert Path(report["episode_csv"]).exists()
     assert Path(report["suite_manifest"]).exists()
+    assert report["interface_contract"]["observation"]["shape"] == [89]
 
 
 def test_rl_smoke_cli_json_and_gate(tmp_path: Path) -> None:
@@ -64,6 +74,32 @@ def test_rl_smoke_cli_json_and_gate(tmp_path: Path) -> None:
     assert report["run_count"] == 2
     assert (out_dir / "rl_smoke.json").exists()
     assert (out_dir / "rl_smoke_episodes.csv").exists()
+
+
+def test_rl_contract_cli_json_and_schema_helper(tmp_path: Path) -> None:
+    contract = interface_contract(top_k=3)
+    assert contract["interface_version"] == RL_INTERFACE_VERSION
+    assert contract["observation"]["shape"] == [44]
+    assert contract["reward"]["weights"]["collision"] < 0
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "microbench.cli",
+            "rl-contract",
+            "--top-k",
+            "3",
+            "--json",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    cli_contract = json.loads(proc.stdout)
+    assert cli_contract["interface_version"] == RL_INTERFACE_VERSION
+    assert cli_contract["observation"]["shape"] == [44]
 
 
 def test_rl_policy_helpers_are_deterministic_and_layout_is_documented() -> None:

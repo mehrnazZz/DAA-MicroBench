@@ -10,6 +10,8 @@ pip install -e ".[rl]"
 
 The core package still imports without those extras. In that case DAA Microbench uses a tiny fallback `Box` space with `sample()` and `contains()` for smoke tests and simple scripts.
 
+Current public-alpha RL interface version: `0.1.0`.
+
 ## Parallel Multi-Agent
 
 Use `DaaParallelEnv` for decentralized multi-drone control. It follows the PettingZoo `ParallelEnv` shape:
@@ -64,6 +66,18 @@ Base observation layout:
 | `neighbors` | `17:` | padded top-k neighbor blocks |
 
 Each neighbor block has 9 values: present flag, relative position `(3)`, relative velocity `(3)`, neighbor radius, and message age.
+
+You can inspect the machine-readable contract:
+
+```bash
+python -m microbench.cli rl-contract --json
+```
+
+The JSON includes schema versions for actions, observations, and rewards:
+
+- action schema: normalized `(3,)` `float32` desired-velocity actions in `[-1, 1]`
+- observation schema: fixed `float32` vector with base ego fields plus padded top-k neighbor blocks
+- reward schema: default public-alpha training reward weights and term descriptions
 
 ## Background Traffic
 
@@ -138,6 +152,26 @@ assert report["ok"]
 ```
 
 See `examples/rl_random_policy.py` for a minimal runnable script.
+
+## Compatibility Check
+
+For custom adapters, use the lightweight compatibility checker without installing PettingZoo's optional test helpers:
+
+```python
+from microbench.rl import DaaParallelEnv, check_parallel_env_api
+
+env = DaaParallelEnv(
+    scenario_path="config/scenarios/stacked_swap_3d.yaml",
+    n_agents=4,
+)
+try:
+    report = check_parallel_env_api(env, seed=0, steps=2)
+    assert report["ok"]
+finally:
+    env.close()
+```
+
+The checker validates reset/step dictionary keys, observation/action-space shapes, finite rewards, boolean termination/truncation flags, and agent-list consistency.
 
 ## Public Alpha Caveats
 

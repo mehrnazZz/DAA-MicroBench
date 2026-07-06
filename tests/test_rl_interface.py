@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from microbench.rl import DaaParallelEnv, DaaSingleAgentEnv
+from microbench.rl import DaaParallelEnv, DaaSingleAgentEnv, check_parallel_env_api
 from microbench.scenarios import materialize_official_suite
 
 
@@ -42,6 +42,31 @@ def test_parallel_env_reset_step_and_spaces(tmp_path: Path) -> None:
         assert all(isinstance(value, bool) for value in truncations.values())
         assert step_infos["agent_0"]["controlled"] is True
         assert env.render()["n_agents"] == 4
+        contract = env.interface_contract()
+        assert contract["interface_version"] == "0.1.0"
+        assert contract["observation"]["shape"] == [env.observation_space("agent_0").shape[0]]
+        assert contract["action"]["shape"] == [3]
+    finally:
+        env.close()
+
+
+def test_parallel_env_lightweight_api_compatibility_check(tmp_path: Path) -> None:
+    scenario_path = _generated_scenario(tmp_path, "official_smoke_generated", "head_on_2d_easy")
+    env = DaaParallelEnv(
+        scenario_path=str(scenario_path),
+        n_agents=4,
+        seed=0,
+        comm_profile="ideal_50hz",
+    )
+    try:
+        report = check_parallel_env_api(env, seed=0, steps=2)
+        assert report["ok"] is True
+        assert report["interface_version"] == "0.1.0"
+        assert {check["name"] for check in report["checks"]} >= {
+            "reset_obs_keys_match_agents",
+            "step_return_keys_match_acting_agents",
+            "schema_shapes_match_spaces",
+        }
     finally:
         env.close()
 

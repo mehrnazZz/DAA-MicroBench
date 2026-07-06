@@ -5,7 +5,7 @@ from typing import Any, Protocol
 
 import numpy as np
 
-from microbench.rl.envs import OBS_GOAL_DIR_SLICE
+from microbench.rl.schema import OBS_GOAL_DIR_SLICE
 
 
 class RlPolicy(Protocol):

@@ -16,6 +16,7 @@ Use this checklist before tagging a public alpha, announcing a leaderboard run, 
 - [ ] `python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated` passes, while `--require-stable-v1-ready` remains blocked until promotion work is complete.
 - [ ] `python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass` passes for targeted CBF/MPC reference-evidence checks.
 - [ ] `python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass` passes for PettingZoo/Gymnasium wrapper health.
+- [ ] `python -m microbench.cli rl-contract --json` prints the current RL interface contract.
 - [ ] GitHub Actions CI is green for Python 3.10, 3.11, and 3.12.
 - [ ] `docs/README.md`, `docs/PUBLIC_ALPHA_NOTES.md`, `docs/DESIGN_V1.md`, `docs/PLANNER_API.md`, `docs/SCENARIO_SUITES.md`, `docs/BASELINES.md`, `docs/LEADERBOARD.md`, `docs/RL_INTERFACE.md`, and `docs/RESULT_SUBMISSION.md` reflect the release behavior.
 - [ ] Issue templates and pull request template still match the current public contract.

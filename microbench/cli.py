@@ -21,6 +21,7 @@ from microbench.dataset import generate_dataset, expand_scenarios, expand_list, 
 from microbench.logging import wandb_logger
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.policies import POLICY_NAMES
+from microbench.rl.schema import interface_contract
 from microbench.tools import (
     build_baseline_audit,
     build_current_schema_candidate,
@@ -717,6 +718,19 @@ def _rl_smoke(args) -> None:
         raise SystemExit(f"RL smoke failed: {','.join(failed)}")
 
 
+def _rl_contract(args) -> None:
+    report = interface_contract(top_k=int(args.top_k))
+    payload = json.dumps(report, indent=2, sort_keys=True)
+    if args.out:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(payload + "\n", encoding="utf-8")
+    if args.json or not args.out:
+        print(payload)
+    else:
+        print(f"done: RL interface contract saved to {args.out}")
+
+
 def _golden_current_schema(args) -> None:
     if args.update and args.candidate:
         raise SystemExit("--update cannot be combined with --candidate")
@@ -985,6 +999,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_rl.add_argument("--json", action="store_true", help="Emit machine-readable RL smoke report")
     p_rl.add_argument("--require-pass", action="store_true", help="Fail if any RL smoke check fails")
 
+    p_rlc = sub.add_parser("rl-contract", help="Print the versioned RL action/observation/reward contract")
+    p_rlc.add_argument("--top-k", type=int, default=8, help="Neighbor slots used to compute observation shape")
+    p_rlc.add_argument("--out", default=None, help="Optional JSON output path")
+    p_rlc.add_argument("--json", action="store_true", help="Emit machine-readable contract JSON")
+
     p_golden = sub.add_parser("golden-current-schema", help="Check or regenerate the current result-schema fixture")
     p_golden.add_argument("--golden-dir", default="golden/current_schema", help="Path to checked-in fixture")
     p_golden.add_argument("--candidate", default=None, help="Compare an existing candidate directory instead of running")
@@ -1123,6 +1142,9 @@ def main() -> None:
         return
     if args.cmd == "rl-smoke":
         _rl_smoke(args)
+        return
+    if args.cmd == "rl-contract":
+        _rl_contract(args)
         return
     if args.cmd == "golden-current-schema":
         _golden_current_schema(args)
