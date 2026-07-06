@@ -36,6 +36,8 @@ Larger contributions should open an issue first:
 - new planner APIs
 - changes to the canonical sweep protocol
 
+For the public benchmark contract, use [docs/DESIGN_V1.md](docs/DESIGN_V1.md). For planner implementation details, use [docs/PLANNER_API.md](docs/PLANNER_API.md).
+
 ## Benchmark Fairness Rules
 
 Planner submissions must not:

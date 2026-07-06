@@ -2,6 +2,8 @@
 
 Use this template when submitting DAA Microbench results.
 
+Submissions are reviewed against the public benchmark contract in [DESIGN_V1.md](DESIGN_V1.md) and the planner API rules in [PLANNER_API.md](PLANNER_API.md).
+
 ## Required Summary
 
 ```text

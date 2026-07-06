@@ -2,6 +2,8 @@
 
 This document defines the intended public leaderboard policy for DAA Microbench.
 
+For the benchmark scope, planner contract, allowed information, and forbidden information, see [DESIGN_V1.md](DESIGN_V1.md). For planner implementation details, see [PLANNER_API.md](PLANNER_API.md).
+
 ## Status
 
 The benchmark is currently pre-v1. Leaderboard fields and official suites may still change. Public results should include the benchmark commit hash and the explicit schema version in `result_schema.json`.
