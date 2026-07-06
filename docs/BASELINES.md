@@ -88,7 +88,7 @@ python -m microbench.cli baseline-promotion \
   --require-calibrated
 ```
 
-This produces `baseline_promotion.json`. It should report `public_alpha_calibrated=true` and `stable_v1_ready=false` for `cbf_qp`, `mpc_local`, and `negotiation_yield` during public alpha. The report records smoke metrics, generated experimental-suite acceptance for CBF/MPC, method-specific signal contracts, and stable-v1 blockers such as remaining smoke collisions, missing calibrated 3D stress bands, and missing degraded sensing/communication calibration.
+This produces `baseline_promotion.json`. It should report `public_alpha_calibrated=true` and `stable_v1_ready=false` for `cbf_qp`, `mpc_local`, and `negotiation_yield` during public alpha. The report records smoke metrics, generated experimental-suite acceptance for CBF/MPC, method-specific signal contracts, and stable-v1 blockers such as experimental metadata status, missing calibrated 3D stress bands, and missing degraded sensing/communication calibration.
 
 Geometric comparison under degraded communication:
 

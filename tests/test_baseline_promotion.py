@@ -29,9 +29,11 @@ def test_baseline_promotion_calibrates_experimentals_but_blocks_stable_v1(tmp_pa
         assert entry["stable_v1_ready"] is False
         assert entry["calibration_blockers"] == []
         assert entry["behavior_metrics"]["guardrail_total"] == 0
+        assert entry["behavior_metrics"]["collision_episode_count"] == 0
         assert "metadata_status_not_stable" in entry["stable_v1_blockers"]
         assert "stable_3d_stress_acceptance_bands_missing" in entry["stable_v1_blockers"]
         assert "degraded_comm_or_sensor_calibration_missing" in entry["stable_v1_blockers"]
+        assert "smoke_collision_episode_present" not in entry["stable_v1_blockers"]
 
     assert "role_not_reference_baseline" in by_method["cbf_qp"]["stable_v1_blockers"]
     assert "role_not_reference_baseline" in by_method["mpc_local"]["stable_v1_blockers"]

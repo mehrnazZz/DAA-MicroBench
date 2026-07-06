@@ -446,6 +446,7 @@ SCENARIO_FAMILIES: dict[str, ScenarioFamily] = {
             "goals": {"min_goal_distance_m": 55.0},
             "spawn": {
                 "type": "rect_to_rect",
+                "min_start_separation_m": 1.05,
                 "start_region": {"center": [-32.0, 0.0, 0.0], "half": [1.0, 0.0, 4.0]},
                 "goal_region": {"center": [32.0, 0.0, 0.0], "half": [1.0, 0.0, 4.0]},
             },

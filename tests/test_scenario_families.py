@@ -169,6 +169,28 @@ class TestScenarioFamilies(unittest.TestCase):
             cfg = load_yaml(generated["scenario_paths"][0])
             self.assertEqual(cfg["scenario"]["duration_s"], 8.0)
 
+    def test_generated_head_on_smoke_seed_starts_clear(self):
+        with tempfile.TemporaryDirectory() as td:
+            generated = materialize_official_suite("official_smoke_generated", Path(td), overwrite=True)
+            scenario_path = next(p for p in generated["scenario_paths"] if p.stem == "head_on_2d_easy")
+            engine = EpisodeEngine(
+                scenario_path=str(scenario_path),
+                method="baseline_goal",
+                n_agents=4,
+                seed=0,
+                comm_profile="ideal_50hz",
+            )
+            try:
+                min_clearance = min(
+                    float(np.linalg.norm(engine.spawns[i] - engine.spawns[j]) - (engine.states[i].radius + engine.states[j].radius))
+                    for i in range(engine.n_agents)
+                    for j in range(i + 1, engine.n_agents)
+                )
+            finally:
+                engine.close()
+
+        self.assertGreaterEqual(min_clearance, 0.1)
+
     def test_generated_experimental_baseline_suite_is_isolated_from_default_smoke(self):
         with tempfile.TemporaryDirectory() as td:
             generated = materialize_official_suite("official_experimental_baselines", Path(td), overwrite=True)

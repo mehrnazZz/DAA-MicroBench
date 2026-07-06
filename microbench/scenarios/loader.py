@@ -26,7 +26,7 @@ def _apply_layer_y(cfg: dict, point: np.ndarray, idx: int, field: str) -> np.nda
     return out
 
 
-def _rect_to_rect(cfg: dict, n_agents: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
+def _rect_to_rect_one(cfg: dict, idx: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
     st = cfg.get("start_region", {})
     gt = cfg.get("goal_region", {})
     st_c = np.asarray(st.get("center", [0.0, 0.0, 0.0]), dtype=float)
@@ -38,15 +38,21 @@ def _rect_to_rect(cfg: dict, n_agents: int, rng: np.random.Generator) -> tuple[n
     bias_type = bias.get("type", "none")
     sigma = float(bias.get("sigma_m", 1.0))
 
+    sp = _sample_rect_point(rng, st_c, st_h)
+    if bias_type == "gaussian_z":
+        sp[2] = st_c[2] + rng.normal(0.0, sigma)
+        sp[2] = np.clip(sp[2], st_c[2] - st_h[2], st_c[2] + st_h[2])
+    return (
+        _apply_layer_y(cfg, sp, idx, "start_layers_m"),
+        _apply_layer_y(cfg, _sample_rect_point(rng, gt_c, gt_h), idx, "goal_layers_m"),
+    )
+
+
+def _rect_to_rect(cfg: dict, n_agents: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
     spawns = np.zeros((n_agents, 3), dtype=float)
     goals = np.zeros((n_agents, 3), dtype=float)
     for i in range(n_agents):
-        sp = _sample_rect_point(rng, st_c, st_h)
-        if bias_type == "gaussian_z":
-            sp[2] = st_c[2] + rng.normal(0.0, sigma)
-            sp[2] = np.clip(sp[2], st_c[2] - st_h[2], st_c[2] + st_h[2])
-        spawns[i] = _apply_layer_y(cfg, sp, i, "start_layers_m")
-        goals[i] = _apply_layer_y(cfg, _sample_rect_point(rng, gt_c, gt_h), i, "goal_layers_m")
+        spawns[i], goals[i] = _rect_to_rect_one(cfg, i, rng)
     return spawns, goals
 
 
@@ -107,7 +113,7 @@ def _sphere_swap(cfg: dict, n_agents: int, rng: np.random.Generator) -> tuple[np
     return spawns, goals
 
 
-def _four_way(cfg: dict, n_agents: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
+def _four_way_one(cfg: dict, idx: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
     extent = float(cfg.get("extent_m", 40.0))
     lane_hw = float(cfg.get("lane_half_width_m", 5.0))
     dirs = ["west", "east", "south", "north"]
@@ -123,15 +129,59 @@ def _four_way(cfg: dict, n_agents: int, rng: np.random.Generator) -> tuple[np.nd
 
     opposite = {"west": "east", "east": "west", "south": "north", "north": "south"}
 
+    side = dirs[idx % 4]
+    sp = sample_side(side, float(cfg.get("y_m", 0.0)))
+    gt = sample_side(opposite[side], float(cfg.get("y_m", 0.0)))
+    return (
+        _apply_layer_y(cfg, sp, idx, "start_layers_m"),
+        _apply_layer_y(cfg, gt, idx, "goal_layers_m"),
+    )
+
+
+def _four_way(cfg: dict, n_agents: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
     spawns = np.zeros((n_agents, 3), dtype=float)
     goals = np.zeros((n_agents, 3), dtype=float)
     for i in range(n_agents):
-        side = dirs[i % 4]
-        sp = sample_side(side, float(cfg.get("y_m", 0.0)))
-        gt = sample_side(opposite[side], float(cfg.get("y_m", 0.0)))
-        spawns[i] = _apply_layer_y(cfg, sp, i, "start_layers_m")
-        goals[i] = _apply_layer_y(cfg, gt, i, "goal_layers_m")
+        spawns[i], goals[i] = _four_way_one(cfg, i, rng)
     return spawns, goals
+
+
+def _resample_start_clearance(
+    *,
+    stype: str,
+    spawn_cfg: dict,
+    spawns: np.ndarray,
+    goals: np.ndarray,
+    min_start_separation_m: float,
+    max_attempts: int,
+    rng: np.random.Generator,
+) -> tuple[np.ndarray, np.ndarray]:
+    if min_start_separation_m <= 0.0:
+        return spawns, goals
+    if stype not in {"rect_to_rect", "four_way"}:
+        return spawns, goals
+
+    def sample_one(idx: int) -> tuple[np.ndarray, np.ndarray]:
+        if stype == "rect_to_rect":
+            return _rect_to_rect_one(spawn_cfg, idx, rng)
+        return _four_way_one(spawn_cfg, idx, rng)
+
+    out_spawns = spawns.copy()
+    out_goals = goals.copy()
+    for i in range(len(out_spawns)):
+        for _ in range(max_attempts):
+            if all(
+                np.linalg.norm(out_spawns[i] - out_spawns[j]) >= min_start_separation_m
+                for j in range(i)
+            ):
+                break
+            out_spawns[i], out_goals[i] = sample_one(i)
+        else:
+            raise RuntimeError(
+                f"Failed spawn assignment: min_start_separation_m={min_start_separation_m} "
+                f"too strict for {stype} scenario"
+            )
+    return out_spawns, out_goals
 
 
 def generate_spawns_goals(cfg: dict, n_agents: int, rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
@@ -152,16 +202,23 @@ def generate_spawns_goals(cfg: dict, n_agents: int, rng: np.random.Generator) ->
     else:
         raise ValueError(f"Unsupported spawn type: {stype}")
 
-    spawns = raw_spawns.copy()
-    goals = raw_goals.copy()
+    min_start_separation = float(spawn_cfg.get("min_start_separation_m", 0.0))
+    spawns, goals = _resample_start_clearance(
+        stype=stype,
+        spawn_cfg=spawn_cfg,
+        spawns=raw_spawns,
+        goals=raw_goals,
+        min_start_separation_m=min_start_separation,
+        max_attempts=max_attempts,
+        rng=rng,
+    )
     for i in range(n_agents):
         if np.linalg.norm(goals[i] - spawns[i]) >= min_goal_dist:
             continue
         ok = False
         for _ in range(max_attempts):
             if stype == "rect_to_rect":
-                _, retry_goals = _rect_to_rect(spawn_cfg, 1, rng)
-                candidate = retry_goals[0]
+                _, candidate = _rect_to_rect_one(spawn_cfg, i, rng)
             elif stype == "circle_swap":
                 _, retry_goals = _circle_swap(spawn_cfg, 1, rng)
                 candidate = retry_goals[0]
@@ -169,8 +226,7 @@ def generate_spawns_goals(cfg: dict, n_agents: int, rng: np.random.Generator) ->
                 _, retry_goals = _sphere_swap(spawn_cfg, 1, rng)
                 candidate = retry_goals[0]
             else:
-                _, retry_goals = _four_way(spawn_cfg, 1, rng)
-                candidate = retry_goals[0]
+                _, candidate = _four_way_one(spawn_cfg, i, rng)
             if np.linalg.norm(candidate - spawns[i]) >= min_goal_dist:
                 goals[i] = candidate
                 ok = True

@@ -19,17 +19,6 @@ def _normalize(v: np.ndarray) -> np.ndarray:
     return (v / n).astype(np.float32)
 
 
-def _sidestep(goal_dir: np.ndarray, agent_idx: int) -> np.ndarray:
-    side = np.asarray([-goal_dir[2], 0.0, goal_dir[0]], dtype=np.float32)
-    n = float(np.linalg.norm(side))
-    if n < 1e-9:
-        side = np.asarray([0.0, 0.0, 1.0], dtype=np.float32)
-    else:
-        side = side / n
-    sign = -1.0 if int(agent_idx) % 2 else 1.0
-    return side * sign
-
-
 class NegotiationYieldPlanner(ILocalPlanner):
     """Tiny proposal/ACK baseline for decentralized right-of-way negotiation.
 
@@ -47,6 +36,8 @@ class NegotiationYieldPlanner(ILocalPlanner):
         memory = ctx.memory if ctx is not None else {}
         now = float(planner_input.t)
         ego_priority = int(ctx.priority) if ctx is not None else int(ego.idx)
+        yield_duration_s = 1.2
+        yield_speed_scale = 0.15
 
         yield_until = float(memory.get("yield_until_s", -1.0))
         proposal_seq = int(memory.get("proposal_seq", 0))
@@ -62,7 +53,7 @@ class NegotiationYieldPlanner(ILocalPlanner):
             if not msg.valid:
                 continue
             if msg.kind == MSG_NEGOTIATION_PROPOSAL:
-                duration_s = float(msg.payload.get("duration_s", 0.5))
+                duration_s = max(yield_duration_s, float(msg.payload.get("duration_s", 0.5)))
                 start_s = float(msg.payload.get("start_s", now))
                 proposal_id = str(msg.payload.get("proposal_id", msg.message_id or ""))
                 action = str(msg.payload.get("action", ""))
@@ -76,7 +67,7 @@ class NegotiationYieldPlanner(ILocalPlanner):
                             ack_message_id=str(msg.message_id or proposal_id),
                             status="accepted",
                             reason="yield_commitment",
-                            ttl_s=0.75,
+                            ttl_s=yield_duration_s + 0.25,
                         )
                     )
                     acked_correlations.add(str(msg.message_id or proposal_id))
@@ -108,21 +99,21 @@ class NegotiationYieldPlanner(ILocalPlanner):
                             proposal_id=proposal_id,
                             action="yield",
                             start_s=now,
-                            duration_s=0.6,
+                            duration_s=yield_duration_s,
                             priority=ego_priority,
                             reason="right_of_way_conflict",
                             params={
                                 "requester_priority": ego_priority,
-                                "speed_scale": 0.25,
+                                "speed_scale": yield_speed_scale,
                                 "distance_m": dist,
                             },
-                            ttl_s=0.75,
+                            ttl_s=yield_duration_s + 0.25,
                         )
                     )
                     last_proposal_by_neighbor[int(nbr.idx)] = now
                     proposals_sent += 1
             else:
-                yield_until = max(yield_until, now + 0.4)
+                yield_until = max(yield_until, now + yield_duration_s)
 
         memory["yield_until_s"] = yield_until
         memory["proposal_seq"] = proposal_seq
@@ -131,20 +122,15 @@ class NegotiationYieldPlanner(ILocalPlanner):
 
         goal_dir = _normalize(np.asarray(planner_input.goal_dir, dtype=np.float32))
         yielding = bool(now <= yield_until)
-        speed_scale = 0.25 if yielding else 1.0
-        if yielding:
-            sidestep = _sidestep(goal_dir, int(ego.idx))
-            v_dir = _normalize(goal_dir * speed_scale + sidestep * 0.75)
-            v_cmd = v_dir * float(ego.v_max)
-        else:
-            v_cmd = goal_dir * float(ego.v_max)
+        speed_scale = yield_speed_scale if yielding else 1.0
+        v_cmd = goal_dir * float(ego.v_max) * speed_scale
         return PlannerOutput(
             v_cmd=v_cmd.astype(float),
             messages_out=messages_out,
             debug_info={
                 "yield_until_s": float(yield_until),
                 "speed_scale": float(speed_scale),
-                "sidestep_active": bool(yielding),
+                "sidestep_active": False,
                 "proposals_sent": int(proposals_sent),
                 "acks_sent": int(acks_sent),
                 "acks_received": int(acks_received),
