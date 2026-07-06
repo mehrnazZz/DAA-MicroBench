@@ -153,6 +153,23 @@ assert report["ok"]
 
 See `examples/rl_random_policy.py` for a minimal runnable script.
 
+For custom training scripts, use the rollout helpers directly:
+
+```python
+from microbench.rl import DaaParallelEnv, rollout_parallel_env
+
+env = DaaParallelEnv(
+    scenario_path="config/scenarios/stacked_swap_3d.yaml",
+    n_agents=4,
+)
+try:
+    row = rollout_parallel_env(env, "goal_direction", seed=0, max_steps=100)
+finally:
+    env.close()
+```
+
+For small scenario/seed matrices, `run_parallel_policy_rollouts(...)` creates and closes one environment per row and returns the same per-episode fields used by `rl-smoke`.
+
 ## Compatibility Check
 
 For custom adapters, use the lightweight compatibility checker without installing PettingZoo's optional test helpers:
@@ -172,6 +189,15 @@ finally:
 ```
 
 The checker validates reset/step dictionary keys, observation/action-space shapes, finite rewards, boolean termination/truncation flags, and agent-list consistency.
+
+When optional extras are installed, run the integration tests:
+
+```bash
+pip install -e ".[rl]"
+python -m pytest tests/test_rl_optional_integrations.py -q
+```
+
+These tests are skipped in core installs and verify the wrappers inherit from Gymnasium/PettingZoo base classes when those packages are present.
 
 ## Public Alpha Caveats
 

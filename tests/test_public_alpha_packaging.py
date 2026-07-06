@@ -56,6 +56,7 @@ def test_public_docs_index_and_templates_exist() -> None:
         ".github/ISSUE_TEMPLATE/benchmark_result.md",
         ".github/ISSUE_TEMPLATE/bug_report.md",
         ".github/ISSUE_TEMPLATE/feature_request.md",
+        ".github/ISSUE_TEMPLATE/learned_policy_submission.md",
         ".github/ISSUE_TEMPLATE/planner_submission.md",
         ".github/ISSUE_TEMPLATE/scenario_proposal.md",
         ".github/pull_request_template.md",
@@ -69,3 +70,8 @@ def test_public_docs_index_and_templates_exist() -> None:
     assert "result_schema.json" in result_template
     assert "planner_timeout_count_mean" in result_template
     assert "docs/RESULT_SUBMISSION.md" in result_template
+
+    learned_template = (ROOT / ".github/ISSUE_TEMPLATE/learned_policy_submission.md").read_text(encoding="utf-8")
+    assert "rl_contract.json" in learned_template
+    assert "rl_smoke.json" in learned_template
+    assert "Training Disclosure" in learned_template

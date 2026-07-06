@@ -8,13 +8,17 @@ import sys
 import numpy as np
 
 from microbench.rl import (
+    DaaParallelEnv,
     OBSERVATION_LAYOUT,
     RL_INTERFACE_VERSION,
     GoalDirectionPolicy,
     RandomPolicy,
     interface_contract,
+    rollout_parallel_env,
+    run_parallel_policy_rollouts,
     run_rl_policy_smoke,
 )
+from microbench.scenarios import materialize_official_suite
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +26,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _check(report: dict, name: str) -> dict:
     return next(check for check in report["checks"] if check["name"] == name)
+
+
+def _generated_paths(tmp_path: Path) -> dict[str, Path]:
+    generated = materialize_official_suite("official_smoke_generated", tmp_path / "suite", overwrite=True)
+    return {path.stem: path for path in generated["scenario_paths"]}
 
 
 def test_rl_policy_smoke_runs_2d_and_3d(tmp_path: Path) -> None:
@@ -32,6 +41,7 @@ def test_rl_policy_smoke_runs_2d_and_3d(tmp_path: Path) -> None:
     )
 
     assert report["schema_version"] == "0.1"
+    assert report["rollout_schema_version"] == "0.1"
     assert report["interface_version"] == RL_INTERFACE_VERSION
     assert report["observation_schema_version"] == "0.1.0"
     assert report["ok"] is True
@@ -100,6 +110,41 @@ def test_rl_contract_cli_json_and_schema_helper(tmp_path: Path) -> None:
     cli_contract = json.loads(proc.stdout)
     assert cli_contract["interface_version"] == RL_INTERFACE_VERSION
     assert cli_contract["observation"]["shape"] == [44]
+
+
+def test_rollout_helpers_support_direct_and_batch_use(tmp_path: Path) -> None:
+    paths = _generated_paths(tmp_path)
+    env = DaaParallelEnv(
+        scenario_path=str(paths["head_on_2d_easy"]),
+        n_agents=4,
+        seed=0,
+        comm_profile="ideal_50hz",
+    )
+    try:
+        row = rollout_parallel_env(env, "zero", seed=0, max_steps=3, metadata={"suite": "test", "scenario": "head_on_2d_easy"})
+        assert row["steps"] == 3
+        assert row["controlled_agents"] == 4
+        assert row["finite_observations"] is True
+        assert row["finite_rewards"] is True
+        assert row["api_error"] == ""
+    finally:
+        env.close()
+
+    rows = run_parallel_policy_rollouts(
+        scenario_paths={
+            "head_on_2d_easy": paths["head_on_2d_easy"],
+            "sphere_swap_3d_medium": paths["sphere_swap_3d_medium"],
+        },
+        policy="goal_direction",
+        n_agents=4,
+        seeds=[0, 1],
+        max_steps=2,
+        suite="test_suite",
+    )
+    assert len(rows) == 4
+    assert {row["dimension"] for row in rows} == {"2d", "3d"}
+    assert all(row["steps"] == 2 for row in rows)
+    assert all(row["api_error"] == "" for row in rows)
 
 
 def test_rl_policy_helpers_are_deterministic_and_layout_is_documented() -> None:

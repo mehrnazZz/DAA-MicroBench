@@ -61,4 +61,5 @@ def test_docs_index_and_checklist_reference_alpha_notes_and_dry_run() -> None:
     assert "bash scripts/release_readiness.sh" in checklist
     assert "baseline-evidence --out-dir" in checklist
     assert "rl-smoke --out-dir" in checklist
+    assert "tests/test_rl_optional_integrations.py" in checklist
     assert "DAA_REQUIRE_CLEAN=1 bash scripts/release_readiness.sh" in checklist

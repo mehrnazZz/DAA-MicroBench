@@ -19,7 +19,7 @@ Start here when navigating the public docs.
 
 ## Contributing
 
-- Use the GitHub issue templates for bugs, feature requests, benchmark results, planner submissions, and scenario proposals.
+- Use the GitHub issue templates for bugs, feature requests, benchmark results, planner submissions, learned-policy submissions, and scenario proposals.
 - Use the pull request template checklist when changing planner APIs, metrics, schemas, suites, or benchmark-critical behavior.
 - See [../CONTRIBUTING.md](../CONTRIBUTING.md) for setup, fairness rules, and PR expectations.
 
