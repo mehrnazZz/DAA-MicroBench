@@ -95,8 +95,8 @@ Current suite categories:
 
 - `official_smoke_generated`: tiny CI/public smoke suite
 - `official_alpha`: pre-v1 mixed planar/3D suite
-- `official_3d_stress`: volumetric and vertical 3D stress suite
-- `official_agentic_stress`: heterogeneous-priority and noncooperative agentic stress suite
+- `official_3d_stress`: volumetric, dense, vertical, and noncooperative 3D stress suite
+- `official_agentic_stress`: heterogeneous-priority, multi-intruder, and noncooperative agentic stress suite
 - `official_experimental_baselines`: calibration lane for experimental baselines
 
 Custom suites are allowed, but must be labeled separately from official results.

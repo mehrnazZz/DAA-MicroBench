@@ -17,8 +17,8 @@ This is not yet a stable v1 release. The public contract is intended to be revie
 
 - `official_smoke_generated`: tiny 2D/3D/agentic smoke coverage for CI and quick checks.
 - `official_alpha`: pre-v1 generated suite mixing planar and 3D DAA families.
-- `official_3d_stress`: volumetric and vertical DAA stress cases.
-- `official_agentic_stress`: heterogeneous priorities, noncooperative traffic, partial sensing, and agentic coordination.
+- `official_3d_stress`: volumetric, dense-swarm, vertical, and noncooperative 3D DAA stress cases.
+- `official_agentic_stress`: heterogeneous priorities, multi-intruder/noncooperative traffic, partial sensing, and agentic coordination.
 - `official_experimental_baselines`: compact calibration suite for experimental CBF-QP and MPC-local baselines.
 - `official_promotion_calibration`: compact 3D and degraded sensing/communication calibration suite used by `baseline-promotion`.
 

@@ -125,8 +125,8 @@ Lower is better. A method with any collisions should rank below a collision-free
 Results should be grouped, not blended:
 
 - `official_alpha`: generated pre-v1 suite with planar and 3D scenarios
-- `official_3d_stress`: generated volumetric/vertical 3D stress suite
-- `official_agentic_stress`: generated heterogeneous-priority and noncooperative 3D stress suite
+- `official_3d_stress`: generated volumetric/dense/vertical/noncooperative 3D stress suite
+- `official_agentic_stress`: generated heterogeneous-priority and multi-intruder noncooperative 3D stress suite
 - `official_experimental_baselines`: generated calibration lane for runnable experimental baselines, not a ranking category
 - `primary`: official planar suite
 - `three_d`: hand-written 3D development suite

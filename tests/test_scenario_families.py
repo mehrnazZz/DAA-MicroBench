@@ -89,9 +89,28 @@ class TestScenarioFamilies(unittest.TestCase):
         self.assertTrue(intruder_agent["failure_modes"]["noncooperative"])
         self.assertEqual(intruder["perception"]["mode"], "sensor")
 
+        multi = SCENARIO_FAMILIES["multi_intruder_3d_hard"].config
+        noncooperative_ids = [
+            agent_id
+            for agent_id, profile in multi["agents"]["by_id"].items()
+            if profile.get("failure_modes", {}).get("noncooperative")
+        ]
+        self.assertEqual(noncooperative_ids, [0, 1, 2])
+        self.assertTrue(multi["intent"]["enabled"])
+        self.assertEqual(multi["perception"]["mode"], "fused")
+
         priority = SCENARIO_FAMILIES["heterogeneous_priority_crossing_3d_medium"].config
         self.assertGreater(priority["agents"]["by_id"][0]["priority"], priority["agents"]["by_id"][2]["priority"])
         self.assertTrue(priority["intent"]["enabled"])
+
+    def test_dense_swarm_family_is_tighter_than_medium_sphere_swap(self):
+        medium = SCENARIO_FAMILIES["sphere_swap_3d_medium"].config
+        dense = SCENARIO_FAMILIES["dense_swarm_3d_hard"].config
+
+        self.assertLess(dense["spawn"]["radius_m"], medium["spawn"]["radius_m"])
+        self.assertLess(dense["perception"]["sensor"]["range_m"], medium["world"]["bounds"]["xmax"])
+        self.assertTrue(dense["perception"]["sensor"]["occlusion"])
+        self.assertGreaterEqual(max(SCENARIO_FAMILIES["dense_swarm_3d_hard"].recommended_n), 32)
 
     def test_suite_registry_lists_generated_and_handwritten_statuses(self):
         registry = {entry["suite"]: entry for entry in suite_registry_dicts()}
@@ -103,8 +122,11 @@ class TestScenarioFamilies(unittest.TestCase):
         self.assertEqual(registry["official_3d_stress"]["status"], "pre_v1_official")
         self.assertEqual(registry["official_3d_stress"]["source"], "generated")
         self.assertEqual(registry["official_3d_stress"]["acceptance_rule_count"], 6)
+        self.assertIn("dense_swarm_3d_hard", registry["official_3d_stress"]["scenarios"])
         self.assertIn("merge_3d_hard", registry["official_3d_stress"]["scenarios"])
+        self.assertIn("multi_intruder_3d_hard", registry["official_3d_stress"]["scenarios"])
         self.assertIn("noncooperative_intruder_3d_hard", registry["official_3d_stress"]["scenarios"])
+        self.assertIn("multi_intruder_3d_hard", registry["official_agentic_stress"]["scenarios"])
         self.assertIn("orca_with_staleness", registry["official_3d_stress"]["default_methods"])
         self.assertIn("orca_with_staleness", registry["official_agentic_stress"]["default_methods"])
         self.assertEqual(registry["official_experimental_baselines"]["status"], "experimental")
@@ -143,7 +165,7 @@ class TestScenarioFamilies(unittest.TestCase):
 
             self.assertIn("official_3d_stress", proc.stdout)
             self.assertTrue((out_dir / "suite_manifest.yaml").exists())
-            self.assertEqual(len(list(out_dir.glob("*.yaml"))), 8)
+            self.assertEqual(len(list(out_dir.glob("*.yaml"))), 10)
 
     def test_generated_3d_stress_suite_carries_orca_acceptance_rules(self):
         with tempfile.TemporaryDirectory() as td:

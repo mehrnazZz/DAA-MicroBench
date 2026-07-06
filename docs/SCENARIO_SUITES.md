@@ -55,15 +55,17 @@ Families:
 
 ### `official_3d_stress`
 
-Generated 3D suite for volumetric, vertical, partial-sensing, merge, overtake, and noncooperative stress testing.
+Generated 3D suite for volumetric, dense, vertical, partial-sensing, merge, overtake, and noncooperative stress testing.
 Default methods: `orca_heuristic`, `orca_with_staleness`.
 
 Families:
 - `sphere_swap_3d_medium`
+- `dense_swarm_3d_hard`
 - `merge_3d_hard`
 - `overtake_3d_medium`
 - `vertical_crossing_3d_hard`
 - `sensor_volume_3d_hard`
+- `multi_intruder_3d_hard`
 - `noncooperative_intruder_3d_hard`
 - `heterogeneous_priority_crossing_3d_medium`
 
@@ -104,6 +106,7 @@ Default methods: `priority_yield`, `negotiation_yield`, `orca_heuristic`, `orca_
 
 Families:
 - `heterogeneous_priority_crossing_3d_medium`
+- `multi_intruder_3d_hard`
 - `noncooperative_intruder_3d_hard`
 - `sensor_volume_3d_hard`
 - `vertical_crossing_3d_hard`
