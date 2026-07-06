@@ -639,6 +639,15 @@ class EpisodeEngine:
             return np.zeros(3, dtype=float)
         return _normalize(away) * float(ego.v_max) * min(1.0, max(0.0, self.planner_fallback_speed_scale))
 
+    @staticmethod
+    def _coerce_planner_cmd(v_cmd) -> np.ndarray:
+        arr = np.asarray(v_cmd, dtype=float)
+        if arr.shape != (3,):
+            raise ValueError(f"planner v_cmd must have shape (3,), got {arr.shape}")
+        if not np.all(np.isfinite(arr)):
+            raise ValueError("planner v_cmd must contain only finite values")
+        return arr
+
     def _record_planner_fallback(
         self,
         *,
@@ -652,7 +661,7 @@ class EpisodeEngine:
         self.planner_fallback_count += 1
         if reason == "timeout":
             self.planner_timeout_count += 1
-        elif reason == "error":
+        elif reason in {"error", "invalid_output"}:
             self.planner_error_count += 1
         debug = {
             "engine_guardrail": reason,
@@ -905,12 +914,32 @@ class EpisodeEngine:
                 continue
 
             if isinstance(planner_out, PlannerOutput):
-                v_cmds[i] = np.asarray(planner_out.v_cmd, dtype=float)
-                pending_intent_out[i] = planner_out.intent_out
-                pending_messages_out[i] = list(planner_out.messages_out or [])
-                planner_debug[i] = _json_safe(planner_out.debug_info)
+                raw_v_cmd = planner_out.v_cmd
+                intent_out = planner_out.intent_out
+                messages_out = list(planner_out.messages_out or [])
+                debug_info = _json_safe(planner_out.debug_info)
             else:
-                v_cmds[i] = np.asarray(planner_out, dtype=float)
+                raw_v_cmd = planner_out
+                intent_out = None
+                messages_out = []
+                debug_info = {}
+
+            try:
+                v_cmds[i] = self._coerce_planner_cmd(raw_v_cmd)
+            except (TypeError, ValueError) as exc:
+                v_cmds[i] = self._record_planner_fallback(
+                    agent_id=i,
+                    planner_input=p_input,
+                    planner_debug=planner_debug,
+                    reason="invalid_output",
+                    elapsed_ms=elapsed_ms,
+                    error=exc,
+                )
+                continue
+
+            pending_intent_out[i] = intent_out
+            pending_messages_out[i] = messages_out
+            planner_debug[i] = debug_info
 
         self._publish_intents(t, pending_intent_out, agent_failures)
         self._publish_messages(t, pending_messages_out, agent_failures)

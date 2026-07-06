@@ -696,6 +696,7 @@ Failure safety:
 - Inputs include `ego`, `goal_dir`, `neighbors`, `neighbor_intents`, `dt`, `t`.
 - Static AABB obstacles are available as `planner_input.obstacles`.
 - In planar mode, `y` is effectively fixed by sim, but command is still `(3,)`.
+- Returned commands must be finite shape `(3,)`. Exceptions, non-finite commands, and malformed command shapes are counted in planner guardrail metrics and replaced with the deterministic engine fallback.
 
 When intent is enabled, `PlannerInput.neighbor_intents` may contain:
 - `sender_id`
@@ -893,6 +894,8 @@ Recommended scale for training: at least `100k+` samples across multiple scenari
   - `planner_error_count`
   - `planner_fallback_count`
 - `planner_guardrails.timeout_ms` is a soft timeout: an over-budget call is counted and its returned output is replaced with a deterministic fallback after the call returns.
+- Planner exceptions and invalid outputs increment `planner_error_count`; timeouts increment `planner_timeout_count`; all guardrail replacements increment `planner_fallback_count`.
+- The fallback command moves away from currently observed neighbors/obstacles at `planner_guardrails.fallback_speed_scale * v_max`; if no risk direction is available, it returns zero.
 - Track safety using explicit collision semantics:
   - `collision_episode`: whether the episode had any collision
   - `unique_collision_pairs`: number of agent pairs that collided at least once
