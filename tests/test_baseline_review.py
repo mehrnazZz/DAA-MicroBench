@@ -54,6 +54,28 @@ def test_baseline_review_runs_short_3d_lane(tmp_path: Path) -> None:
     assert detail["failed_checks"] == []
 
 
+def test_baseline_review_negotiation_yield_passes_longer_review_lanes(tmp_path: Path) -> None:
+    report = run_baseline_stable_review(
+        out_dir=tmp_path / "negotiation_review",
+        root=ROOT,
+        methods=["negotiation_yield"],
+        duration_s=20.0,
+    )
+
+    assert report["review_checks_pass"] is True
+    assert report["run_count"] == 3
+    detail = report["methods_detail"][0]
+    assert detail["review_checks_pass"] is True
+    assert detail["metadata_recommendation"] == "review_for_stable_metadata"
+    assert detail["failed_checks"] == []
+    assert {row["lane_id"] for row in report["rows"]} == {
+        "3d_sphere_swap",
+        "3d_sensor_degraded",
+        "agentic_priority_degraded",
+    }
+    assert all(float(row["min_sep_min_m"]) >= 0.0 for row in report["rows"])
+
+
 def test_baseline_review_cli_json_plan_only(tmp_path: Path) -> None:
     out_dir = tmp_path / "cli_plan"
     proc = subprocess.run(

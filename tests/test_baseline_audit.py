@@ -22,6 +22,7 @@ def test_baseline_audit_public_alpha_contract() -> None:
         "orca_heuristic",
         "orca_with_staleness",
         "priority_yield",
+        "negotiation_yield",
     ]
     assert report["summary"]["public_alpha_blockers"] == []
 
@@ -39,7 +40,7 @@ def test_baseline_audit_public_alpha_contract() -> None:
 
     assert by_method["cbf_qp"]["readiness"] == "experimental_runnable"
     assert by_method["mpc_local"]["readiness"] == "experimental_runnable"
-    assert by_method["negotiation_yield"]["readiness"] == "experimental_runnable"
+    assert by_method["negotiation_yield"]["readiness"] == "public_alpha_reference_ready"
     assert by_method["baseline_goal"]["readiness"] == "illustrative_or_template"
 
 

@@ -19,6 +19,14 @@ def _normalize(v: np.ndarray) -> np.ndarray:
     return (v / n).astype(np.float32)
 
 
+def _time_to_closest(rel_pos: np.ndarray, rel_vel: np.ndarray) -> float | None:
+    vv = float(np.dot(rel_vel, rel_vel))
+    if vv < 1e-9:
+        return None
+    ttc = -float(np.dot(rel_pos, rel_vel)) / vv
+    return float(ttc) if ttc >= 0.0 else None
+
+
 class NegotiationYieldPlanner(ILocalPlanner):
     """Tiny proposal/ACK baseline for decentralized right-of-way negotiation.
 
@@ -38,6 +46,9 @@ class NegotiationYieldPlanner(ILocalPlanner):
         ego_priority = int(ctx.priority) if ctx is not None else int(ego.idx)
         yield_duration_s = 1.2
         yield_speed_scale = 0.15
+        conflict_radius_m = 9.0
+        avoidance_horizon_s = 3.0
+        clearance_buffer_m = 1.0
 
         yield_until = float(memory.get("yield_until_s", -1.0))
         proposal_seq = int(memory.get("proposal_seq", 0))
@@ -48,6 +59,8 @@ class NegotiationYieldPlanner(ILocalPlanner):
         acks_sent = 0
         proposals_sent = 0
         acks_received = 0
+        avoidance = np.zeros(3, dtype=np.float32)
+        avoidance_weight = 0.0
 
         for msg in planner_input.messages:
             if not msg.valid:
@@ -79,9 +92,22 @@ class NegotiationYieldPlanner(ILocalPlanner):
             rel_pos = np.asarray(nbr.pos, dtype=np.float32) - np.asarray(ego.pos, dtype=np.float32)
             rel_vel = np.asarray(nbr.vel, dtype=np.float32) - np.asarray(ego.vel, dtype=np.float32)
             dist = float(np.linalg.norm(rel_pos))
-            if dist > 8.0 or dist < 1e-6:
+            if dist < 1e-6:
                 continue
+            combined_radius = float(ego.radius) + float(nbr.radius) + clearance_buffer_m
+            clearance = dist - combined_radius
+            ttc = _time_to_closest(rel_pos, rel_vel)
             closing = float(np.dot(rel_pos, rel_vel)) < 0.0
+            if dist <= conflict_radius_m and (closing or clearance <= clearance_buffer_m):
+                distance_risk = max(0.0, (conflict_radius_m - dist) / conflict_radius_m)
+                ttc_risk = 0.0 if ttc is None else max(0.0, (avoidance_horizon_s - ttc) / avoidance_horizon_s)
+                clearance_risk = max(0.0, (clearance_buffer_m - clearance) / max(clearance_buffer_m, 1e-6))
+                risk = min(2.0, distance_risk + ttc_risk + clearance_risk)
+                priority_scale = 1.0 if ego_priority > int(nbr.idx) else 0.65
+                avoidance += -_normalize(rel_pos) * float(risk * priority_scale)
+                avoidance_weight += float(risk * priority_scale)
+            if dist > conflict_radius_m:
+                continue
             if not closing:
                 continue
 
@@ -123,7 +149,16 @@ class NegotiationYieldPlanner(ILocalPlanner):
         goal_dir = _normalize(np.asarray(planner_input.goal_dir, dtype=np.float32))
         yielding = bool(now <= yield_until)
         speed_scale = yield_speed_scale if yielding else 1.0
-        v_cmd = goal_dir * float(ego.v_max) * speed_scale
+        command_dir = goal_dir * speed_scale
+        avoidance_active = avoidance_weight > 1e-6
+        if avoidance_active:
+            avoid_dir = _normalize(avoidance)
+            blend = min(0.85, 0.35 + 0.25 * avoidance_weight)
+            if yielding:
+                blend = min(0.95, blend + 0.15)
+            command_dir = _normalize(command_dir * (1.0 - blend) + avoid_dir * blend)
+            speed_scale = max(speed_scale, min(0.9, 0.35 + 0.25 * min(2.0, avoidance_weight)))
+        v_cmd = command_dir * float(ego.v_max) * speed_scale
         return PlannerOutput(
             v_cmd=v_cmd.astype(float),
             messages_out=messages_out,
@@ -131,6 +166,8 @@ class NegotiationYieldPlanner(ILocalPlanner):
                 "yield_until_s": float(yield_until),
                 "speed_scale": float(speed_scale),
                 "sidestep_active": False,
+                "avoidance_active": bool(avoidance_active),
+                "avoidance_weight": float(avoidance_weight),
                 "proposals_sent": int(proposals_sent),
                 "acks_sent": int(acks_sent),
                 "acks_received": int(acks_received),

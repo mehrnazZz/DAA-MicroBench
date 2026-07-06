@@ -223,14 +223,14 @@ _METADATA: dict[str, PlannerMetadata] = {
         display_name="Negotiation-yield baseline",
         planner_type="agentic_heuristic",
         role="agentic_reference_baseline",
-        status="experimental",
+        status="pre_v1",
         dimensions=("2d", "3d"),
         observation_sources=("local_neighbors", "v2v", "sensor", "fused", "agent_messages"),
         uses_v2v=True,
         uses_local_sensing=True,
         uses_agent_messages=True,
-        description="Agentic yielding baseline that exchanges proposals and acknowledgments.",
-        limitations=("Early reference behavior; not yet a leaderboard anchor.",),
+        description="Agentic yielding baseline that exchanges proposals, acknowledgments, and local separation actions.",
+        limitations=("Pre-v1 reference behavior; not yet a stable-v1 leaderboard anchor.",),
     ),
 }
 

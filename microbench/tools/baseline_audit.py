@@ -14,12 +14,12 @@ PUBLIC_ALPHA_REFERENCE_METHODS = (
     "orca_heuristic",
     "orca_with_staleness",
     "priority_yield",
+    "negotiation_yield",
 )
 
 EXPERIMENTAL_METHODS = (
     "cbf_qp",
     "mpc_local",
-    "negotiation_yield",
 )
 
 REFERENCE_ROLES = {"reference_baseline", "agentic_reference_baseline"}

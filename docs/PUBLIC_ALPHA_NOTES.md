@@ -4,7 +4,7 @@ Status date: 2026-07-06
 
 DAA Microbench is ready for public-alpha evaluation: the repository has a documented planner contract, generated 2D/3D/agentic scenario suites, baseline metadata, result-schema manifests, issue templates, package smoke checks, and GitHub Actions CI.
 
-This is not yet a stable v1 release. The public contract is intended to be reviewable and usable, but official suite membership, acceptance bands, experimental baselines, and leaderboard scoring may still change before v1. In particular, `cbf_qp`, `mpc_local`, and `negotiation_yield` are runnable experimental baselines, not mature leaderboard anchors.
+This is not yet a stable v1 release. The public contract is intended to be reviewable and usable, but official suite membership, acceptance bands, experimental baselines, and leaderboard scoring may still change before v1. In particular, `cbf_qp` and `mpc_local` are runnable experimental baselines, and `negotiation_yield` is a pre-v1 agentic reference rather than a stable-v1 leaderboard anchor.
 
 ## Supported Environment
 
@@ -52,7 +52,7 @@ python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --
 ## Known Public Alpha Limitations
 
 - `orca_heuristic` and `orca_with_staleness` are geometric reference heuristics, not expert or certified DAA controllers.
-- `cbf_qp`, `mpc_local`, and `negotiation_yield` pass compact public-alpha promotion calibration, including 3D/degraded lanes, but still have stable-v1 promotion blockers; do not treat them as leaderboard anchors yet.
+- `cbf_qp`, `mpc_local`, and `negotiation_yield` pass compact public-alpha promotion calibration, including 3D/degraded lanes, but still have stable-v1 promotion blockers; do not treat them as stable-v1 leaderboard anchors yet.
 - The benchmark models local planning and simplified dynamics; it is not a full flight stack, airspace model, PX4/ROS simulator, or certification tool.
 - Generated official suites are pre-v1 and may be adjusted as external users stress-test the benchmark.
 - Leaderboard policy and scoring dimensions are documented, but public submissions should still be reviewed manually during alpha.

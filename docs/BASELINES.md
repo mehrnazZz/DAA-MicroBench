@@ -14,7 +14,7 @@ python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --
 The public-alpha baseline gate is intentionally stricter than "the code imports":
 
 - required public-alpha reference baselines: `orca_heuristic`, `orca_with_staleness`, `priority_yield`
-- experimental but runnable baselines: `cbf_qp`, `mpc_local`, `negotiation_yield`
+- experimental but runnable baselines: `cbf_qp`, `mpc_local`
 - illustrative or template methods: `baseline_goal`, `intent_dummy`, `template`
 
 Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pass`, and `baseline-promotion --require-calibrated` before inviting external baseline comparisons. Stable v1 still requires promotion work; `baseline-audit --require-stable-v1-ready` and `baseline-promotion --require-stable-v1-ready` are expected to fail while experimental baselines remain experimental.
@@ -29,7 +29,7 @@ Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pas
 | `cbf_qp` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Dependency-free CBF projection baseline with optional SciPy solver mode. |
 | `mpc_local` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Deterministic short-horizon predictive sampling baseline. |
 | `priority_yield` | agentic reference baseline | local tracks, priority, agent messages | 2D, 3D | Simple decentralized right-of-way behavior. |
-| `negotiation_yield` | experimental agentic baseline | local tracks, proposal/ACK messages, priority | 2D, 3D | Structured negotiation plumbing and early agentic comparison. |
+| `negotiation_yield` | pre-v1 agentic reference | local tracks, proposal/ACK messages, priority, local separation | 2D, 3D | Structured negotiation plumbing and decentralized agentic comparison. |
 | `intent_dummy` | illustrative/plumbing baseline | goal, intent-style messages | 2D, 3D | Message and trace plumbing checks, not scoring. |
 | `template` | developer template | ego state, goal | 2D, 3D | Minimal example for writing a planner plugin. |
 
@@ -45,7 +45,7 @@ Reference baselines are intended to appear in comparison tables:
 - `orca_heuristic`
 - `orca_with_staleness`
 - `priority_yield`
-- `negotiation_yield` once its behavior is better calibrated
+- `negotiation_yield` for structured proposal/ACK agentic comparisons
 
 Experimental baselines are runnable but not leaderboard anchors yet:
 
@@ -88,7 +88,7 @@ python -m microbench.cli baseline-promotion \
   --require-calibrated
 ```
 
-This produces `baseline_promotion.json`. It should report `public_alpha_calibrated=true` and `stable_v1_ready=false` for `cbf_qp`, `mpc_local`, and `negotiation_yield` during public alpha. The report records smoke metrics, generated experimental-suite acceptance for CBF/MPC, compact `official_promotion_calibration` 3D/degraded acceptance for all promotion candidates, method-specific signal contracts, and stable-v1 blockers such as experimental metadata status or non-reference roles.
+This produces `baseline_promotion.json`. It should report `public_alpha_calibrated=true` and `stable_v1_ready=false` for `cbf_qp`, `mpc_local`, and `negotiation_yield` during public alpha. The report records smoke metrics, generated experimental-suite acceptance for CBF/MPC, compact `official_promotion_calibration` 3D/degraded acceptance for all promotion candidates, method-specific signal contracts, and stable-v1 blockers such as non-stable metadata status or non-reference roles.
 
 Geometric comparison under degraded communication:
 
@@ -162,6 +162,19 @@ The checked-in example lives at `golden/baseline_comparison/report.json`.
 - slightly larger closing-speed and sidestep buffers
 
 This is useful for comparisons where `obs_stale_fraction_mean`, `obs_sensor_track_stale_fraction_mean`, or communication drop/delay metrics are high. It may reduce collisions at the cost of slower completion or extra path deviation.
+
+## Negotiation-Yield Baseline
+
+`negotiation_yield` is the pre-v1 structured agentic reference for proposal/ACK plumbing. Higher-priority agents send `NEGOTIATION_PROPOSAL` messages, lower-priority or directly threatened agents ACK and slow, and the planner keeps per-agent memory for active yield commitments and already-ACKed proposal correlations.
+
+It also includes a deterministic local separation component for close 3D conflicts. This is intentionally modest: the baseline still demonstrates decentralized negotiation rather than claiming to be an optimized DAA controller, but long-horizon review checks that proposal/ACK behavior does not rely on passive slowing alone in volumetric and heterogeneous-priority scenarios.
+
+Useful diagnostics:
+
+- `comm_negotiation_proposals_mean`
+- `comm_negotiation_acks_mean`
+- `comm_agent_msg_delivery_fraction_mean`
+- `avoidance_active` / `avoidance_weight` in planner debug traces
 
 ## CBF-QP Skeleton
 

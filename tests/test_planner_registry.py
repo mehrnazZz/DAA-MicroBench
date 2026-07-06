@@ -45,6 +45,8 @@ def test_planner_metadata_includes_public_baseline_contract() -> None:
     assert by_method["mpc_local"]["role"] == "experimental_baseline"
     assert by_method["mpc_local"]["planner_type"] == "predictive_sampling"
     assert by_method["mpc_local"]["uses_obstacles"] is True
+    assert by_method["negotiation_yield"]["role"] == "agentic_reference_baseline"
+    assert by_method["negotiation_yield"]["status"] == "pre_v1"
     assert by_method["orca_expert"]["status"] == "alias"
     assert by_method["orca_expert"]["canonical_method"] == "orca_heuristic"
 
@@ -82,4 +84,5 @@ def test_list_methods_cli_can_emit_metadata_json() -> None:
     assert by_method["orca_with_staleness"]["role"] == "reference_baseline"
     assert by_method["cbf_qp"]["status"] == "experimental"
     assert by_method["mpc_local"]["status"] == "experimental"
+    assert by_method["negotiation_yield"]["status"] == "pre_v1"
     assert by_method["orca_expert"]["canonical_method"] == "orca_heuristic"
