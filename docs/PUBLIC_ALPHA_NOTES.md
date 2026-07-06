@@ -45,12 +45,13 @@ python -m microbench.cli golden-current-schema --golden-dir golden/current_schem
 python -m microbench.cli validate-scenarios --all-builtins --all-generated-suites --quiet
 python -m microbench.cli baseline-audit --require-public-alpha-ready
 python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
+python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 ```
 
 ## Known Public Alpha Limitations
 
 - `orca_heuristic` and `orca_with_staleness` are geometric reference heuristics, not expert or certified DAA controllers.
-- `cbf_qp` and `mpc_local` are experimental baselines and should not be treated as leaderboard anchors yet.
+- `cbf_qp`, `mpc_local`, and `negotiation_yield` are public-alpha calibrated but still have stable-v1 promotion blockers; do not treat them as leaderboard anchors yet.
 - The benchmark models local planning and simplified dynamics; it is not a full flight stack, airspace model, PX4/ROS simulator, or certification tool.
 - Generated official suites are pre-v1 and may be adjusted as external users stress-test the benchmark.
 - Leaderboard policy and scoring dimensions are documented, but public submissions should still be reviewed manually during alpha.

@@ -13,6 +13,7 @@ Use this checklist before tagging a public alpha, announcing a leaderboard run, 
 - [ ] `python -m microbench.cli golden-current-schema --golden-dir golden/current_schema` passes.
 - [ ] `python -m microbench.cli baseline-audit --require-public-alpha-ready` passes.
 - [ ] `python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass` passes from a fresh output directory.
+- [ ] `python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated` passes, while `--require-stable-v1-ready` remains blocked until promotion work is complete.
 - [ ] GitHub Actions CI is green for Python 3.10, 3.11, and 3.12.
 - [ ] `docs/README.md`, `docs/PUBLIC_ALPHA_NOTES.md`, `docs/DESIGN_V1.md`, `docs/PLANNER_API.md`, `docs/SCENARIO_SUITES.md`, `docs/BASELINES.md`, `docs/LEADERBOARD.md`, and `docs/RESULT_SUBMISSION.md` reflect the release behavior.
 - [ ] Issue templates and pull request template still match the current public contract.

@@ -25,6 +25,7 @@ from microbench.tools import (
     compare_current_schema_golden,
     mine_worst_cases,
     run_baseline_behavior_smoke,
+    run_baseline_promotion_calibration,
     write_baseline_report,
     write_current_schema_golden,
 )
@@ -565,6 +566,49 @@ def _baseline_smoke(args) -> None:
         raise SystemExit(f"baseline smoke failed: {','.join(failed)}")
 
 
+def _baseline_promotion(args) -> None:
+    report = run_baseline_promotion_calibration(
+        out_dir=args.out_dir,
+        root=args.root,
+        methods=_parse_str_list(args.methods) if args.methods else None,
+        behavior_report=args.behavior_report,
+        include_experimental_suite=not args.skip_experimental_suite,
+    )
+    report_path = Path(args.out_dir) / "baseline_promotion.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        summary = report["summary"]
+        print(
+            "baseline-promotion: "
+            f"public_alpha_calibrated={report['public_alpha_calibrated']} "
+            f"stable_v1_ready={report['stable_v1_ready']} "
+            f"calibrated={summary['calibration_ready_count']}/{summary['method_count']} "
+            f"stable={summary['stable_v1_ready_count']}/{summary['method_count']}"
+        )
+        for entry in report["methods_detail"]:
+            blockers = ",".join(entry["stable_v1_blockers"]) if entry["stable_v1_blockers"] else "-"
+            print(
+                f"{entry['method']}: calibrated={entry['calibration_ready']} "
+                f"stable_v1={entry['stable_v1_ready']} blockers={blockers}"
+            )
+        print(f"  report: {report_path}")
+
+    if args.require_calibrated and not report["public_alpha_calibrated"]:
+        blockers = {
+            entry["method"]: entry["calibration_blockers"]
+            for entry in report["methods_detail"]
+            if entry["calibration_blockers"]
+        }
+        raise SystemExit(f"baseline promotion calibration failed: {blockers}")
+    if args.require_stable_v1_ready and not report["stable_v1_ready"]:
+        blockers = report["summary"]["stable_v1_blockers"]
+        raise SystemExit(f"baseline promotion stable-v1 blockers present: {blockers}")
+
+
 def _golden_current_schema(args) -> None:
     if args.update and args.candidate:
         raise SystemExit("--update cannot be combined with --candidate")
@@ -764,6 +808,28 @@ def build_parser() -> argparse.ArgumentParser:
     p_bs.add_argument("--json", action="store_true", help="Emit machine-readable smoke report")
     p_bs.add_argument("--require-pass", action="store_true", help="Fail if any smoke check fails")
 
+    p_bp = sub.add_parser("baseline-promotion", help="Calibrate experimental baselines and report promotion blockers")
+    p_bp.add_argument("--out-dir", required=True, help="Fresh output directory for promotion calibration artifacts")
+    p_bp.add_argument("--root", default=".", help="Repository root used for docs/tests coverage checks")
+    p_bp.add_argument(
+        "--methods",
+        default=None,
+        help="Comma-separated promotion candidates; defaults to cbf_qp,mpc_local,negotiation_yield",
+    )
+    p_bp.add_argument(
+        "--behavior-report",
+        default=None,
+        help="Optional existing baseline_smoke.json to reuse instead of rerunning behavior smoke",
+    )
+    p_bp.add_argument(
+        "--skip-experimental-suite",
+        action="store_true",
+        help="Skip the generated experimental CBF/MPC calibration suite",
+    )
+    p_bp.add_argument("--json", action="store_true", help="Emit machine-readable promotion report")
+    p_bp.add_argument("--require-calibrated", action="store_true", help="Fail if public-alpha calibration evidence is missing")
+    p_bp.add_argument("--require-stable-v1-ready", action="store_true", help="Fail if stable-v1 promotion blockers remain")
+
     p_golden = sub.add_parser("golden-current-schema", help="Check or regenerate the current result-schema fixture")
     p_golden.add_argument("--golden-dir", default="golden/current_schema", help="Path to checked-in fixture")
     p_golden.add_argument("--candidate", default=None, help="Compare an existing candidate directory instead of running")
@@ -890,6 +956,9 @@ def main() -> None:
         return
     if args.cmd == "baseline-smoke":
         _baseline_smoke(args)
+        return
+    if args.cmd == "baseline-promotion":
+        _baseline_promotion(args)
         return
     if args.cmd == "golden-current-schema":
         _golden_current_schema(args)

@@ -60,6 +60,7 @@ python -m microbench.cli list-methods
 python -m microbench.cli list-methods --json --include-aliases
 python -m microbench.cli baseline-audit
 python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
+python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 ```
 
 You can also inspect `microbench/planners/` (each planner module maps to a method name in the planner registry).
@@ -943,6 +944,12 @@ Baseline behavior smoke:
 
 ```bash
 python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
+```
+
+Experimental baseline promotion calibration:
+
+```bash
+python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 ```
 
 Current result-schema golden check:

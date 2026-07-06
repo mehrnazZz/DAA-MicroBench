@@ -66,6 +66,12 @@ Run baseline behavior smoke:
 python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
 ```
 
+Calibrate experimental baseline promotion status:
+
+```bash
+python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
+```
+
 Check the current result-schema fixture:
 
 ```bash

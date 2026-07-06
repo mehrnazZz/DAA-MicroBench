@@ -8,6 +8,7 @@ python -m microbench.cli list-methods --json --include-aliases
 python -m microbench.cli baseline-audit
 python -m microbench.cli baseline-audit --require-public-alpha-ready --json
 python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
+python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 ```
 
 The public-alpha baseline gate is intentionally stricter than "the code imports":
@@ -16,7 +17,7 @@ The public-alpha baseline gate is intentionally stricter than "the code imports"
 - experimental but runnable baselines: `cbf_qp`, `mpc_local`, `negotiation_yield`
 - illustrative or template methods: `baseline_goal`, `intent_dummy`, `template`
 
-Run `baseline-audit --require-public-alpha-ready` and `baseline-smoke --require-pass` before inviting external baseline comparisons. Stable v1 still requires promotion work; `baseline-audit --require-stable-v1-ready` is expected to fail while experimental baselines remain experimental.
+Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pass`, and `baseline-promotion --require-calibrated` before inviting external baseline comparisons. Stable v1 still requires promotion work; `baseline-audit --require-stable-v1-ready` and `baseline-promotion --require-stable-v1-ready` are expected to fail while experimental baselines remain experimental.
 
 ## Current Methods
 
@@ -78,6 +79,16 @@ python -m microbench.cli baseline-smoke \
 ```
 
 This runs every non-template built-in baseline on one planar and one 3D generated smoke scenario, checks finite key metrics, zero planner guardrail counts, 2D/3D coverage, agent-message signals for `priority_yield`, proposal/ACK signals for `negotiation_yield`, and public debug/intent output contracts for `cbf_qp`, `mpc_local`, and `intent_dummy`.
+
+Experimental promotion calibration:
+
+```bash
+python -m microbench.cli baseline-promotion \
+  --out-dir runs_baseline_promotion \
+  --require-calibrated
+```
+
+This produces `baseline_promotion.json`. It should report `public_alpha_calibrated=true` and `stable_v1_ready=false` for `cbf_qp`, `mpc_local`, and `negotiation_yield` during public alpha. The report records smoke metrics, generated experimental-suite acceptance for CBF/MPC, method-specific signal contracts, and stable-v1 blockers such as remaining smoke collisions, missing calibrated 3D stress bands, and missing degraded sensing/communication calibration.
 
 Geometric comparison under degraded communication:
 
@@ -205,6 +216,19 @@ Observed local calibration on tiny generated suites before public-alpha tuning:
 - generated experimental/smoke rows keep `cbf_qp` planner p95 around hundredths of a millisecond per tick per agent
 - generated experimental/smoke rows keep `mpc_local` planner p95 in the low single-digit milliseconds per tick per agent on this machine
 - a single `official_3d_stress` `mpc_local` row can still take tens of seconds wall-clock locally, so it remains outside default CI smoke
+
+## Promotion Calibration
+
+`baseline-promotion --require-calibrated` is the current public-alpha gate for experimental baselines. Passing it means the method imports, has docs/tests coverage, supports 2D and 3D, runs the behavior smoke without planner guardrail failures, and emits its expected signal/debug contract. For `cbf_qp` and `mpc_local`, it also runs `official_experimental_baselines` and checks the suite acceptance metadata.
+
+Passing this gate does not make a method a stable reference baseline. Stable-v1 promotion still requires:
+
+- method metadata changed out of `experimental` status after review
+- reference or agentic-reference role assignment where appropriate
+- collision-free or explicitly bounded-collision behavior on calibrated head-on, obstacle, and 3D stress slices
+- calibrated 3D stress acceptance bands
+- degraded communication and sensor calibration
+- updated docs, fixtures, and leaderboard policy language
 
 ## Baseline Comparison Fixture
 
