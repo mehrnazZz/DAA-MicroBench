@@ -59,6 +59,7 @@ Available planners / how to list methods:
 python -m microbench.cli list-methods
 python -m microbench.cli list-methods --json --include-aliases
 python -m microbench.cli baseline-audit
+python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
 ```
 
 You can also inspect `microbench/planners/` (each planner module maps to a method name in the planner registry).
@@ -936,6 +937,12 @@ Public-alpha release dry run:
 
 ```bash
 bash scripts/release_readiness.sh
+```
+
+Baseline behavior smoke:
+
+```bash
+python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
 ```
 
 Current result-schema golden check:

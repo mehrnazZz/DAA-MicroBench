@@ -7,6 +7,7 @@ python -m microbench.cli list-methods
 python -m microbench.cli list-methods --json --include-aliases
 python -m microbench.cli baseline-audit
 python -m microbench.cli baseline-audit --require-public-alpha-ready --json
+python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
 ```
 
 The public-alpha baseline gate is intentionally stricter than "the code imports":
@@ -15,7 +16,7 @@ The public-alpha baseline gate is intentionally stricter than "the code imports"
 - experimental but runnable baselines: `cbf_qp`, `mpc_local`, `negotiation_yield`
 - illustrative or template methods: `baseline_goal`, `intent_dummy`, `template`
 
-Run `baseline-audit --require-public-alpha-ready` before inviting external baseline comparisons. Stable v1 still requires promotion work; `baseline-audit --require-stable-v1-ready` is expected to fail while experimental baselines remain experimental.
+Run `baseline-audit --require-public-alpha-ready` and `baseline-smoke --require-pass` before inviting external baseline comparisons. Stable v1 still requires promotion work; `baseline-audit --require-stable-v1-ready` is expected to fail while experimental baselines remain experimental.
 
 ## Current Methods
 
@@ -67,6 +68,16 @@ python -m microbench.cli canonical-sweep \
   --suite official_smoke_generated \
   --out-dir runs_smoke
 ```
+
+Baseline behavior gate:
+
+```bash
+python -m microbench.cli baseline-smoke \
+  --out-dir runs_baseline_smoke \
+  --require-pass
+```
+
+This runs every non-template built-in baseline on one planar and one 3D generated smoke scenario, checks finite key metrics, zero planner guardrail counts, 2D/3D coverage, agent-message signals for `priority_yield`, proposal/ACK signals for `negotiation_yield`, and public debug/intent output contracts for `cbf_qp`, `mpc_local`, and `intent_dummy`.
 
 Geometric comparison under degraded communication:
 

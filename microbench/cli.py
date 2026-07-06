@@ -24,6 +24,7 @@ from microbench.tools import (
     build_current_schema_candidate,
     compare_current_schema_golden,
     mine_worst_cases,
+    run_baseline_behavior_smoke,
     write_baseline_report,
     write_current_schema_golden,
 )
@@ -533,6 +534,37 @@ def _baseline_audit(args) -> None:
         raise SystemExit("baseline audit failed: stable-v1 baseline blockers present")
 
 
+def _baseline_smoke(args) -> None:
+    report = run_baseline_behavior_smoke(
+        out_dir=args.out_dir,
+        methods=_parse_str_list(args.methods) if args.methods else None,
+        scenario_ids=_parse_str_list(args.scenarios) if args.scenarios else None,
+        n_agents=int(args.n),
+        seed=int(args.seed),
+        comm_profile=str(args.comm),
+    )
+    report_path = Path(args.out_dir) / "baseline_smoke.json"
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        print(
+            f"baseline-smoke: {status} "
+            f"runs={report['run_count']} methods={len(report['methods'])} "
+            f"scenarios={','.join(report['scenario_ids'])}"
+        )
+        for check in report["checks"]:
+            check_status = "ok" if check["ok"] else "FAIL"
+            print(f"  {check_status}: {check['name']}")
+        print(f"  report: {report_path}")
+
+    if args.require_pass and not report["ok"]:
+        failed = [check["name"] for check in report["checks"] if not check["ok"]]
+        raise SystemExit(f"baseline smoke failed: {','.join(failed)}")
+
+
 def _golden_current_schema(args) -> None:
     if args.update and args.candidate:
         raise SystemExit("--update cannot be combined with --candidate")
@@ -714,6 +746,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fail if any baseline still has stable-v1 promotion blockers",
     )
 
+    p_bs = sub.add_parser("baseline-smoke", help="Run compact 2D/3D behavioral smoke checks for baselines")
+    p_bs.add_argument("--out-dir", required=True, help="Fresh output directory for smoke results")
+    p_bs.add_argument(
+        "--methods",
+        default=None,
+        help="Comma-separated methods; defaults to all non-template built-in baselines",
+    )
+    p_bs.add_argument(
+        "--scenarios",
+        default=None,
+        help="Comma-separated generated smoke scenario ids; defaults to one 2D and one 3D case",
+    )
+    p_bs.add_argument("--n", type=int, default=4, help="Agent count for each smoke episode")
+    p_bs.add_argument("--seed", type=int, default=0, help="Seed for each smoke episode")
+    p_bs.add_argument("--comm", default="ideal_50hz", help="Communication profile for each smoke episode")
+    p_bs.add_argument("--json", action="store_true", help="Emit machine-readable smoke report")
+    p_bs.add_argument("--require-pass", action="store_true", help="Fail if any smoke check fails")
+
     p_golden = sub.add_parser("golden-current-schema", help="Check or regenerate the current result-schema fixture")
     p_golden.add_argument("--golden-dir", default="golden/current_schema", help="Path to checked-in fixture")
     p_golden.add_argument("--candidate", default=None, help="Compare an existing candidate directory instead of running")
@@ -837,6 +887,9 @@ def main() -> None:
         return
     if args.cmd == "baseline-audit":
         _baseline_audit(args)
+        return
+    if args.cmd == "baseline-smoke":
+        _baseline_smoke(args)
         return
     if args.cmd == "golden-current-schema":
         _golden_current_schema(args)

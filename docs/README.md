@@ -60,6 +60,12 @@ Audit baseline readiness:
 python -m microbench.cli baseline-audit --require-public-alpha-ready
 ```
 
+Run baseline behavior smoke:
+
+```bash
+python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
+```
+
 Check the current result-schema fixture:
 
 ```bash

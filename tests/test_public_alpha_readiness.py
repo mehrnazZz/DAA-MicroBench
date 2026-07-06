@@ -37,6 +37,7 @@ def test_release_readiness_script_runs_expected_checks() -> None:
     assert "bash scripts/ci_sanity.sh" in script
     assert "bash scripts/package_smoke.sh" in script
     assert "baseline-audit --require-public-alpha-ready" in script
+    assert "baseline-smoke --out-dir" in script
     assert "golden-current-schema" in script
     assert "validate-scenarios --all-builtins --all-generated-suites --quiet" in script
     assert "DAA_REQUIRE_CLEAN" in script

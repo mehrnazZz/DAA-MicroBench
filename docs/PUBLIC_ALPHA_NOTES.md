@@ -44,6 +44,7 @@ bash scripts/package_smoke.sh
 python -m microbench.cli golden-current-schema --golden-dir golden/current_schema
 python -m microbench.cli validate-scenarios --all-builtins --all-generated-suites --quiet
 python -m microbench.cli baseline-audit --require-public-alpha-ready
+python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
 ```
 
 ## Known Public Alpha Limitations
