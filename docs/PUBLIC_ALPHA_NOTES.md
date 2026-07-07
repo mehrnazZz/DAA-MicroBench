@@ -49,6 +49,7 @@ python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-
 python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
+python -m microbench.cli rl-smoke --out-dir runs_rl_tiny_learned --policy tiny_learned --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-contract --json
 python -m microbench.cli rl-freeze-check --require-pass --json
@@ -58,6 +59,7 @@ python -m microbench.cli rl-freeze-check --require-pass --json
 
 - `orca_heuristic` and `orca_with_staleness` are geometric reference heuristics, not expert or certified DAA controllers.
 - `cbf_qp`, `mpc_local`, and `negotiation_yield` pass compact public-alpha promotion calibration, including 3D/degraded lanes, but still have stable-v1 promotion blockers; do not treat them as stable-v1 leaderboard anchors yet.
+- `learned_tiny` is a frozen tiny learned-model fixture for adapter, disclosure, and CSV-plumbing tests; it is not a competitive learned DAA baseline.
 - `cbf_qp` and `mpc_local` also pass the longer stable-metadata prep lanes in `baseline-review`, but they remain experimental until the reference-role decision, CBF validation, and MPC compute/stress characterization are stronger.
 - `baseline-evidence` adds targeted CBF fallback/solver-status checks and dense-3D MPC profiling; it is evidence for review, not a stable-v1 promotion by itself.
 - The PettingZoo/Gymnasium-style RL interface is available for public-alpha experimentation, but observation vectors and reward defaults are not stable-v1 contracts yet.
@@ -65,6 +67,7 @@ python -m microbench.cli rl-freeze-check --require-pass --json
 - `rl-calibration` adds compact 3D/degraded wrapper exposure for learned-policy submissions, but it is not a leaderboard score.
 - `rl-contract` publishes schema-versioned action, observation, and reward metadata for adapter authors, but those versions are still pre-v1.
 - `rl-freeze-check` publishes a machine-readable stable-v1 readiness checklist for the RL interface, but passing it does not make this public alpha a stable v1 release.
+- `tiny_learned` is available as a built-in RL smoke policy and maps to the same frozen model family as the planner method `learned_tiny`.
 - Learned-policy submissions should include `rl_contract.json`, `rl_freeze_check.json`, `rl_smoke.json`, `rl_calibration.json`, weight/version disclosures, and training scenario disclosure.
 - The benchmark models local planning and simplified dynamics; it is not a full flight stack, airspace model, PX4/ROS simulator, or certification tool.
 - Generated official suites are pre-v1 and may be adjusted as external users stress-test the benchmark.

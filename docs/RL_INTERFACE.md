@@ -136,7 +136,7 @@ python -m microbench.cli rl-smoke \
   --require-pass
 ```
 
-The command materializes `official_smoke_generated`, runs one 2D and one 3D scenario through the RL wrapper, writes `rl_smoke.json`, and writes per-episode rows to `rl_smoke_episodes.csv`. Built-in smoke policies are `zero`, `random`, and `goal_direction`.
+The command materializes `official_smoke_generated`, runs one 2D and one 3D scenario through the RL wrapper, writes `rl_smoke.json`, and writes per-episode rows to `rl_smoke_episodes.csv`. Built-in smoke policies are `zero`, `random`, `goal_direction`, and `tiny_learned`.
 
 Run compact 3D/degraded calibration before submitting learned-policy results:
 
@@ -194,6 +194,17 @@ policy = ModelPredictPolicyAdapter(my_model)
 `ModelPredictPolicyAdapter` supports objects with `compute_single_action(observation)`, `predict(observation, deterministic=...)`, `predict(observation)`, or direct callable behavior. Tuple returns such as `(action, state)` are accepted. `CallablePolicyAdapter` supports plain functions shaped as `f(observation)`, `f(observation, info)`, or `f(agent, observation, action_space, info)`.
 
 Both adapters validate finite `(3,)` actions and clip to the action space bounds. See `examples/rl_external_policy_adapter.py` for a runnable learned-policy adapter example that does not require any external RL framework.
+
+DAA Microbench also ships a tiny frozen learned-policy fixture:
+
+```bash
+python -m microbench.cli rl-smoke \
+  --out-dir runs_rl_tiny_learned \
+  --policy tiny_learned \
+  --require-pass
+```
+
+The matching official planner method is `learned_tiny`, which produces normal benchmark `results.csv` and `summary.csv` rows. Its deterministic synthetic training recipe is in `examples/rl_train_tiny_linear_policy.py`, and the checked-in weight artifact is `microbench/bundled_config/learned_baselines/tiny_linear_policy.json`.
 
 ## Compatibility Check
 

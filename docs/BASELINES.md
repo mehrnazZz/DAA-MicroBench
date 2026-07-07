@@ -15,8 +15,8 @@ python -m microbench.cli baseline-review --out-dir runs_baseline_review --durati
 
 The public-alpha baseline gate is intentionally stricter than "the code imports":
 
-- required public-alpha reference baselines: `orca_heuristic`, `orca_with_staleness`, `priority_yield`
-- experimental but runnable baselines: `cbf_qp`, `mpc_local`
+- required public-alpha reference baselines: `orca_heuristic`, `orca_with_staleness`, `priority_yield`, `negotiation_yield`
+- experimental but runnable baselines: `cbf_qp`, `mpc_local`, `learned_tiny`
 - illustrative or template methods: `baseline_goal`, `intent_dummy`, `template`
 
 Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pass`, and `baseline-promotion --require-calibrated` before inviting external baseline comparisons. Stable v1 still requires promotion work; `baseline-audit --require-stable-v1-ready` and `baseline-promotion --require-stable-v1-ready` are expected to fail while experimental baselines remain experimental.
@@ -30,6 +30,7 @@ Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pas
 | `orca_with_staleness` | reference baseline | same as `orca_heuristic`, with stronger stale-track inflation | 2D, 3D | Degraded communication or stale sensor-track comparison baseline. |
 | `cbf_qp` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Dependency-free CBF projection baseline with optional SciPy solver mode. |
 | `mpc_local` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Deterministic short-horizon predictive sampling baseline. |
+| `learned_tiny` | experimental learned baseline | frozen JSON weights, goal, local neighbor tracks, V2V/sensor/fused observations | 2D, 3D | Tiny learned-model fixture for packaging, disclosure, adapter, and benchmark-result plumbing. |
 | `priority_yield` | agentic reference baseline | local tracks, priority, agent messages | 2D, 3D | Simple decentralized right-of-way behavior. |
 | `negotiation_yield` | pre-v1 agentic reference | local tracks, proposal/ACK messages, priority, local separation | 2D, 3D | Structured negotiation plumbing and decentralized agentic comparison. |
 | `intent_dummy` | illustrative/plumbing baseline | goal, intent-style messages | 2D, 3D | Message and trace plumbing checks, not scoring. |
@@ -53,6 +54,7 @@ Experimental baselines are runnable but not leaderboard anchors yet:
 
 - `cbf_qp`
 - `mpc_local`
+- `learned_tiny`
 
 Illustrative baselines are useful for sanity checks and tutorials but should not be treated as serious DAA competitors:
 
@@ -80,7 +82,7 @@ python -m microbench.cli baseline-smoke \
   --require-pass
 ```
 
-This runs every non-template built-in baseline on one planar and one 3D generated smoke scenario, checks finite key metrics, zero planner guardrail counts, 2D/3D coverage, agent-message signals for `priority_yield`, proposal/ACK signals for `negotiation_yield`, and public debug/intent output contracts for `cbf_qp`, `mpc_local`, and `intent_dummy`.
+This runs every non-template built-in baseline on one planar and one 3D generated smoke scenario, checks finite key metrics, zero planner guardrail counts, 2D/3D coverage, agent-message signals for `priority_yield`, proposal/ACK signals for `negotiation_yield`, and public debug/intent output contracts for `cbf_qp`, `mpc_local`, `learned_tiny`, and `intent_dummy`.
 
 Experimental promotion calibration:
 
@@ -132,6 +134,18 @@ python -m microbench.cli run \
   --seed 0 \
   --comm ideal_50hz \
   --out-dir runs_mpc_local_smoke
+```
+
+Learned-model baseline smoke:
+
+```bash
+python -m microbench.cli run \
+  --scenario config/scenarios/stacked_swap_3d.yaml \
+  --method learned_tiny \
+  --n 4 \
+  --seed 0 \
+  --comm ideal_50hz \
+  --out-dir runs_learned_tiny_smoke
 ```
 
 Experimental baseline calibration:
@@ -246,6 +260,30 @@ Observed local calibration on tiny generated suites before public-alpha tuning:
 - a 20-second stable-metadata prep review with `baseline-review --methods cbf_qp,mpc_local --duration-s 20` passes the selected 3D/degraded review lanes for both methods, but reports `needs_reference_role_decision` because both remain `experimental_baseline`
 - passing that review is evidence for promotion discussion, not promotion by itself; CBF still needs stronger solver/fallback validation, and MPC still needs broader compute and dense-3D stress characterization before either should become a public reference baseline
 - `baseline-evidence` adds a cheap dense-3D MPC candidate-cap and p95 profiling check; passing it is a local evidence point, not a substitute for generated-suite stress characterization
+
+## Tiny Learned Baseline
+
+`learned_tiny` is a frozen learned-policy fixture. It loads `microbench/bundled_config/learned_baselines/tiny_linear_policy.json`, maps public local planner features to a normalized `(3,)` action through a linear-tanh model, and scales that action into the planner velocity-command contract.
+
+Useful debug fields:
+
+- `learned_model`
+- `learned_model_id`
+- `learned_weight_artifact`
+- `learned_policy_action_norm`
+- `learned_policy_threat_scalar`
+- `learned_policy_neighbor_count_frac`
+
+The matching RL policy name is `tiny_learned`:
+
+```bash
+python -m microbench.cli rl-smoke \
+  --out-dir runs_rl_tiny_learned \
+  --policy tiny_learned \
+  --require-pass
+```
+
+The deterministic synthetic training recipe is in `examples/rl_train_tiny_linear_policy.py`. This baseline is included so learned-model submissions have a tested reference path for weight artifacts, disclosure, adapters, and official CSV generation. It should not be treated as a competitive or certified DAA controller.
 
 ## Promotion Calibration
 

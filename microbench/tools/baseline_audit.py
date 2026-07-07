@@ -20,6 +20,7 @@ PUBLIC_ALPHA_REFERENCE_METHODS = (
 EXPERIMENTAL_METHODS = (
     "cbf_qp",
     "mpc_local",
+    "learned_tiny",
 )
 
 REFERENCE_ROLES = {"reference_baseline", "agentic_reference_baseline"}

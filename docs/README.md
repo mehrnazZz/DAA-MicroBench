@@ -91,6 +91,7 @@ Smoke-test the RL interface:
 ```bash
 python -m pytest tests/test_rl_interface.py -q
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
+python -m microbench.cli rl-smoke --out-dir runs_rl_tiny_learned --policy tiny_learned --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-contract --json
 python -m microbench.cli rl-freeze-check --require-pass --json
@@ -112,4 +113,10 @@ Run the learned-policy adapter example:
 
 ```bash
 python examples/rl_external_policy_adapter.py --max-steps 100
+```
+
+Regenerate a compatible tiny learned-policy weight artifact:
+
+```bash
+python examples/rl_train_tiny_linear_policy.py --out /tmp/tiny_linear_policy.json
 ```

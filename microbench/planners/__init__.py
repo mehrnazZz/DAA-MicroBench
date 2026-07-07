@@ -8,6 +8,7 @@ from microbench.planners.base import ILocalPlanner
 from microbench.planners.baseline_goal import BaselineGoalPlanner
 from microbench.planners.cbf_qp import CbfQpPlanner
 from microbench.planners.intent_dummy import IntentDummyPlanner
+from microbench.planners.learned_tiny import LearnedTinyPlanner
 from microbench.planners.mpc_local import MpcLocalPlanner
 from microbench.planners.negotiation_yield import NegotiationYieldPlanner
 from microbench.planners.orca_expert import OrcaExpertPlanner
@@ -77,6 +78,7 @@ _FACTORIES: dict[str, Callable[[], ILocalPlanner]] = {
     "mpc_local": _make_mpc_local,
     "template": TemplatePlanner,
     "intent_dummy": IntentDummyPlanner,
+    "learned_tiny": LearnedTinyPlanner,
     "priority_yield": PriorityYieldPlanner,
     "negotiation_yield": NegotiationYieldPlanner,
 }
@@ -203,6 +205,27 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_agent_messages=True,
         description="Simple planner that exercises intent message emission and receipt.",
         limitations=("Useful for plumbing tests; not designed as a competitive DAA baseline.",),
+    ),
+    "learned_tiny": PlannerMetadata(
+        method="learned_tiny",
+        display_name="Tiny frozen learned-policy baseline",
+        planner_type="learned_policy",
+        role="experimental_baseline",
+        status="experimental",
+        dimensions=("2d", "3d"),
+        observation_sources=("ego_state", "goal", "local_neighbors", "v2v", "sensor", "fused"),
+        uses_v2v=True,
+        uses_local_sensing=True,
+        learned=True,
+        description=(
+            "Frozen linear-tanh learned-policy fixture loaded from a versioned JSON weight artifact. "
+            "It maps public local planner features to normalized velocity commands."
+        ),
+        limitations=(
+            "Tiny synthetic behavior-cloning fixture, not a competitive or certified DAA controller.",
+            "Included to exercise learned-model packaging, disclosure, and benchmark-result plumbing.",
+            "Uses local tracks supplied by PlannerInput rather than raw sensor processing.",
+        ),
     ),
     "priority_yield": PlannerMetadata(
         method="priority_yield",

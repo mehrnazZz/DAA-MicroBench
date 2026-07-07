@@ -59,6 +59,7 @@ include-package-data = true
 microbench = [
   "bundled_config/*.yaml",
   "bundled_config/scenarios/*.yaml",
+  "bundled_config/learned_baselines/*.json",
 ]
 
 [tool.setuptools.packages.find]

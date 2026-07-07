@@ -62,6 +62,7 @@ python -m microbench.cli baseline-audit
 python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
 python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
+python -m microbench.cli rl-smoke --out-dir runs_rl_tiny_learned --policy tiny_learned --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-contract --json
 python -m microbench.cli rl-freeze-check --require-pass --json

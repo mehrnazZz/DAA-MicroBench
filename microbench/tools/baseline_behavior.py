@@ -22,6 +22,7 @@ BASELINE_BEHAVIOR_METHODS = (
     "orca_with_staleness",
     "cbf_qp",
     "mpc_local",
+    "learned_tiny",
     "intent_dummy",
     "priority_yield",
     "negotiation_yield",
@@ -184,6 +185,28 @@ def _planner_output_contracts(methods: list[str]) -> list[dict[str, Any]]:
             )
         except Exception as exc:
             checks.append(_check("intent_dummy_intent_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
+
+    if "learned_tiny" in methods:
+        try:
+            planner = make_planner("learned_tiny")
+            planner.reset(0)
+            out = planner.compute_cmd(_planner_input(neighbors=[_neighbor()], planar=False))
+            info = getattr(out, "debug_info", {})
+            checks.append(
+                _check(
+                    "learned_tiny_model_contract",
+                    bool(info.get("learned_model"))
+                    and str(info.get("learned_model_id", ""))
+                    and float(info.get("learned_policy_threat_scalar", 0.0)) > 0.0,
+                    {
+                        "learned_model_id": info.get("learned_model_id"),
+                        "learned_policy_action_norm": info.get("learned_policy_action_norm"),
+                        "learned_policy_threat_scalar": info.get("learned_policy_threat_scalar"),
+                    },
+                )
+            )
+        except Exception as exc:
+            checks.append(_check("learned_tiny_model_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
 
     return checks
 

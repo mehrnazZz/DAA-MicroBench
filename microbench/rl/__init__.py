@@ -1,3 +1,14 @@
+from microbench.learned import (
+    LEARNED_BASELINE_SCHEMA_VERSION,
+    TINY_LEARNED_MODEL_ID,
+    TINY_LEARNED_POLICY_NAME,
+    TINY_LEARNED_FEATURE_NAMES,
+    TinyLinearPolicyModel,
+    load_tiny_learned_spec,
+    observation_to_tiny_features,
+    planner_input_to_tiny_features,
+    tiny_learned_model_path,
+)
 from microbench.rl.envs import (
     DaaParallelEnv,
     DaaSingleAgentEnv,
@@ -11,7 +22,7 @@ from microbench.rl.calibration import RL_CALIBRATION_SCHEMA_VERSION, run_rl_poli
 from microbench.rl.compliance import check_parallel_env_api
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import RL_FREEZE_CHECK_SCHEMA_VERSION, run_rl_freeze_check
-from microbench.rl.policies import GoalDirectionPolicy, RandomPolicy, ZeroPolicy, make_policy
+from microbench.rl.policies import GoalDirectionPolicy, RandomPolicy, TinyLearnedPolicy, ZeroPolicy, make_policy
 from microbench.rl.rollout import RL_ROLLOUT_SCHEMA_VERSION, rollout_parallel_env, run_parallel_policy_rollouts
 from microbench.rl.schema import (
     OBSERVATION_LAYOUT,
@@ -30,6 +41,7 @@ __all__ = [
     "DaaParallelEnv",
     "DaaSingleAgentEnv",
     "GoalDirectionPolicy",
+    "LEARNED_BASELINE_SCHEMA_VERSION",
     "ModelPredictPolicyAdapter",
     "OBSERVATION_LAYOUT",
     "RL_ACTION_SCHEMA_VERSION",
@@ -40,16 +52,24 @@ __all__ = [
     "RL_ROLLOUT_SCHEMA_VERSION",
     "RL_REWARD_SCHEMA_VERSION",
     "RandomPolicy",
+    "TINY_LEARNED_FEATURE_NAMES",
+    "TINY_LEARNED_MODEL_ID",
+    "TINY_LEARNED_POLICY_NAME",
+    "TinyLearnedPolicy",
+    "TinyLinearPolicyModel",
     "ZeroPolicy",
     "agent_id_from_name",
     "agent_name",
     "action_schema",
     "check_parallel_env_api",
     "interface_contract",
+    "load_tiny_learned_spec",
     "make_policy",
     "normalize_action",
     "observation_schema",
+    "observation_to_tiny_features",
     "parallel_env",
+    "planner_input_to_tiny_features",
     "reward_schema",
     "rollout_parallel_env",
     "run_parallel_policy_rollouts",
@@ -57,4 +77,5 @@ __all__ = [
     "run_rl_policy_calibration",
     "run_rl_policy_smoke",
     "single_agent_env",
+    "tiny_learned_model_path",
 ]

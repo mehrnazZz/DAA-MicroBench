@@ -129,6 +129,7 @@ Results should be grouped, not blended:
 - `official_3d_stress`: generated volumetric/dense/vertical/noncooperative 3D stress suite
 - `official_agentic_stress`: generated heterogeneous-priority and multi-intruder noncooperative 3D stress suite
 - `official_experimental_baselines`: generated calibration lane for runnable experimental baselines, not a ranking category
+- learned fixtures such as `learned_tiny`: useful for submission plumbing and adapter tests, not ranking anchors unless explicitly promoted later
 - `primary`: official planar suite
 - `three_d`: hand-written 3D development suite
 - `perception_stress`: partial observation and fused-observation suite

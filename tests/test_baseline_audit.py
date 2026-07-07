@@ -40,6 +40,9 @@ def test_baseline_audit_public_alpha_contract() -> None:
 
     assert by_method["cbf_qp"]["readiness"] == "experimental_runnable"
     assert by_method["mpc_local"]["readiness"] == "experimental_runnable"
+    assert by_method["learned_tiny"]["readiness"] == "experimental_runnable"
+    assert by_method["learned_tiny"]["checks"]["docs_mentioned"] is True
+    assert by_method["learned_tiny"]["checks"]["tests_mentioned"] is True
     assert by_method["negotiation_yield"]["readiness"] == "public_alpha_reference_ready"
     assert by_method["baseline_goal"]["readiness"] == "illustrative_or_template"
 

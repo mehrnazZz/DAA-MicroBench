@@ -1,0 +1,36 @@
+{
+  "schema_version": "0.1",
+  "model_id": "tiny_linear_goal_avoidance_v0",
+  "display_name": "Tiny linear learned-policy baseline",
+  "model_type": "linear_tanh_policy",
+  "action_shape": [3],
+  "input_features": [
+    "goal_dir_x",
+    "goal_dir_y",
+    "goal_dir_z",
+    "ego_vel_frac_x",
+    "ego_vel_frac_y",
+    "ego_vel_frac_z",
+    "avoid_vec_x",
+    "avoid_vec_y",
+    "avoid_vec_z",
+    "closest_rel_vel_frac_x",
+    "closest_rel_vel_frac_y",
+    "closest_rel_vel_frac_z",
+    "threat_scalar",
+    "neighbor_count_frac"
+  ],
+  "activation": "tanh",
+  "weights": [
+    [1.0, 0.0, 0.0, -0.2, 0.0, 0.0, 1.6, 0.0, 0.0, -0.12, 0.0, 0.0, -0.05, 0.0],
+    [0.0, 1.0, 0.0, 0.0, -0.2, 0.0, 0.0, 1.6, 0.0, 0.0, -0.12, 0.0, 0.0, 0.0],
+    [0.0, 0.0, 1.0, 0.0, 0.0, -0.2, 0.0, 0.0, 1.6, 0.0, 0.0, -0.12, 0.0, 0.0]
+  ],
+  "bias": [0.0, 0.0, 0.0],
+  "training": {
+    "recipe": "examples/rl_train_tiny_linear_policy.py",
+    "source": "deterministic synthetic behavior-cloning fixture",
+    "label_policy": "goal direction plus local inverse-clearance repulsion",
+    "notes": "This fixture is intentionally tiny and transparent. It is a learned-model plumbing baseline, not a certified DAA controller."
+  }
+}

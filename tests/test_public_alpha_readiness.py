@@ -42,6 +42,7 @@ def test_release_readiness_script_runs_expected_checks() -> None:
     assert "baseline-promotion --out-dir" in script
     assert "baseline-evidence --out-dir" in script
     assert "rl-smoke --out-dir" in script
+    assert "--policy tiny_learned" in script
     assert "rl-calibration --out-dir" in script
     assert "rl-contract --json" in script
     assert "rl-freeze-check --require-pass" in script
@@ -59,6 +60,7 @@ def test_docs_index_and_checklist_reference_alpha_notes_and_dry_run() -> None:
     assert "RL_STABLE_V1_FREEZE.md" in docs_index
     assert "baseline-evidence --out-dir" in docs_index
     assert "rl-smoke --out-dir" in docs_index
+    assert "--policy tiny_learned" in docs_index
     assert "rl-calibration --out-dir" in docs_index
     assert "rl-contract --json" in docs_index
     assert "rl-freeze-check --require-pass" in docs_index
@@ -66,6 +68,7 @@ def test_docs_index_and_checklist_reference_alpha_notes_and_dry_run() -> None:
     assert "bash scripts/release_readiness.sh" in checklist
     assert "baseline-evidence --out-dir" in checklist
     assert "rl-smoke --out-dir" in checklist
+    assert "--policy tiny_learned" in checklist
     assert "rl-calibration --out-dir" in checklist
     assert "rl-freeze-check --require-pass" in checklist
     assert "tests/test_rl_optional_integrations.py" in checklist
