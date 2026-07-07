@@ -59,7 +59,13 @@ python -m microbench.cli check-acceptance \
   --suite-manifest path/to/suite_manifest.yaml
 ```
 
-For learned/RL policies, build the standard artifact bundle:
+For learned/RL policies, validate your disclosure draft and then build the standard artifact bundle:
+
+```bash
+python -m microbench.cli validate-learned-manifest \
+  --manifest path/to/learned_submission_manifest.json \
+  --require-pass
+```
 
 ```bash
 python -m microbench.cli learned-submission-bundle \
@@ -70,7 +76,7 @@ python -m microbench.cli learned-submission-bundle \
   --require-pass
 ```
 
-Use `--method learned_policy_spec --policy-spec ...` when your learned policy should be evaluated through the standard planner-sweep CSV path. The same spec is also used for RL wrapper smoke/calibration artifacts in the bundle. Use `--submission-manifest` to fill in training/inference disclosures; otherwise the generated manifest marks unknown fields as `undisclosed` for reviewer follow-up. See [LEARNED_POLICY_ADOPTION.md](LEARNED_POLICY_ADOPTION.md) for a concrete exported-policy example using `model_predict`, `callable`, copied policy artifacts, validation, and reviewer summaries.
+Use `--method learned_policy_spec --policy-spec ...` when your learned policy should be evaluated through the standard planner-sweep CSV path. The same spec is also used for RL wrapper smoke/calibration artifacts in the bundle. Use `--submission-manifest` to fill in training/inference disclosures; otherwise the generated manifest marks unknown fields as `undisclosed` for reviewer follow-up. Start from `examples/learned_submission_manifest_template.json` when possible. See [LEARNED_POLICY_ADOPTION.md](LEARNED_POLICY_ADOPTION.md) for a concrete exported-policy example using `model_predict`, `callable`, copied policy artifacts, validation, and reviewer summaries.
 
 Then validate the saved bundle before attaching it:
 
@@ -134,6 +140,7 @@ Include the relevant rows from `summary.csv`. At minimum include:
 - [ ] I disclosed learned weights or external services.
 - [ ] For learned/RL policies, I included the learned submission bundle or the equivalent RL contract, freeze check, smoke report, and calibration report.
 - [ ] For learned/RL policies, I included `learned_bundle_review.json` or pasted the reviewer summary.
+- [ ] For learned/RL policies, I ran `validate-learned-manifest --manifest path/to/manifest.json --require-pass` after filling disclosure fields.
 - [ ] For learned/RL policies, I ran `validate-learned-bundle --bundle runs_learned_bundle --require-pass` or validated the equivalent artifacts manually.
 - [ ] For learned/RL policies, I ran `review-learned-bundle --bundle runs_learned_bundle --require-pass` or included an equivalent safety/mission/compute summary.
 - [ ] For learned/RL policies, I reviewed `learned_submission_manifest.json` and filled in training/inference disclosure fields rather than leaving material fields `undisclosed`.

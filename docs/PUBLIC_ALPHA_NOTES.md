@@ -56,6 +56,7 @@ python -m microbench.cli rl-smoke --out-dir runs_rl_tiny_learned --policy tiny_l
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-contract --json
 python -m microbench.cli rl-freeze-check --require-pass --json
+python -m microbench.cli validate-learned-manifest --manifest examples/learned_submission_manifest_template.json --require-pass
 python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method learned_tiny --policy tiny_learned --require-pass
 python -m microbench.cli learned-submission-bundle --out-dir runs_external_learned_bundle --method learned_policy_spec --policy-spec examples/external_policy_spec.json --require-pass
 python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass
@@ -78,6 +79,7 @@ python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --re
 - `rl-contract` publishes schema-versioned action, observation, and reward metadata for adapter authors, but those versions are still pre-v1.
 - `rl-freeze-check` publishes a machine-readable stable-v1 readiness checklist for the RL interface, but passing it does not make this public alpha a stable v1 release.
 - `tiny_learned` is available as a built-in RL smoke policy and maps to the same frozen model family as the planner method `learned_tiny`.
+- `validate-learned-manifest` checks learned-policy disclosure drafts, dependency declarations, and optional artifact hashes before running the heavier learned bundle workflow.
 - `learned-submission-bundle` creates the standard learned-policy artifact folder, including `learned_submission_manifest.json`, RL contract/freeze/smoke/calibration reports, and official planner CSVs.
 - `validate-learned-bundle` reviews an existing learned-policy bundle without rerunning simulations and checks required artifacts, manifest schema/provenance/hash consistency, parseability, passing RL reports, planner acceptance, and nonempty planner CSVs.
 - `review-learned-bundle` summarizes an existing learned-policy bundle into manifest disclosure, safety, mission, compute, communication, observation, and v0-score fields for manual leaderboard review.

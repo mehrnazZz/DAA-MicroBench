@@ -25,6 +25,7 @@ python -m microbench.cli baseline-evidence --out-dir "${WORK_DIR}/baseline_evide
 python -m microbench.cli rl-smoke --out-dir "${WORK_DIR}/rl_smoke" --require-pass --json >"${WORK_DIR}/rl_smoke.json"
 python -m microbench.cli rl-smoke --out-dir "${WORK_DIR}/rl_external_policy_spec" --policy-spec examples/external_policy_spec.json --max-steps 3 --require-pass --json >"${WORK_DIR}/rl_external_policy_spec.json"
 python -m microbench.cli rl-smoke --out-dir "${WORK_DIR}/rl_external_model_predict_spec" --policy-spec examples/external_policy_model_predict_spec.json --max-steps 3 --require-pass --json >"${WORK_DIR}/rl_external_model_predict_spec.json"
+python -m microbench.cli validate-learned-manifest --manifest examples/learned_submission_manifest_template.json --require-pass --json >"${WORK_DIR}/learned_manifest_template_validation.json"
 python -m microbench.cli learned-submission-bundle --out-dir "${WORK_DIR}/learned_submission_policy_spec_bundle" --method learned_policy_spec --policy-spec examples/external_policy_spec.json --max-runs 1 --max-steps 3 --require-pass --json >"${WORK_DIR}/learned_submission_policy_spec_bundle.json"
 python -m microbench.cli rl-smoke --out-dir "${WORK_DIR}/rl_tiny_learned" --policy tiny_learned --require-pass --json >"${WORK_DIR}/rl_tiny_learned.json"
 python -m microbench.cli rl-calibration --out-dir "${WORK_DIR}/rl_calibration" --require-pass --json >"${WORK_DIR}/rl_calibration.json"

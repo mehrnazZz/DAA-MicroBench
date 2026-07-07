@@ -51,9 +51,11 @@ from microbench.rl.submission_bundle import (
     LEARNED_SUBMISSION_BUNDLE_SCHEMA_VERSION,
     LEARNED_SUBMISSION_BUNDLE_VALIDATION_SCHEMA_VERSION,
     LEARNED_SUBMISSION_MANIFEST_SCHEMA_VERSION,
+    LEARNED_SUBMISSION_MANIFEST_VALIDATION_SCHEMA_VERSION,
     review_learned_policy_submission_bundle,
     run_learned_policy_submission_bundle,
     validate_learned_policy_submission_bundle,
+    validate_learned_submission_manifest,
 )
 
 __all__ = [
@@ -66,6 +68,7 @@ __all__ = [
     "LEARNED_SUBMISSION_BUNDLE_SCHEMA_VERSION",
     "LEARNED_SUBMISSION_BUNDLE_VALIDATION_SCHEMA_VERSION",
     "LEARNED_SUBMISSION_MANIFEST_SCHEMA_VERSION",
+    "LEARNED_SUBMISSION_MANIFEST_VALIDATION_SCHEMA_VERSION",
     "ModelPredictPolicyAdapter",
     "OBSERVATION_LAYOUT",
     "RL_ACTION_SCHEMA_VERSION",
@@ -112,6 +115,7 @@ __all__ = [
     "run_rl_policy_calibration",
     "run_rl_policy_smoke",
     "validate_learned_policy_submission_bundle",
+    "validate_learned_submission_manifest",
     "single_agent_env",
     "tiny_learned_model_path",
 ]

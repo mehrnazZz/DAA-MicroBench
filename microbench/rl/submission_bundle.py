@@ -4,6 +4,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
 import shutil
 import sys
 from typing import Any
@@ -25,6 +26,7 @@ LEARNED_SUBMISSION_BUNDLE_SCHEMA_VERSION = "0.1"
 LEARNED_SUBMISSION_BUNDLE_VALIDATION_SCHEMA_VERSION = "0.1"
 LEARNED_SUBMISSION_BUNDLE_REVIEW_SCHEMA_VERSION = "0.1"
 LEARNED_SUBMISSION_MANIFEST_SCHEMA_VERSION = "0.1"
+LEARNED_SUBMISSION_MANIFEST_VALIDATION_SCHEMA_VERSION = "0.1"
 LEARNED_SUBMISSION_BUNDLE_FILENAME = "learned_submission_bundle.json"
 LEARNED_SUBMISSION_MANIFEST_FILENAME = "learned_submission_manifest.json"
 EXPECTED_BUNDLE_ARTIFACTS = {
@@ -45,6 +47,8 @@ OPTIONAL_BUNDLE_ARTIFACTS = {
     "policy_spec": "policy_spec.json",
     "policy_artifact": "policy_artifacts/{artifact_name}",
 }
+_DEPENDENCY_VERSION_OPERATORS = ("==", ">=", "<=", "~=", "!=", ">", "<")
+_DEPENDENCY_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*(\[[A-Za-z0-9_,.-]+\])?$")
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> Path:
@@ -276,6 +280,234 @@ def _manifest_unknown_fields(manifest: dict[str, Any]) -> list[str]:
             if value == "undisclosed" or value is None:
                 unknown.append(f"{section_name}.{key}")
     return unknown
+
+
+def _parse_dependency_string(spec: str) -> tuple[str, str | None]:
+    cleaned = spec.strip()
+    for op in _DEPENDENCY_VERSION_OPERATORS:
+        if op in cleaned:
+            name, version = cleaned.split(op, 1)
+            return name.strip(), f"{op}{version.strip()}"
+    return cleaned, None
+
+
+def _normalize_dependency_entry(entry: Any, *, field: str, index: int) -> tuple[dict[str, Any] | None, list[str], list[str]]:
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if isinstance(entry, str):
+        name, version = _parse_dependency_string(entry)
+        normalized: dict[str, Any] = {
+            "name": name,
+            "version": version,
+            "source": "unspecified",
+            "optional": False,
+        }
+    elif isinstance(entry, dict):
+        name = str(entry.get("name", "")).strip()
+        version_value = entry.get("version", entry.get("specifier"))
+        version = None if version_value is None or version_value == "" else str(version_value).strip()
+        source = str(entry.get("source", "unspecified")).strip() or "unspecified"
+        normalized = {
+            "name": name,
+            "version": version,
+            "source": source,
+            "optional": bool(entry.get("optional", False)),
+        }
+        if entry.get("purpose") is not None:
+            normalized["purpose"] = str(entry["purpose"])
+        unknown_keys = sorted(set(entry) - {"name", "version", "specifier", "source", "optional", "purpose"})
+        if unknown_keys:
+            warnings.append(f"{field}[{index}] has unrecognized keys: {','.join(unknown_keys)}")
+    else:
+        return None, [f"{field}[{index}] must be an object or requirement string"], warnings
+
+    if not normalized["name"]:
+        errors.append(f"{field}[{index}] is missing dependency name")
+    elif not _DEPENDENCY_NAME_RE.match(str(normalized["name"])):
+        errors.append(f"{field}[{index}] has invalid dependency name: {normalized['name']}")
+    if not normalized["version"]:
+        warnings.append(f"{field}[{index}] has no version/specifier")
+
+    return normalized if not errors else None, errors, warnings
+
+
+def _manifest_dependency_report(manifest: dict[str, Any]) -> dict[str, Any]:
+    dependencies = manifest.get("dependencies", {})
+    normalized: dict[str, list[dict[str, Any]]] = {}
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not isinstance(dependencies, dict):
+        return {
+            "ok": False,
+            "normalized": normalized,
+            "errors": ["dependencies must be an object"],
+            "warnings": warnings,
+        }
+
+    package_fields = sorted(key for key in dependencies if str(key).endswith("_packages"))
+    if "inference_packages" not in package_fields:
+        warnings.append("dependencies.inference_packages is not declared")
+
+    for field in package_fields:
+        entries = dependencies.get(field)
+        if not isinstance(entries, list):
+            errors.append(f"dependencies.{field} must be a list")
+            continue
+        normalized_entries: list[dict[str, Any]] = []
+        for idx, entry in enumerate(entries):
+            normalized_entry, entry_errors, entry_warnings = _normalize_dependency_entry(
+                entry,
+                field=f"dependencies.{field}",
+                index=idx,
+            )
+            errors.extend(entry_errors)
+            warnings.extend(entry_warnings)
+            if normalized_entry is not None:
+                normalized_entries.append(normalized_entry)
+        normalized[field] = normalized_entries
+
+    return {
+        "ok": not errors,
+        "normalized": normalized,
+        "errors": errors,
+        "warnings": warnings,
+    }
+
+
+def validate_learned_submission_manifest(
+    *,
+    manifest: str | Path,
+    bundle_root: str | Path | None = None,
+    allow_undisclosed: bool = False,
+) -> dict[str, Any]:
+    """Validate a standalone learned-policy submission manifest before bundling."""
+
+    manifest_path = Path(manifest)
+    artifact_root = Path(bundle_root) if bundle_root is not None else manifest_path.parent
+    try:
+        manifest_payload = _read_json(manifest_path)
+        manifest_load_error = None
+    except Exception as exc:
+        manifest_payload = {}
+        manifest_load_error = f"{type(exc).__name__}: {exc}"
+
+    required_sections = ("policy", "benchmark", "dependencies", "training_disclosure", "inference_disclosure", "review_notes")
+    sections_present = isinstance(manifest_payload, dict) and all(
+        isinstance(manifest_payload.get(section), dict)
+        for section in required_sections
+    )
+    policy = manifest_payload.get("policy", {}) if isinstance(manifest_payload.get("policy"), dict) else {}
+    benchmark = manifest_payload.get("benchmark", {}) if isinstance(manifest_payload.get("benchmark"), dict) else {}
+
+    artifacts = manifest_payload.get("artifacts", []) if isinstance(manifest_payload, dict) else []
+    artifact_record_errors: list[str] = []
+    artifact_missing: list[str] = []
+    artifact_hash_mismatches: list[dict[str, Any]] = []
+    if not isinstance(artifacts, list):
+        artifact_record_errors.append("artifacts must be a list")
+        artifacts = []
+    for idx, item in enumerate(artifacts):
+        if not isinstance(item, dict):
+            artifact_record_errors.append(f"artifacts[{idx}] must be an object")
+            continue
+        name = str(item.get("name", "")).strip()
+        rel_path = str(item.get("path", "")).strip()
+        if not name:
+            artifact_record_errors.append(f"artifacts[{idx}] is missing name")
+        if not rel_path:
+            artifact_record_errors.append(f"artifacts[{idx}] is missing path")
+            continue
+        artifact_path = artifact_root / rel_path
+        if bundle_root is not None and not artifact_path.exists():
+            artifact_missing.append(rel_path)
+            continue
+        declared_hash = item.get("sha256")
+        if declared_hash and artifact_path.exists() and artifact_path.is_file():
+            actual_hash = _sha256(artifact_path)
+            if actual_hash != declared_hash:
+                artifact_hash_mismatches.append(
+                    {
+                        "artifact": name,
+                        "path": rel_path,
+                        "declared": declared_hash,
+                        "actual": actual_hash,
+                    }
+                )
+
+    dependency_report = _manifest_dependency_report(manifest_payload)
+    unknown_fields = _manifest_unknown_fields(manifest_payload) if isinstance(manifest_payload, dict) else []
+    seeds = benchmark.get("seeds")
+    checks = [
+        _check("manifest_json_loads", manifest_load_error is None, {"error": manifest_load_error}),
+        _check(
+            "manifest_schema_supported",
+            manifest_payload.get("schema_version") == LEARNED_SUBMISSION_MANIFEST_SCHEMA_VERSION,
+            {"schema_version": manifest_payload.get("schema_version")},
+        ),
+        _check(
+            "manifest_sections_present",
+            sections_present,
+            {"required_sections": list(required_sections), "present_sections": list(manifest_payload.keys())},
+        ),
+        _check(
+            "manifest_policy_identity_present",
+            bool(policy.get("name")) and bool(policy.get("method")),
+            {"policy": {"name": policy.get("name"), "method": policy.get("method")}},
+        ),
+        _check(
+            "manifest_benchmark_shape_present",
+            bool(benchmark.get("suite"))
+            and isinstance(benchmark.get("n_agents"), int)
+            and int(benchmark.get("n_agents", 0) or 0) > 0
+            and isinstance(seeds, list)
+            and all(isinstance(seed, int) for seed in seeds),
+            {
+                "suite": benchmark.get("suite"),
+                "n_agents": benchmark.get("n_agents"),
+                "seeds": seeds,
+            },
+        ),
+        _check(
+            "manifest_dependencies_normalized",
+            bool(dependency_report["ok"]),
+            {
+                "errors": dependency_report["errors"],
+                "warnings": dependency_report["warnings"],
+                "normalized": dependency_report["normalized"],
+            },
+        ),
+        _check(
+            "manifest_disclosures_complete",
+            bool(allow_undisclosed or not unknown_fields),
+            {"unknown_fields": unknown_fields, "allow_undisclosed": bool(allow_undisclosed)},
+        ),
+        _check(
+            "manifest_artifact_records_valid",
+            not artifact_record_errors and not artifact_missing,
+            {"errors": artifact_record_errors, "missing": artifact_missing},
+        ),
+        _check(
+            "manifest_artifact_hashes_match",
+            not artifact_hash_mismatches,
+            {"mismatches": artifact_hash_mismatches[:20]},
+        ),
+    ]
+
+    return {
+        "schema_version": LEARNED_SUBMISSION_MANIFEST_VALIDATION_SCHEMA_VERSION,
+        "manifest_schema_version": manifest_payload.get("schema_version"),
+        "ok": all(check["ok"] for check in checks),
+        "manifest": str(manifest_path),
+        "bundle_root": str(artifact_root),
+        "policy": policy,
+        "benchmark": benchmark,
+        "artifact_count": len(artifacts),
+        "dependencies": dependency_report,
+        "unknown_fields": unknown_fields,
+        "checks": checks,
+    }
 
 
 def _run_planner_sweep(
@@ -631,14 +863,21 @@ def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str
         bundle_load_error = f"{type(exc).__name__}: {exc}"
 
     suite = str(report.get("suite", "")) if report else ""
+    report_artifacts = report.get("artifacts") if isinstance(report.get("artifacts"), dict) else {}
+    legacy_manifest_missing = bool(report) and "learned_submission_manifest" not in report_artifacts
+    expected_artifact_names = [
+        name
+        for name in EXPECTED_BUNDLE_ARTIFACTS
+        if name != "learned_submission_manifest" or not legacy_manifest_missing
+    ]
     resolved = {
         name: _resolve_artifact(bundle_root, report, name)
-        for name in EXPECTED_BUNDLE_ARTIFACTS
+        for name in expected_artifact_names
     }
     optional_declared = [
         name
         for name in OPTIONAL_BUNDLE_ARTIFACTS
-        if isinstance(report.get("artifacts"), dict) and name in report["artifacts"]
+        if name in report_artifacts
     ]
     optional_resolved = {
         name: _resolve_artifact(bundle_root, report, name)
@@ -651,13 +890,14 @@ def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str
     json_payloads: dict[str, dict[str, Any]] = {}
     json_errors: list[dict[str, str]] = []
     json_artifact_names = [
-        "learned_submission_manifest",
         "rl_contract",
         "rl_freeze_check",
         "rl_smoke",
         "rl_calibration",
         "planner_acceptance",
     ]
+    if "learned_submission_manifest" in all_resolved:
+        json_artifact_names.insert(0, "learned_submission_manifest")
     if "policy_spec" in optional_resolved:
         json_artifact_names.append("policy_spec")
     for name in json_artifact_names:
@@ -690,40 +930,49 @@ def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str
 
     manifest_payload = json_payloads.get("learned_submission_manifest", {})
     manifest_artifacts = _manifest_artifact_map(manifest_payload) if isinstance(manifest_payload, dict) else {}
-    report_artifact_names = set((report.get("artifacts") or {}).keys()) - {"learned_submission_manifest"}
+    report_artifact_names = set(report_artifacts.keys()) - {"learned_submission_manifest"}
     manifest_artifact_names = set(manifest_artifacts.keys())
-    missing_manifest_artifacts = sorted(report_artifact_names - manifest_artifact_names)
+    missing_manifest_artifacts = [] if legacy_manifest_missing else sorted(report_artifact_names - manifest_artifact_names)
     artifact_hash_mismatches: list[dict[str, Any]] = []
-    for name, item in manifest_artifacts.items():
-        rel_path = str(item.get("path", ""))
-        declared_hash = item.get("sha256")
-        if not declared_hash:
-            continue
-        artifact_path = bundle_root / rel_path
-        if artifact_path.exists() and artifact_path.is_file():
-            actual_hash = _sha256(artifact_path)
-            if actual_hash != declared_hash:
-                artifact_hash_mismatches.append(
-                    {
-                        "artifact": name,
-                        "path": rel_path,
-                        "declared": declared_hash,
-                        "actual": actual_hash,
-                    }
-                )
+    if not legacy_manifest_missing:
+        for name, item in manifest_artifacts.items():
+            rel_path = str(item.get("path", ""))
+            declared_hash = item.get("sha256")
+            if not declared_hash:
+                continue
+            artifact_path = bundle_root / rel_path
+            if artifact_path.exists() and artifact_path.is_file():
+                actual_hash = _sha256(artifact_path)
+                if actual_hash != declared_hash:
+                    artifact_hash_mismatches.append(
+                        {
+                            "artifact": name,
+                            "path": rel_path,
+                            "declared": declared_hash,
+                            "actual": actual_hash,
+                        }
+                    )
     manifest_policy_spec = (manifest_payload.get("policy") or {}).get("policy_spec") if isinstance(manifest_payload, dict) else None
     report_policy_spec = report.get("policy_spec")
-    if report_policy_spec is None:
+    if legacy_manifest_missing:
+        policy_spec_provenance_ok = True
+    elif report_policy_spec is None:
         policy_spec_provenance_ok = manifest_policy_spec is None
     else:
         policy_spec_provenance_ok = isinstance(manifest_policy_spec, dict) and all(
             manifest_policy_spec.get(key) == report_policy_spec.get(key)
             for key in ("policy_name", "adapter")
         )
-    manifest_required_sections_present = isinstance(manifest_payload, dict) and all(
+    manifest_required_sections_present = legacy_manifest_missing or (isinstance(manifest_payload, dict) and all(
         isinstance(manifest_payload.get(section), dict)
         for section in ("policy", "benchmark", "dependencies", "training_disclosure", "inference_disclosure")
-    )
+    ))
+    dependency_report = _manifest_dependency_report(manifest_payload) if isinstance(manifest_payload, dict) else {
+        "ok": bool(legacy_manifest_missing),
+        "normalized": {},
+        "errors": [] if legacy_manifest_missing else ["learned_submission_manifest is missing or unreadable"],
+        "warnings": [],
+    }
 
     bundle_checks = report.get("checks", []) if isinstance(report.get("checks"), list) else []
     failed_bundle_checks = [check.get("name") for check in bundle_checks if not check.get("ok")]
@@ -735,15 +984,20 @@ def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str
             {"schema_version": report.get("schema_version")},
         ),
         _check("bundle_report_ok", bool(report.get("ok")), {"failed_checks": failed_bundle_checks}),
-        _check("required_artifacts_declared", set(EXPECTED_BUNDLE_ARTIFACTS).issubset(set((report.get("artifacts") or {}).keys()))),
+        _check(
+            "required_artifacts_declared",
+            set(expected_artifact_names).issubset(set(report_artifacts.keys())),
+            {"legacy_manifest_missing": legacy_manifest_missing},
+        ),
         _check("required_artifacts_present", not missing, {"missing": missing}),
         _check("optional_artifacts_present", not optional_missing, {"missing": optional_missing, "declared": optional_declared}),
         _check("json_artifacts_parse", not json_errors and result_schema_error is None, {"errors": json_errors, "result_schema_error": result_schema_error}),
         _check(
             "learned_submission_manifest_schema_supported",
-            isinstance(manifest_payload, dict)
-            and manifest_payload.get("schema_version") == LEARNED_SUBMISSION_MANIFEST_SCHEMA_VERSION,
-            {"schema_version": manifest_payload.get("schema_version") if isinstance(manifest_payload, dict) else None},
+            legacy_manifest_missing
+            or (isinstance(manifest_payload, dict)
+            and manifest_payload.get("schema_version") == LEARNED_SUBMISSION_MANIFEST_SCHEMA_VERSION),
+            {"schema_version": manifest_payload.get("schema_version") if isinstance(manifest_payload, dict) else None, "legacy_manifest_missing": legacy_manifest_missing},
         ),
         _check(
             "learned_submission_manifest_sections_present",
@@ -764,6 +1018,16 @@ def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str
             "learned_submission_manifest_policy_spec_provenance",
             policy_spec_provenance_ok,
             {"manifest_policy_spec": manifest_policy_spec, "bundle_policy_spec": report_policy_spec},
+        ),
+        _check(
+            "learned_submission_manifest_dependencies_normalized",
+            bool(dependency_report["ok"]),
+            {
+                "errors": dependency_report["errors"],
+                "warnings": dependency_report["warnings"],
+                "normalized": dependency_report["normalized"],
+                "legacy_manifest_missing": legacy_manifest_missing,
+            },
         ),
         _check(
             "rl_reports_ok",
@@ -814,6 +1078,8 @@ def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str
             "schema_version": manifest_payload.get("schema_version") if isinstance(manifest_payload, dict) else None,
             "unknown_fields": _manifest_unknown_fields(manifest_payload) if isinstance(manifest_payload, dict) else [],
             "artifact_count": len(manifest_artifacts),
+            "legacy_missing": legacy_manifest_missing,
+            "dependencies": dependency_report,
         },
         "checks": checks,
     }
@@ -890,6 +1156,7 @@ def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, 
         bundle_load_error = f"{type(exc).__name__}: {exc}"
 
     artifacts = validation.get("artifacts", {})
+    legacy_manifest_missing = bool(validation.get("submission_manifest", {}).get("legacy_missing"))
     manifest_payload: dict[str, Any] = {}
     manifest_path = Path(str(artifacts.get("learned_submission_manifest", "")))
     if manifest_path.exists():
@@ -937,6 +1204,8 @@ def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, 
     unknown_manifest_fields = _manifest_unknown_fields(manifest_payload) if manifest_payload else []
     if unknown_manifest_fields:
         limitations.append("submission_disclosure_incomplete")
+    if legacy_manifest_missing:
+        limitations.append("legacy_bundle_without_submission_manifest")
 
     checks = [
         _check("bundle_validation_ok", bool(validation["ok"])),
@@ -946,8 +1215,8 @@ def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, 
         _check("score_v0_computable", bool(scores), {"summary_rows": len(summary_rows), "scored_rows": len(scores)}),
         _check(
             "submission_manifest_present",
-            bool(manifest_payload),
-            {"path": str(manifest_path) if str(manifest_path) else None},
+            bool(manifest_payload) or legacy_manifest_missing,
+            {"path": str(manifest_path) if str(manifest_path) else None, "legacy_missing": legacy_manifest_missing},
         ),
     ]
     ok = all(check["ok"] for check in checks)
@@ -957,7 +1226,7 @@ def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, 
         recommendation = "manual_review_limited_sweep"
     elif total_collision_episodes or total_timeouts or total_errors or total_fallbacks:
         recommendation = "manual_review_required"
-    elif unknown_manifest_fields:
+    elif unknown_manifest_fields or legacy_manifest_missing:
         recommendation = "manual_review_required"
     else:
         recommendation = "leaderboard_candidate"
@@ -1021,6 +1290,7 @@ def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, 
         },
         "submission_manifest": {
             "schema_version": manifest_payload.get("schema_version") if manifest_payload else None,
+            "legacy_missing": legacy_manifest_missing,
             "policy": manifest_payload.get("policy") if manifest_payload else None,
             "benchmark": manifest_payload.get("benchmark") if manifest_payload else None,
             "dependencies": manifest_payload.get("dependencies") if manifest_payload else None,

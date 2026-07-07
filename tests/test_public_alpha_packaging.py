@@ -59,10 +59,13 @@ def test_public_docs_index_and_templates_exist() -> None:
     assert "tiny_linear_json" in external_spec.read_text(encoding="utf-8")
     model_spec = ROOT / "examples/external_policy_model_predict_spec.json"
     callable_spec = ROOT / "examples/external_policy_callable_spec.json"
+    manifest_template = ROOT / "examples/learned_submission_manifest_template.json"
     assert model_spec.exists()
     assert callable_spec.exists()
+    assert manifest_template.exists()
     assert "model_predict" in model_spec.read_text(encoding="utf-8")
     assert "callable" in callable_spec.read_text(encoding="utf-8")
+    assert "inference_packages" in manifest_template.read_text(encoding="utf-8")
 
     required_templates = [
         ".github/ISSUE_TEMPLATE/benchmark_result.md",
@@ -90,6 +93,7 @@ def test_public_docs_index_and_templates_exist() -> None:
     assert "policy_spec.json" in learned_template
     assert "LEARNED_POLICY_ADOPTION.md" in learned_template
     assert "--submission-manifest" in learned_template
+    assert "validate-learned-manifest" in learned_template
     assert "rl_contract.json" in learned_template
     assert "rl_freeze_check.json" in learned_template
     assert "rl_smoke.json" in learned_template

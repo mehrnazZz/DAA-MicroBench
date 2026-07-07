@@ -118,6 +118,16 @@ For real submissions, pass a JSON disclosure overlay to populate the generated `
 }
 ```
 
+The fuller reviewer-ready shape is available at `examples/learned_submission_manifest_template.json`. Validate a draft before running the heavier bundle command:
+
+```bash
+python -m microbench.cli validate-learned-manifest \
+  --manifest examples/learned_submission_manifest_template.json \
+  --require-pass
+```
+
+Use `--allow-undisclosed` only while drafting. A reviewer-ready manifest should declare inference package names and versions/specifiers, deterministic/runtime behavior, training suites or scenarios, seeds, reward configuration, observation normalization, external data, pretrained models, and any privileged-information caveats.
+
 ```bash
 python -m microbench.cli learned-submission-bundle \
   --out-dir runs_external_model_predict_bundle \

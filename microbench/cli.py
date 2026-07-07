@@ -28,6 +28,7 @@ from microbench.rl.submission_bundle import (
     review_learned_policy_submission_bundle,
     run_learned_policy_submission_bundle,
     validate_learned_policy_submission_bundle,
+    validate_learned_submission_manifest,
 )
 from microbench.tools import (
     build_baseline_audit,
@@ -855,6 +856,35 @@ def _validate_learned_bundle(args) -> None:
         raise SystemExit(f"learned bundle validation failed: {','.join(failed)}")
 
 
+def _validate_learned_manifest(args) -> None:
+    report = validate_learned_submission_manifest(
+        manifest=args.manifest,
+        bundle_root=args.bundle_root,
+        allow_undisclosed=bool(args.allow_undisclosed),
+    )
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        policy = report.get("policy") or {}
+        benchmark = report.get("benchmark") or {}
+        print(
+            f"validate-learned-manifest: {status} policy={policy.get('name')} "
+            f"method={policy.get('method')} suite={benchmark.get('suite')}"
+        )
+        for check in report["checks"]:
+            check_status = "ok" if check["ok"] else "FAIL"
+            print(f"  {check_status}: {check['name']}")
+        if report.get("unknown_fields"):
+            print(f"  unknown_fields: {','.join(report['unknown_fields'])}")
+        print(f"  manifest: {report['manifest']}")
+
+    if args.require_pass and not report["ok"]:
+        failed = [check["name"] for check in report["checks"] if not check["ok"]]
+        raise SystemExit(f"learned manifest validation failed: {','.join(failed)}")
+
+
 def _review_learned_bundle(args) -> None:
     report = review_learned_policy_submission_bundle(bundle=args.bundle)
 
@@ -1227,6 +1257,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_lsb.add_argument("--json", action="store_true", help="Emit machine-readable bundle report")
     p_lsb.add_argument("--require-pass", action="store_true", help="Fail if any bundle check fails")
 
+    p_vlm = sub.add_parser("validate-learned-manifest", help="Validate a learned-policy submission manifest")
+    p_vlm.add_argument("--manifest", required=True, help="Path to learned_submission_manifest.json or a draft manifest")
+    p_vlm.add_argument("--bundle-root", default=None, help="Optional bundle root for artifact path/hash checks")
+    p_vlm.add_argument(
+        "--allow-undisclosed",
+        action="store_true",
+        help="Allow undisclosed training/inference fields while drafting the manifest",
+    )
+    p_vlm.add_argument("--json", action="store_true", help="Emit machine-readable manifest validation report")
+    p_vlm.add_argument("--require-pass", action="store_true", help="Fail if any manifest validation check fails")
+
     p_vlb = sub.add_parser("validate-learned-bundle", help="Validate an existing learned-policy submission bundle")
     p_vlb.add_argument("--bundle", required=True, help="Path to a bundle directory or learned_submission_bundle.json")
     p_vlb.add_argument("--json", action="store_true", help="Emit machine-readable validation report")
@@ -1388,6 +1429,9 @@ def main() -> None:
         return
     if args.cmd == "learned-submission-bundle":
         _learned_submission_bundle(args)
+        return
+    if args.cmd == "validate-learned-manifest":
+        _validate_learned_manifest(args)
         return
     if args.cmd == "validate-learned-bundle":
         _validate_learned_bundle(args)

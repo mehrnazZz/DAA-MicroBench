@@ -1,0 +1,74 @@
+{
+  "artifacts": [],
+  "benchmark": {
+    "max_runs": 1,
+    "max_steps": 3,
+    "n_agents": 4,
+    "planner_sweep_planned_run_count": 1,
+    "planner_sweep_run_count": 1,
+    "root": ".",
+    "seeds": [
+      0
+    ],
+    "suite": "official_smoke_generated"
+  },
+  "bundle_schema_version": "0.1",
+  "dependencies": {
+    "inference_packages": [
+      {
+        "name": "daa-microbench",
+        "purpose": "benchmark harness and public RL/planner interface",
+        "source": "source checkout",
+        "version": "current repository commit"
+      },
+      "numpy>=1.24"
+    ],
+    "notes": "List every non-standard inference dependency used by the submitted policy."
+  },
+  "inference_disclosure": {
+    "deterministic": true,
+    "external_services": [],
+    "runtime_notes": "deterministic local CPU inference",
+    "uses_external_services": false
+  },
+  "policy": {
+    "method": "learned_policy_spec",
+    "method_metadata": null,
+    "name": "external_model_predict_fixture",
+    "policy_spec": {
+      "adapter": "model_predict",
+      "artifact_path": "examples/exported_linear_policy.json",
+      "callable": null,
+      "clip": true,
+      "deterministic": true,
+      "factory": "exported_policy:make_model",
+      "factory_kwargs": {
+        "artifact_path": "examples/exported_linear_policy.json",
+        "avoid_gain": 0.45,
+        "speed_fraction": 0.85
+      },
+      "policy_name": "external_model_predict_fixture",
+      "spec_path": "examples/external_policy_model_predict_spec.json"
+    }
+  },
+  "review_notes": {
+    "intended_category": "external_submission",
+    "privileged_information": "none",
+    "reviewer_notes": "Template values describe the dependency-free example policy; replace with submitted-policy facts."
+  },
+  "schema_version": "0.1",
+  "training_disclosure": {
+    "action_post_processing": "normalized velocity action clipped by DAA Microbench action contract",
+    "environment_steps": 0,
+    "external_data": "none",
+    "hardware": "not applicable for dependency-free example",
+    "observation_normalization": "none",
+    "pretrained_models": "none",
+    "random_seeds": [
+      0
+    ],
+    "reward_configuration": "not trained; hand-authored linear fixture",
+    "training_scenarios": [],
+    "training_suites": []
+  }
+}
