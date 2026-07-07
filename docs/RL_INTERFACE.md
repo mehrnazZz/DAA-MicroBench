@@ -195,6 +195,64 @@ policy = ModelPredictPolicyAdapter(my_model)
 
 Both adapters validate finite `(3,)` actions and clip to the action space bounds. See `examples/rl_external_policy_adapter.py` for a runnable learned-policy adapter example that does not require any external RL framework.
 
+## External Policy Specs
+
+Use a JSON or YAML policy spec when you want the CLI to load an exported learned policy without editing DAA Microbench source. The dependency-free tiny-linear example is in `examples/external_policy_spec.json`:
+
+```json
+{
+  "schema_version": "0.1",
+  "policy_name": "external_tiny_linear_fixture",
+  "adapter": "tiny_linear_json",
+  "artifact_path": "../microbench/bundled_config/learned_baselines/tiny_linear_policy.json",
+  "deterministic": true,
+  "clip": true
+}
+```
+
+Supported public-alpha adapters are:
+
+- `tiny_linear_json`: loads a DAA tiny-linear JSON weight artifact.
+- `callable`: imports a Python callable with `callable: "module:function"` and optional `signature`.
+- `model_predict`: imports a Python factory/class with `factory: "module:Factory"` and wraps objects exposing `predict(...)`, `compute_single_action(...)`, or callable inference.
+- `builtin`: aliases an existing built-in policy name for reproducible command files.
+
+Relative `artifact_path` and `pythonpath` entries resolve from the spec file. Import-based specs execute local Python code, so only use specs from trusted sources.
+
+Run the spec through the learned-policy health gates:
+
+```bash
+python -m microbench.cli rl-smoke \
+  --out-dir runs_external_rl_smoke \
+  --policy-spec examples/external_policy_spec.json \
+  --require-pass
+
+python -m microbench.cli rl-calibration \
+  --out-dir runs_external_rl_calibration \
+  --policy-spec examples/external_policy_spec.json \
+  --require-pass
+```
+
+Build, validate, and summarize a learned submission bundle with the same spec:
+
+```bash
+python -m microbench.cli learned-submission-bundle \
+  --out-dir runs_external_learned_bundle \
+  --method learned_tiny \
+  --policy-spec examples/external_policy_spec.json \
+  --require-pass
+
+python -m microbench.cli validate-learned-bundle \
+  --bundle runs_external_learned_bundle \
+  --require-pass
+
+python -m microbench.cli review-learned-bundle \
+  --bundle runs_external_learned_bundle \
+  --require-pass
+```
+
+The bundle command writes a portable `policy_spec.json`; when the spec has a file `artifact_path`, it also copies the artifact under `policy_artifacts/` and rewrites the bundled spec to point at that copy.
+
 DAA Microbench also ships a tiny frozen learned-policy fixture:
 
 ```bash

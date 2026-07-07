@@ -5,6 +5,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+from microbench.learned import tiny_learned_model_path
+from microbench.rl.policy_spec import RL_POLICY_SPEC_SCHEMA_VERSION
 from microbench.rl.submission_bundle import (
     review_learned_policy_submission_bundle,
     run_learned_policy_submission_bundle,
@@ -17,6 +19,26 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _check(report: dict, name: str) -> dict:
     return next(check for check in report["checks"] if check["name"] == name)
+
+
+def _tiny_policy_spec(tmp_path: Path) -> Path:
+    path = tmp_path / "external_policy_spec.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": RL_POLICY_SPEC_SCHEMA_VERSION,
+                "policy_name": "external_tiny_fixture",
+                "adapter": "tiny_linear_json",
+                "artifact_path": tiny_learned_model_path(),
+                "deterministic": True,
+                "clip": True,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
 
 
 def test_learned_policy_submission_bundle_helper_writes_expected_artifacts(tmp_path: Path) -> None:
@@ -160,3 +182,31 @@ def test_validate_learned_bundle_reports_missing_artifacts(tmp_path: Path) -> No
     missing_check = _check(validation, "required_artifacts_present")
     assert missing_check["ok"] is False
     assert "rl_smoke" in missing_check["details"]["missing"]
+
+
+def test_learned_bundle_policy_spec_artifacts_are_portable(tmp_path: Path) -> None:
+    spec_path = _tiny_policy_spec(tmp_path)
+    bundle_root = tmp_path / "bundle_with_spec"
+    report = run_learned_policy_submission_bundle(
+        out_dir=bundle_root,
+        method="learned_tiny",
+        policy_spec=spec_path,
+        max_runs=1,
+        max_steps=3,
+    )
+
+    assert report["ok"] is True
+    assert report["policy"] == "external_tiny_fixture"
+    assert report["policy_spec"]["policy_name"] == "external_tiny_fixture"
+    assert report["artifacts"]["policy_spec"] == "policy_spec.json"
+    assert report["artifacts"]["policy_artifact"].startswith("policy_artifacts/")
+    assert (bundle_root / report["artifacts"]["policy_spec"]).exists()
+    assert (bundle_root / report["artifacts"]["policy_artifact"]).exists()
+
+    copied_spec = json.loads((bundle_root / "policy_spec.json").read_text(encoding="utf-8"))
+    assert copied_spec["artifact_path"] == report["artifacts"]["policy_artifact"]
+    assert copied_spec["source_spec_path"] == str(spec_path)
+
+    validation = validate_learned_policy_submission_bundle(bundle=bundle_root)
+    assert validation["ok"] is True
+    assert _check(validation, "optional_artifacts_present")["ok"] is True

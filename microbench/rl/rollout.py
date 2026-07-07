@@ -53,10 +53,18 @@ def _policy_instance(policy: str | RlPolicy | PolicyFactory, *, seed: int) -> tu
         created = policy(int(seed))
         if hasattr(created, "reset"):
             created.reset(int(seed))
-        return created, type(created).__name__
+        return created, str(getattr(created, "policy_name", type(created).__name__))
     if hasattr(policy, "reset"):
         policy.reset(int(seed))
-    return policy, type(policy).__name__
+    return policy, str(getattr(policy, "policy_name", type(policy).__name__))
+
+
+def _policy_label(policy: str | RlPolicy | PolicyFactory, explicit: str | None = None) -> str:
+    if explicit:
+        return str(explicit)
+    if isinstance(policy, str):
+        return str(policy)
+    return str(getattr(policy, "policy_name", type(policy).__name__))
 
 
 def rollout_parallel_env(
@@ -153,6 +161,7 @@ def run_parallel_policy_rollouts(
     comm_profile: str = "ideal_50hz",
     max_steps: int | None = None,
     suite: str = "custom",
+    policy_name: str | None = None,
 ) -> list[dict[str, Any]]:
     """Run a small scenario/seed matrix through the parallel RL wrapper."""
 
@@ -176,7 +185,7 @@ def run_parallel_policy_rollouts(
                         metadata={
                             "suite": str(suite),
                             "scenario": str(scenario_id),
-                            "policy": str(policy) if isinstance(policy, str) else type(policy).__name__,
+                            "policy": _policy_label(policy, policy_name),
                             "n_agents": int(n_agents),
                             "comm_profile": str(comm_profile),
                         },
@@ -188,7 +197,7 @@ def run_parallel_policy_rollouts(
                         "suite": str(suite),
                         "scenario": str(scenario_id),
                         "dimension": "unknown",
-                        "policy": str(policy) if isinstance(policy, str) else type(policy).__name__,
+                        "policy": _policy_label(policy, policy_name),
                         "n_agents": int(n_agents),
                         "seed": int(seed),
                         "comm_profile": str(comm_profile),

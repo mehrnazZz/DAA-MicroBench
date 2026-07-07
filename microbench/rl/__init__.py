@@ -23,6 +23,17 @@ from microbench.rl.compliance import check_parallel_env_api
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import RL_FREEZE_CHECK_SCHEMA_VERSION, run_rl_freeze_check
 from microbench.rl.policies import GoalDirectionPolicy, RandomPolicy, TinyLearnedPolicy, ZeroPolicy, make_policy
+from microbench.rl.policy_spec import (
+    RL_POLICY_SPEC_SCHEMA_VERSION,
+    SUPPORTED_POLICY_SPEC_ADAPTERS,
+    LoadedPolicySpec,
+    NamedRlPolicy,
+    load_policy_from_spec,
+    load_policy_spec,
+    policy_factory_from_spec,
+    portable_policy_spec_payload,
+    resolve_policy_artifact_path,
+)
 from microbench.rl.rollout import RL_ROLLOUT_SCHEMA_VERSION, rollout_parallel_env, run_parallel_policy_rollouts
 from microbench.rl.schema import (
     OBSERVATION_LAYOUT,
@@ -60,9 +71,13 @@ __all__ = [
     "RL_FREEZE_CHECK_SCHEMA_VERSION",
     "RL_INTERFACE_VERSION",
     "RL_OBSERVATION_SCHEMA_VERSION",
+    "RL_POLICY_SPEC_SCHEMA_VERSION",
     "RL_ROLLOUT_SCHEMA_VERSION",
     "RL_REWARD_SCHEMA_VERSION",
     "RandomPolicy",
+    "LoadedPolicySpec",
+    "NamedRlPolicy",
+    "SUPPORTED_POLICY_SPEC_ADAPTERS",
     "TINY_LEARNED_FEATURE_NAMES",
     "TINY_LEARNED_MODEL_ID",
     "TINY_LEARNED_POLICY_NAME",
@@ -75,13 +90,18 @@ __all__ = [
     "check_parallel_env_api",
     "interface_contract",
     "load_tiny_learned_spec",
+    "load_policy_from_spec",
+    "load_policy_spec",
     "make_policy",
     "normalize_action",
     "observation_schema",
     "observation_to_tiny_features",
     "parallel_env",
+    "policy_factory_from_spec",
     "planner_input_to_tiny_features",
+    "portable_policy_spec_payload",
     "reward_schema",
+    "resolve_policy_artifact_path",
     "review_learned_policy_submission_bundle",
     "rollout_parallel_env",
     "run_parallel_policy_rollouts",

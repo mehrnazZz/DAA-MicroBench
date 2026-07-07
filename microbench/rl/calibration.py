@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from microbench.rl.envs import DaaParallelEnv
+from microbench.rl.policy_spec import policy_factory_from_spec
 from microbench.rl.rollout import RL_ROLLOUT_FIELDS, RL_ROLLOUT_SCHEMA_VERSION, rollout_parallel_env
 from microbench.rl.schema import (
     RL_ACTION_SCHEMA_VERSION,
@@ -60,6 +61,7 @@ def run_rl_policy_calibration(
     *,
     out_dir: str | Path,
     policy: str = "goal_direction",
+    policy_spec: str | Path | None = None,
     n_agents: int = 4,
     seeds: tuple[int, ...] | list[int] | None = None,
     max_steps: int | None = None,
@@ -77,6 +79,13 @@ def run_rl_policy_calibration(
         raise RuntimeError(f"RL calibration output already exists: {episode_csv}")
 
     seed_list = [int(seed) for seed in (seeds if seeds is not None else (0,))]
+    policy_for_rollout: Any = str(policy)
+    policy_name = str(policy)
+    policy_spec_summary = None
+    if policy_spec is not None:
+        policy_for_rollout, policy_spec_summary = policy_factory_from_spec(policy_spec)
+        policy_name = str(policy_spec_summary["policy_name"])
+
     generated_dir = out / "_generated_scenarios" / RL_CALIBRATION_SUITE
     generated = materialize_official_suite(RL_CALIBRATION_SUITE, generated_dir, overwrite=True)
     scenario_paths = {Path(path).stem: Path(path) for path in generated["scenario_paths"]}
@@ -96,14 +105,14 @@ def run_rl_policy_calibration(
             try:
                 row = rollout_parallel_env(
                     env,
-                    str(policy),
+                    policy_for_rollout,
                     seed=int(seed),
                     max_steps=max_steps,
                     metadata={
                         "suite": RL_CALIBRATION_SUITE,
                         "scenario": scenario_id,
                         "band": str(lane["band"]),
-                        "policy": str(policy),
+                        "policy": policy_name,
                         "n_agents": int(n_agents),
                         "comm_profile": str(lane["comm_profile"]),
                     },
@@ -114,7 +123,7 @@ def run_rl_policy_calibration(
                     "scenario": scenario_id,
                     "band": str(lane["band"]),
                     "dimension": "unknown",
-                    "policy": str(policy),
+                    "policy": policy_name,
                     "n_agents": int(n_agents),
                     "seed": int(seed),
                     "comm_profile": str(lane["comm_profile"]),
@@ -191,7 +200,8 @@ def run_rl_policy_calibration(
         "reward_schema_version": RL_REWARD_SCHEMA_VERSION,
         "ok": all(check["ok"] for check in checks),
         "suite": RL_CALIBRATION_SUITE,
-        "policy": str(policy),
+        "policy": policy_name,
+        "policy_spec": policy_spec_summary,
         "n_agents": int(n_agents),
         "seeds": seed_list,
         "max_steps": None if max_steps is None else int(max_steps),

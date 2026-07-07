@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
+import shutil
 from typing import Any
 
 from microbench.acceptance import check_acceptance
@@ -11,6 +12,7 @@ from microbench.planners import planner_metadata
 from microbench.rl.calibration import run_rl_policy_calibration
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import run_rl_freeze_check
+from microbench.rl.policy_spec import portable_policy_spec_payload, resolve_policy_artifact_path
 from microbench.rl.schema import interface_contract
 from microbench.runner import run_episode
 from microbench.scenarios import materialize_official_suite, suite_defaults
@@ -33,6 +35,10 @@ EXPECTED_BUNDLE_ARTIFACTS = {
     "planner_result_schema": "planner_sweep/result_schema.json",
     "planner_suite_manifest": "planner_sweep/_generated_scenarios/{suite}/suite_manifest.yaml",
     "planner_acceptance": "planner_sweep/acceptance.json",
+}
+OPTIONAL_BUNDLE_ARTIFACTS = {
+    "policy_spec": "policy_spec.json",
+    "policy_artifact": "policy_artifacts/{artifact_name}",
 }
 
 
@@ -221,6 +227,7 @@ def run_learned_policy_submission_bundle(
     out_dir: str | Path,
     method: str = "learned_tiny",
     policy: str = "tiny_learned",
+    policy_spec: str | Path | None = None,
     suite: str = "official_smoke_generated",
     root: str | Path = ".",
     n_agents: int = 4,
@@ -243,6 +250,7 @@ def run_learned_policy_submission_bundle(
     smoke = run_rl_policy_smoke(
         out_dir=out / "rl_smoke",
         policy=str(policy),
+        policy_spec=policy_spec,
         n_agents=int(n_agents),
         seeds=seed_list,
         max_steps=max_steps,
@@ -250,6 +258,7 @@ def run_learned_policy_submission_bundle(
     calibration = run_rl_policy_calibration(
         out_dir=out / "rl_calibration",
         policy=str(policy),
+        policy_spec=policy_spec,
         n_agents=int(n_agents),
         seeds=seed_list,
         max_steps=max_steps,
@@ -269,6 +278,22 @@ def run_learned_policy_submission_bundle(
     _write_json(Path(planner_sweep["acceptance_json"]), planner_sweep["acceptance"])
 
     meta = _method_metadata(str(method))
+    policy_spec_artifact: str | None = None
+    policy_model_artifact: str | None = None
+    if policy_spec is not None:
+        spec_path = Path(policy_spec)
+        model_artifact = resolve_policy_artifact_path(spec_path)
+        spec_artifact_rel: str | None = None
+        if model_artifact is not None and model_artifact.exists() and model_artifact.is_file():
+            artifact_out = out / "policy_artifacts" / model_artifact.name
+            artifact_out.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(model_artifact, artifact_out)
+            policy_model_artifact = _rel(artifact_out, out)
+            spec_artifact_rel = policy_model_artifact
+        policy_spec_payload = portable_policy_spec_payload(spec_path, artifact_path=spec_artifact_rel)
+        policy_spec_out = _write_json(out / "policy_spec.json", policy_spec_payload)
+        policy_spec_artifact = _rel(policy_spec_out, out)
+
     artifact_paths = {
         "rl_contract": _rel(out / "rl_contract.json", out),
         "rl_freeze_check": _rel(out / "rl_freeze_check.json", out),
@@ -282,6 +307,10 @@ def run_learned_policy_submission_bundle(
         "planner_suite_manifest": _rel(planner_sweep["suite_manifest"], out),
         "planner_acceptance": _rel(planner_sweep["acceptance_json"], out),
     }
+    if policy_spec_artifact is not None:
+        artifact_paths["policy_spec"] = policy_spec_artifact
+    if policy_model_artifact is not None:
+        artifact_paths["policy_artifact"] = policy_model_artifact
     missing_artifacts = [name for name, path in artifact_paths.items() if not (out / path).exists()]
     checks = [
         _check("method_metadata_present", meta is not None, {"method": str(method)}),
@@ -323,7 +352,8 @@ def run_learned_policy_submission_bundle(
         "schema_version": LEARNED_SUBMISSION_BUNDLE_SCHEMA_VERSION,
         "ok": all(check["ok"] for check in checks),
         "method": str(method),
-        "policy": str(policy),
+        "policy": str(smoke.get("policy", policy)),
+        "policy_spec": smoke.get("policy_spec"),
         "suite": str(suite),
         "root": str(root),
         "n_agents": int(n_agents),
@@ -352,10 +382,10 @@ def _bundle_json_path(bundle: str | Path) -> Path:
 
 
 def _expected_rel_for(name: str, suite: str | None) -> str | None:
-    pattern = EXPECTED_BUNDLE_ARTIFACTS.get(name)
+    pattern = EXPECTED_BUNDLE_ARTIFACTS.get(name) or OPTIONAL_BUNDLE_ARTIFACTS.get(name)
     if pattern is None:
         return None
-    return pattern.format(suite=suite or "*")
+    return pattern.format(suite=suite or "*", artifact_name="*")
 
 
 def _resolve_artifact(bundle_root: Path, report: dict[str, Any], name: str) -> Path:
@@ -377,6 +407,9 @@ def _resolve_artifact(bundle_root: Path, report: dict[str, Any], name: str) -> P
     if name == "planner_suite_manifest":
         manifests = sorted((bundle_root / "planner_sweep" / "_generated_scenarios").glob("*/suite_manifest.yaml"))
         candidates.extend(manifests)
+    if name == "policy_artifact":
+        artifacts = sorted((bundle_root / "policy_artifacts").glob("*"))
+        candidates.extend(path for path in artifacts if path.is_file())
 
     for candidate in candidates:
         if candidate.exists():
@@ -401,12 +434,26 @@ def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str
         name: _resolve_artifact(bundle_root, report, name)
         for name in EXPECTED_BUNDLE_ARTIFACTS
     }
+    optional_declared = [
+        name
+        for name in OPTIONAL_BUNDLE_ARTIFACTS
+        if isinstance(report.get("artifacts"), dict) and name in report["artifacts"]
+    ]
+    optional_resolved = {
+        name: _resolve_artifact(bundle_root, report, name)
+        for name in optional_declared
+    }
+    all_resolved = {**resolved, **optional_resolved}
     missing = [name for name, path in resolved.items() if not path.exists()]
+    optional_missing = [name for name, path in optional_resolved.items() if not path.exists()]
 
     json_payloads: dict[str, dict[str, Any]] = {}
     json_errors: list[dict[str, str]] = []
-    for name in ("rl_contract", "rl_freeze_check", "rl_smoke", "rl_calibration", "planner_acceptance"):
-        path = resolved[name]
+    json_artifact_names = ["rl_contract", "rl_freeze_check", "rl_smoke", "rl_calibration", "planner_acceptance"]
+    if "policy_spec" in optional_resolved:
+        json_artifact_names.append("policy_spec")
+    for name in json_artifact_names:
+        path = all_resolved[name]
         if not path.exists():
             continue
         try:
@@ -445,6 +492,7 @@ def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str
         _check("bundle_report_ok", bool(report.get("ok")), {"failed_checks": failed_bundle_checks}),
         _check("required_artifacts_declared", set(EXPECTED_BUNDLE_ARTIFACTS).issubset(set((report.get("artifacts") or {}).keys()))),
         _check("required_artifacts_present", not missing, {"missing": missing}),
+        _check("optional_artifacts_present", not optional_missing, {"missing": optional_missing, "declared": optional_declared}),
         _check("json_artifacts_parse", not json_errors and result_schema_error is None, {"errors": json_errors, "result_schema_error": result_schema_error}),
         _check(
             "rl_reports_ok",
@@ -490,7 +538,7 @@ def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str
         "method": report.get("method"),
         "policy": report.get("policy"),
         "suite": suite,
-        "artifacts": {name: str(path) for name, path in resolved.items()},
+        "artifacts": {name: str(path) for name, path in all_resolved.items()},
         "checks": checks,
     }
 

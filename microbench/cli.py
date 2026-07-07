@@ -697,6 +697,7 @@ def _rl_smoke(args) -> None:
     report = run_rl_policy_smoke(
         out_dir=args.out_dir,
         policy=str(args.policy),
+        policy_spec=args.policy_spec,
         scenario_ids=_parse_str_list(args.scenarios) if args.scenarios else None,
         n_agents=int(args.n),
         seeds=_parse_int_list(args.seeds),
@@ -729,6 +730,7 @@ def _rl_calibration(args) -> None:
     report = run_rl_policy_calibration(
         out_dir=args.out_dir,
         policy=str(args.policy),
+        policy_spec=args.policy_spec,
         n_agents=int(args.n),
         seeds=_parse_int_list(args.seeds),
         max_steps=args.max_steps,
@@ -796,6 +798,7 @@ def _learned_submission_bundle(args) -> None:
         out_dir=args.out_dir,
         method=str(args.method),
         policy=str(args.policy),
+        policy_spec=args.policy_spec,
         suite=str(args.suite),
         root=args.root,
         n_agents=int(args.n),
@@ -1156,6 +1159,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_rl = sub.add_parser("rl-smoke", help="Run compact PettingZoo/Gymnasium wrapper smoke checks")
     p_rl.add_argument("--out-dir", required=True, help="Fresh output directory for RL smoke artifacts")
     p_rl.add_argument("--policy", choices=POLICY_NAMES, default="goal_direction", help="Built-in smoke policy")
+    p_rl.add_argument("--policy-spec", default=None, help="Optional JSON/YAML external policy spec; overrides --policy")
     p_rl.add_argument(
         "--scenarios",
         default=None,
@@ -1171,6 +1175,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_rlcal = sub.add_parser("rl-calibration", help="Run compact 3D/degraded RL policy calibration lanes")
     p_rlcal.add_argument("--out-dir", required=True, help="Fresh output directory for RL calibration artifacts")
     p_rlcal.add_argument("--policy", choices=POLICY_NAMES, default="goal_direction", help="Built-in calibration policy")
+    p_rlcal.add_argument("--policy-spec", default=None, help="Optional JSON/YAML external policy spec; overrides --policy")
     p_rlcal.add_argument("--n", type=int, default=4, help="Agent count for each RL calibration episode")
     p_rlcal.add_argument("--seeds", default="0", help="Seed list/range, e.g. 0:2")
     p_rlcal.add_argument("--max-steps", type=int, default=None, help="Optional cap for each episode")
@@ -1195,6 +1200,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_lsb.add_argument("--out-dir", required=True, help="Fresh output directory for learned-policy submission artifacts")
     p_lsb.add_argument("--method", default="learned_tiny", help="Planner method to evaluate for official CSV artifacts")
     p_lsb.add_argument("--policy", choices=POLICY_NAMES, default="tiny_learned", help="RL policy to evaluate for wrapper artifacts")
+    p_lsb.add_argument("--policy-spec", default=None, help="Optional JSON/YAML external policy spec for RL wrapper artifacts; overrides --policy")
     p_lsb.add_argument("--suite", default="official_smoke_generated", choices=list_official_suites(), help="Generated suite for planner CSV artifacts")
     p_lsb.add_argument("--root", default=".", help="Repository root used for freeze-check docs/examples")
     p_lsb.add_argument("--n", type=int, default=4, help="Agent count for RL wrapper smoke/calibration artifacts")

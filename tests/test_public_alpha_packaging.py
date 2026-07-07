@@ -53,6 +53,10 @@ def test_public_docs_index_and_templates_exist() -> None:
         assert path.exists(), rel
         assert path.read_text(encoding="utf-8").strip(), rel
 
+    external_spec = ROOT / "examples/external_policy_spec.json"
+    assert external_spec.exists()
+    assert "tiny_linear_json" in external_spec.read_text(encoding="utf-8")
+
     required_templates = [
         ".github/ISSUE_TEMPLATE/benchmark_result.md",
         ".github/ISSUE_TEMPLATE/bug_report.md",
@@ -75,6 +79,7 @@ def test_public_docs_index_and_templates_exist() -> None:
     learned_template = (ROOT / ".github/ISSUE_TEMPLATE/learned_policy_submission.md").read_text(encoding="utf-8")
     assert "learned_submission_bundle.json" in learned_template
     assert "learned_bundle_review.json" in learned_template
+    assert "policy_spec.json" in learned_template
     assert "rl_contract.json" in learned_template
     assert "rl_freeze_check.json" in learned_template
     assert "rl_smoke.json" in learned_template

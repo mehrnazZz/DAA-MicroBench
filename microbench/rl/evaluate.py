@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+from microbench.rl.policy_spec import policy_factory_from_spec
 from microbench.rl.rollout import RL_ROLLOUT_FIELDS, RL_ROLLOUT_SCHEMA_VERSION, run_parallel_policy_rollouts
 from microbench.rl.schema import (
     RL_ACTION_SCHEMA_VERSION,
@@ -50,6 +51,7 @@ def run_rl_policy_smoke(
     *,
     out_dir: str | Path,
     policy: str = "goal_direction",
+    policy_spec: str | Path | None = None,
     scenario_ids: tuple[str, ...] | list[str] | None = None,
     n_agents: int = 4,
     seeds: tuple[int, ...] | list[int] | None = None,
@@ -80,14 +82,21 @@ def run_rl_policy_smoke(
         raise ValueError(f"Unknown scenario(s) for {RL_SMOKE_SUITE}: {','.join(unknown)}")
 
     selected_paths = {scenario_id: scenario_paths[scenario_id] for scenario_id in scenario_id_list}
+    policy_for_rollout: Any = str(policy)
+    policy_name = str(policy)
+    policy_spec_summary = None
+    if policy_spec is not None:
+        policy_for_rollout, policy_spec_summary = policy_factory_from_spec(policy_spec)
+        policy_name = str(policy_spec_summary["policy_name"])
     rows = run_parallel_policy_rollouts(
         scenario_paths=selected_paths,
-        policy=str(policy),
+        policy=policy_for_rollout,
         n_agents=int(n_agents),
         seeds=seed_list,
         comm_profile=str(comm_profile),
         max_steps=max_steps,
         suite=RL_SMOKE_SUITE,
+        policy_name=policy_name,
     )
     errors = [
         {"scenario": row.get("scenario"), "seed": int(row.get("seed", 0)), "error": row.get("api_error")}
@@ -140,7 +149,8 @@ def run_rl_policy_smoke(
         "reward_schema_version": RL_REWARD_SCHEMA_VERSION,
         "ok": bool(ok),
         "suite": RL_SMOKE_SUITE,
-        "policy": str(policy),
+        "policy": policy_name,
+        "policy_spec": policy_spec_summary,
         "scenario_ids": scenario_id_list,
         "n_agents": int(n_agents),
         "seeds": seed_list,

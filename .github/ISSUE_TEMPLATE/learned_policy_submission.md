@@ -53,6 +53,7 @@ Attach or link:
 - `_generated_scenarios/<suite>/suite_manifest.yaml`
 - `learned_submission_bundle.json`
 - `learned_bundle_review.json`
+- `policy_spec.json` and `policy_artifacts/` if using `--policy-spec`
 - `rl_contract.json`
 - `rl_freeze_check.json`
 - `rl_smoke.json`

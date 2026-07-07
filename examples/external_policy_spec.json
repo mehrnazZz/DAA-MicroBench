@@ -1,0 +1,9 @@
+{
+  "schema_version": "0.1",
+  "policy_name": "external_tiny_linear_fixture",
+  "adapter": "tiny_linear_json",
+  "artifact_path": "../microbench/bundled_config/learned_baselines/tiny_linear_policy.json",
+  "deterministic": true,
+  "clip": true,
+  "description": "Dependency-free example policy spec that loads the tiny linear learned-policy JSON artifact through the external-policy path."
+}

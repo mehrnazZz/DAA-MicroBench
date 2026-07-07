@@ -12,14 +12,17 @@ from microbench.rl import (
     OBSERVATION_LAYOUT,
     RL_CALIBRATION_SCHEMA_VERSION,
     RL_INTERFACE_VERSION,
+    RL_POLICY_SPEC_SCHEMA_VERSION,
     GoalDirectionPolicy,
     RandomPolicy,
     interface_contract,
+    load_policy_from_spec,
     run_rl_policy_calibration,
     rollout_parallel_env,
     run_parallel_policy_rollouts,
     run_rl_policy_smoke,
 )
+from microbench.learned import tiny_learned_model_path
 from microbench.scenarios import materialize_official_suite
 
 
@@ -33,6 +36,26 @@ def _check(report: dict, name: str) -> dict:
 def _generated_paths(tmp_path: Path) -> dict[str, Path]:
     generated = materialize_official_suite("official_smoke_generated", tmp_path / "suite", overwrite=True)
     return {path.stem: path for path in generated["scenario_paths"]}
+
+
+def _tiny_policy_spec(tmp_path: Path) -> Path:
+    path = tmp_path / "external_policy_spec.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": RL_POLICY_SPEC_SCHEMA_VERSION,
+                "policy_name": "external_tiny_fixture",
+                "adapter": "tiny_linear_json",
+                "artifact_path": tiny_learned_model_path(),
+                "deterministic": True,
+                "clip": True,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
 
 
 def test_rl_policy_smoke_runs_2d_and_3d(tmp_path: Path) -> None:
@@ -88,6 +111,54 @@ def test_rl_smoke_cli_json_and_gate(tmp_path: Path) -> None:
     assert (out_dir / "rl_smoke_episodes.csv").exists()
 
 
+def test_rl_policy_spec_loader_and_smoke(tmp_path: Path) -> None:
+    spec_path = _tiny_policy_spec(tmp_path)
+    loaded = load_policy_from_spec(spec_path, seed=0)
+    assert loaded.policy_name == "external_tiny_fixture"
+    assert loaded.summary["adapter"] == "tiny_linear_json"
+
+    report = run_rl_policy_smoke(
+        out_dir=tmp_path / "rl_smoke_policy_spec",
+        policy_spec=spec_path,
+        max_steps=3,
+    )
+
+    assert report["ok"] is True
+    assert report["policy"] == "external_tiny_fixture"
+    assert report["policy_spec"]["policy_name"] == "external_tiny_fixture"
+    assert report["run_count"] == 2
+
+
+def test_rl_smoke_cli_policy_spec_json_and_gate(tmp_path: Path) -> None:
+    spec_path = _tiny_policy_spec(tmp_path)
+    out_dir = tmp_path / "cli_rl_smoke_policy_spec"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "microbench.cli",
+            "rl-smoke",
+            "--out-dir",
+            str(out_dir),
+            "--policy-spec",
+            str(spec_path),
+            "--max-steps",
+            "3",
+            "--require-pass",
+            "--json",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    report = json.loads(proc.stdout)
+    assert report["ok"] is True
+    assert report["policy"] == "external_tiny_fixture"
+    assert report["policy_spec"]["adapter"] == "tiny_linear_json"
+
+
 def test_rl_policy_calibration_runs_3d_and_degraded_lanes(tmp_path: Path) -> None:
     report = run_rl_policy_calibration(
         out_dir=tmp_path / "rl_calibration",
@@ -134,6 +205,19 @@ def test_rl_calibration_cli_json_and_gate(tmp_path: Path) -> None:
     assert report["run_count"] == 2
     assert (out_dir / "rl_calibration.json").exists()
     assert (out_dir / "rl_calibration_episodes.csv").exists()
+
+
+def test_rl_calibration_policy_spec_helper(tmp_path: Path) -> None:
+    spec_path = _tiny_policy_spec(tmp_path)
+    report = run_rl_policy_calibration(
+        out_dir=tmp_path / "rl_calibration_policy_spec",
+        policy_spec=spec_path,
+        max_steps=3,
+    )
+
+    assert report["ok"] is True
+    assert report["policy"] == "external_tiny_fixture"
+    assert report["policy_spec"]["policy_name"] == "external_tiny_fixture"
 
 
 def test_rl_contract_cli_json_and_schema_helper(tmp_path: Path) -> None:

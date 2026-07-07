@@ -35,6 +35,7 @@ Attach or link:
 - any planner source or package version needed to reproduce
 - `learned_submission_bundle.json` for learned/RL policy submissions when using the bundle command
 - `learned_bundle_review.json` for learned/RL policy submissions when using the reviewer command
+- `policy_spec.json` and `policy_artifacts/` for learned/RL policy submissions loaded through `--policy-spec`
 - `rl_contract.json`, `rl_freeze_check.json`, `rl_smoke.json`, and `rl_calibration.json` for learned/RL policy submissions
 - representative failure traces for nonzero collision or near-miss-heavy results
 
