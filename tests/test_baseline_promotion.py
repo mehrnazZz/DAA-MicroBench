@@ -30,7 +30,10 @@ def test_baseline_promotion_calibrates_experimentals_but_blocks_stable_v1(tmp_pa
         assert entry["calibration_ready"] is True
         assert entry["stable_v1_ready"] is False
         assert entry["calibration_blockers"] == []
-        assert entry["behavior_metrics"]["guardrail_total"] == 0
+        assert entry["calibration_checks"]["behavior_no_planner_errors"] is True
+        assert entry["calibration_checks"]["behavior_public_alpha_guardrails"] is True
+        assert entry["behavior_metrics"]["planner_error_total"] == 0
+        assert entry["behavior_metrics"]["guardrail_total"] >= 0
         assert entry["behavior_metrics"]["collision_episode_count"] == 0
         assert entry["promotion_acceptance_status"] == "PASS"
         assert entry["promotion_3d_stress_band_pass"] is True

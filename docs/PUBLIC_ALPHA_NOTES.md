@@ -54,6 +54,7 @@ python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-
 python -m microbench.cli rl-contract --json
 python -m microbench.cli rl-freeze-check --require-pass --json
 python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method learned_tiny --policy tiny_learned --require-pass
+python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass
 ```
 
 ## Known Public Alpha Limitations
@@ -70,6 +71,7 @@ python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle
 - `rl-freeze-check` publishes a machine-readable stable-v1 readiness checklist for the RL interface, but passing it does not make this public alpha a stable v1 release.
 - `tiny_learned` is available as a built-in RL smoke policy and maps to the same frozen model family as the planner method `learned_tiny`.
 - `learned-submission-bundle` creates the standard learned-policy artifact folder, including RL contract/freeze/smoke/calibration reports and official planner CSVs.
+- `validate-learned-bundle` reviews an existing learned-policy bundle without rerunning simulations and checks required artifacts, parseability, passing RL reports, planner acceptance, and nonempty planner CSVs.
 - Learned-policy submissions should include `learned_submission_bundle.json` or equivalent `rl_contract.json`, `rl_freeze_check.json`, `rl_smoke.json`, `rl_calibration.json`, weight/version disclosures, and training scenario disclosure.
 - The benchmark models local planning and simplified dynamics; it is not a full flight stack, airspace model, PX4/ROS simulator, or certification tool.
 - Generated official suites are pre-v1 and may be adjusted as external users stress-test the benchmark.

@@ -18,6 +18,21 @@ from microbench.types import RunSpec
 
 
 LEARNED_SUBMISSION_BUNDLE_SCHEMA_VERSION = "0.1"
+LEARNED_SUBMISSION_BUNDLE_VALIDATION_SCHEMA_VERSION = "0.1"
+LEARNED_SUBMISSION_BUNDLE_FILENAME = "learned_submission_bundle.json"
+EXPECTED_BUNDLE_ARTIFACTS = {
+    "rl_contract": "rl_contract.json",
+    "rl_freeze_check": "rl_freeze_check.json",
+    "rl_smoke": "rl_smoke.json",
+    "rl_smoke_episodes": "rl_smoke/rl_smoke_episodes.csv",
+    "rl_calibration": "rl_calibration.json",
+    "rl_calibration_episodes": "rl_calibration/rl_calibration_episodes.csv",
+    "planner_results": "planner_sweep/results.csv",
+    "planner_summary": "planner_sweep/summary.csv",
+    "planner_result_schema": "planner_sweep/result_schema.json",
+    "planner_suite_manifest": "planner_sweep/_generated_scenarios/{suite}/suite_manifest.yaml",
+    "planner_acceptance": "planner_sweep/acceptance.json",
+}
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> Path:
@@ -35,6 +50,25 @@ def _finite(value: Any) -> bool:
         return math.isfinite(float(value))
     except (TypeError, ValueError):
         return False
+
+
+def _rel(path: str | Path, root: Path) -> str:
+    return str(Path(path).resolve().relative_to(root.resolve()))
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as f:
+        payload = json.load(f)
+    if not isinstance(payload, dict):
+        raise ValueError(f"JSON artifact must contain an object: {path}")
+    return payload
+
+
+def _read_csv_rows(path: Path) -> list[dict[str, str]]:
+    import csv
+
+    with path.open("r", newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
 
 
 def _method_metadata(method: str) -> dict[str, Any] | None:
@@ -206,19 +240,19 @@ def run_learned_policy_submission_bundle(
 
     meta = _method_metadata(str(method))
     artifact_paths = {
-        "rl_contract": str(out / "rl_contract.json"),
-        "rl_freeze_check": str(out / "rl_freeze_check.json"),
-        "rl_smoke": str(out / "rl_smoke.json"),
-        "rl_smoke_episodes": str(out / "rl_smoke" / "rl_smoke_episodes.csv"),
-        "rl_calibration": str(out / "rl_calibration.json"),
-        "rl_calibration_episodes": str(out / "rl_calibration" / "rl_calibration_episodes.csv"),
-        "planner_results": planner_sweep["results_csv"],
-        "planner_summary": planner_sweep["summary_csv"],
-        "planner_result_schema": planner_sweep["result_schema_json"],
-        "planner_suite_manifest": planner_sweep["suite_manifest"],
-        "planner_acceptance": planner_sweep["acceptance_json"],
+        "rl_contract": _rel(out / "rl_contract.json", out),
+        "rl_freeze_check": _rel(out / "rl_freeze_check.json", out),
+        "rl_smoke": _rel(out / "rl_smoke.json", out),
+        "rl_smoke_episodes": _rel(out / "rl_smoke" / "rl_smoke_episodes.csv", out),
+        "rl_calibration": _rel(out / "rl_calibration.json", out),
+        "rl_calibration_episodes": _rel(out / "rl_calibration" / "rl_calibration_episodes.csv", out),
+        "planner_results": _rel(planner_sweep["results_csv"], out),
+        "planner_summary": _rel(planner_sweep["summary_csv"], out),
+        "planner_result_schema": _rel(planner_sweep["result_schema_json"], out),
+        "planner_suite_manifest": _rel(planner_sweep["suite_manifest"], out),
+        "planner_acceptance": _rel(planner_sweep["acceptance_json"], out),
     }
-    missing_artifacts = [name for name, path in artifact_paths.items() if not Path(path).exists()]
+    missing_artifacts = [name for name, path in artifact_paths.items() if not (out / path).exists()]
     checks = [
         _check("method_metadata_present", meta is not None, {"method": str(method)}),
         _check("method_marked_learned", bool(meta and meta.get("learned")), {"learned": None if meta is None else meta.get("learned")}),
@@ -278,3 +312,154 @@ def run_learned_policy_submission_bundle(
     }
     _write_json(bundle_path, report)
     return report
+
+
+def _bundle_json_path(bundle: str | Path) -> Path:
+    path = Path(bundle)
+    if path.is_dir():
+        return path / LEARNED_SUBMISSION_BUNDLE_FILENAME
+    return path
+
+
+def _expected_rel_for(name: str, suite: str | None) -> str | None:
+    pattern = EXPECTED_BUNDLE_ARTIFACTS.get(name)
+    if pattern is None:
+        return None
+    return pattern.format(suite=suite or "*")
+
+
+def _resolve_artifact(bundle_root: Path, report: dict[str, Any], name: str) -> Path:
+    artifacts = report.get("artifacts", {})
+    raw = artifacts.get(name) if isinstance(artifacts, dict) else None
+    candidates: list[Path] = []
+    if raw:
+        raw_path = Path(str(raw))
+        if raw_path.is_absolute():
+            candidates.append(raw_path)
+            candidates.append(bundle_root / raw_path.name)
+        else:
+            candidates.append(bundle_root / raw_path)
+            candidates.append(raw_path)
+
+    expected = _expected_rel_for(name, str(report.get("suite", "")))
+    if expected is not None and "*" not in expected:
+        candidates.append(bundle_root / expected)
+    if name == "planner_suite_manifest":
+        manifests = sorted((bundle_root / "planner_sweep" / "_generated_scenarios").glob("*/suite_manifest.yaml"))
+        candidates.extend(manifests)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0] if candidates else bundle_root / str(name)
+
+
+def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, Any]:
+    """Validate an already-created learned-policy submission bundle."""
+
+    bundle_json = _bundle_json_path(bundle)
+    bundle_root = bundle_json.parent
+    try:
+        report = _read_json(bundle_json)
+        bundle_load_error = None
+    except Exception as exc:
+        report = {}
+        bundle_load_error = f"{type(exc).__name__}: {exc}"
+
+    suite = str(report.get("suite", "")) if report else ""
+    resolved = {
+        name: _resolve_artifact(bundle_root, report, name)
+        for name in EXPECTED_BUNDLE_ARTIFACTS
+    }
+    missing = [name for name, path in resolved.items() if not path.exists()]
+
+    json_payloads: dict[str, dict[str, Any]] = {}
+    json_errors: list[dict[str, str]] = []
+    for name in ("rl_contract", "rl_freeze_check", "rl_smoke", "rl_calibration", "planner_acceptance"):
+        path = resolved[name]
+        if not path.exists():
+            continue
+        try:
+            json_payloads[name] = _read_json(path)
+        except Exception as exc:
+            json_errors.append({"artifact": name, "path": str(path), "error": f"{type(exc).__name__}: {exc}"})
+
+    csv_errors: list[dict[str, str]] = []
+    csv_counts: dict[str, int] = {}
+    for name in ("rl_smoke_episodes", "rl_calibration_episodes", "planner_results", "planner_summary"):
+        path = resolved[name]
+        if not path.exists():
+            continue
+        try:
+            csv_counts[name] = len(_read_csv_rows(path))
+        except Exception as exc:
+            csv_errors.append({"artifact": name, "path": str(path), "error": f"{type(exc).__name__}: {exc}"})
+
+    schema_payload = None
+    result_schema_error = None
+    if resolved["planner_result_schema"].exists():
+        try:
+            schema_payload = _read_json(resolved["planner_result_schema"])
+        except Exception as exc:
+            result_schema_error = f"{type(exc).__name__}: {exc}"
+
+    bundle_checks = report.get("checks", []) if isinstance(report.get("checks"), list) else []
+    failed_bundle_checks = [check.get("name") for check in bundle_checks if not check.get("ok")]
+    checks = [
+        _check("bundle_json_loads", bundle_load_error is None, {"error": bundle_load_error}),
+        _check(
+            "bundle_schema_supported",
+            report.get("schema_version") == LEARNED_SUBMISSION_BUNDLE_SCHEMA_VERSION,
+            {"schema_version": report.get("schema_version")},
+        ),
+        _check("bundle_report_ok", bool(report.get("ok")), {"failed_checks": failed_bundle_checks}),
+        _check("required_artifacts_declared", set(EXPECTED_BUNDLE_ARTIFACTS).issubset(set((report.get("artifacts") or {}).keys()))),
+        _check("required_artifacts_present", not missing, {"missing": missing}),
+        _check("json_artifacts_parse", not json_errors and result_schema_error is None, {"errors": json_errors, "result_schema_error": result_schema_error}),
+        _check(
+            "rl_reports_ok",
+            bool(json_payloads.get("rl_freeze_check", {}).get("ok"))
+            and bool(json_payloads.get("rl_smoke", {}).get("ok"))
+            and bool(json_payloads.get("rl_calibration", {}).get("ok")),
+        ),
+        _check(
+            "planner_acceptance_ok",
+            bool(json_payloads.get("planner_acceptance", {}).get("ok")),
+            {
+                "status": json_payloads.get("planner_acceptance", {}).get("status"),
+                "rules_failed": json_payloads.get("planner_acceptance", {}).get("rules_failed"),
+            },
+        ),
+        _check(
+            "csv_artifacts_nonempty",
+            not csv_errors
+            and csv_counts.get("rl_smoke_episodes", 0) > 0
+            and csv_counts.get("rl_calibration_episodes", 0) > 0
+            and csv_counts.get("planner_results", 0) > 0
+            and csv_counts.get("planner_summary", 0) > 0,
+            {"counts": csv_counts, "errors": csv_errors},
+        ),
+        _check(
+            "planner_result_schema_present",
+            isinstance(schema_payload, dict) and bool(schema_payload.get("schema_version")),
+            {"schema_version": schema_payload.get("schema_version") if isinstance(schema_payload, dict) else None},
+        ),
+        _check(
+            "method_marked_learned",
+            bool((report.get("method_metadata") or {}).get("learned")),
+            {"method": report.get("method")},
+        ),
+    ]
+
+    return {
+        "schema_version": LEARNED_SUBMISSION_BUNDLE_VALIDATION_SCHEMA_VERSION,
+        "bundle_schema_version": report.get("schema_version"),
+        "ok": all(check["ok"] for check in checks),
+        "bundle_json": str(bundle_json),
+        "bundle_root": str(bundle_root),
+        "method": report.get("method"),
+        "policy": report.get("policy"),
+        "suite": suite,
+        "artifacts": {name: str(path) for name, path in resolved.items()},
+        "checks": checks,
+    }

@@ -27,6 +27,8 @@ def test_baseline_behavior_smoke_agentic_message_contract(tmp_path: Path) -> Non
     assert report["scenario_ids"] == ["head_on_2d_easy", "sphere_swap_3d_medium"]
     assert _check(report, "run_count")["ok"] is True
     assert _check(report, "finite_key_metrics")["ok"] is True
+    assert _check(report, "planner_errors_clear")["ok"] is True
+    assert _check(report, "public_alpha_guardrails_clear")["ok"] is True
     assert _check(report, "zero_planner_guardrails")["ok"] is True
     assert _check(report, "two_d_and_three_d_coverage")["ok"] is True
 

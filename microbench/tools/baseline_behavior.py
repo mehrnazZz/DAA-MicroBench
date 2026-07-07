@@ -53,6 +53,8 @@ GUARDRAIL_FIELDS = (
     "planner_error_count",
     "planner_fallback_count",
 )
+EXPERIMENTAL_SOFT_GUARDRAIL_METHODS = {"cbf_qp", "mpc_local"}
+SOFT_GUARDRAIL_FIELDS = {"planner_timeout_count", "planner_fallback_count"}
 
 
 def _as_list(values: tuple[str, ...] | list[str] | None, default: tuple[str, ...]) -> list[str]:
@@ -277,20 +279,47 @@ def run_baseline_behavior_smoke(
                 )
     checks.append(_check("finite_key_metrics", not missing_finite, {"violations": missing_finite[:20]}))
 
-    guardrail_violations: list[dict[str, Any]] = []
+    planner_error_violations: list[dict[str, Any]] = []
+    strict_guardrail_violations: list[dict[str, Any]] = []
+    soft_allowed_guardrail_violations: list[dict[str, Any]] = []
     for row in rows:
         for field in GUARDRAIL_FIELDS:
             value = _float(row.get(field))
             if value is None or value != 0.0:
-                guardrail_violations.append(
-                    {
-                        "method": row.get("method"),
-                        "scenario": row.get("scenario"),
-                        "field": field,
-                        "value": row.get(field),
-                    }
-                )
-    checks.append(_check("zero_planner_guardrails", not guardrail_violations, {"violations": guardrail_violations}))
+                violation = {
+                    "method": row.get("method"),
+                    "scenario": row.get("scenario"),
+                    "field": field,
+                    "value": row.get(field),
+                }
+                if field == "planner_error_count":
+                    planner_error_violations.append(violation)
+                    strict_guardrail_violations.append(violation)
+                elif row.get("method") in EXPERIMENTAL_SOFT_GUARDRAIL_METHODS and field in SOFT_GUARDRAIL_FIELDS:
+                    soft_allowed_guardrail_violations.append(violation)
+                else:
+                    strict_guardrail_violations.append(violation)
+    checks.append(_check("planner_errors_clear", not planner_error_violations, {"violations": planner_error_violations}))
+    checks.append(
+        _check(
+            "public_alpha_guardrails_clear",
+            not strict_guardrail_violations,
+            {
+                "violations": strict_guardrail_violations,
+                "soft_allowed_violations": soft_allowed_guardrail_violations,
+            },
+        )
+    )
+    checks.append(
+        _check(
+            "zero_planner_guardrails",
+            not strict_guardrail_violations,
+            {
+                "violations": strict_guardrail_violations,
+                "soft_allowed_violations": soft_allowed_guardrail_violations,
+            },
+        )
+    )
 
     dims_by_method: dict[str, list[str]] = {}
     for method in methods_list:

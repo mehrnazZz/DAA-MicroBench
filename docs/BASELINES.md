@@ -82,7 +82,7 @@ python -m microbench.cli baseline-smoke \
   --require-pass
 ```
 
-This runs every non-template built-in baseline on one planar and one 3D generated smoke scenario, checks finite key metrics, zero planner guardrail counts, 2D/3D coverage, agent-message signals for `priority_yield`, proposal/ACK signals for `negotiation_yield`, and public debug/intent output contracts for `cbf_qp`, `mpc_local`, `learned_tiny`, and `intent_dummy`.
+This runs every non-template built-in baseline on one planar and one 3D generated smoke scenario, checks finite key metrics, planner errors, public-alpha guardrails, 2D/3D coverage, agent-message signals for `priority_yield`, proposal/ACK signals for `negotiation_yield`, and public debug/intent output contracts for `cbf_qp`, `mpc_local`, `learned_tiny`, and `intent_dummy`. Experimental `cbf_qp` and `mpc_local` soft timeout/fallback counts are reported but do not block public-alpha smoke by themselves; any such counts still block stable-v1 promotion.
 
 Experimental promotion calibration:
 

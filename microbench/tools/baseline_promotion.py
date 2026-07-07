@@ -64,11 +64,19 @@ def _method_rows(report: dict[str, Any], method: str) -> list[dict[str, Any]]:
 def _metric_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     collision_episodes = sum(1 for row in rows if (_to_float(row.get("collision_episode")) or 0.0) > 0.0)
     guardrail_total = 0.0
+    timeout_total = 0.0
+    error_total = 0.0
+    fallback_total = 0.0
     planner_p95: list[float] = []
     min_sep: list[float] = []
     for row in rows:
-        for field in ("planner_timeout_count", "planner_error_count", "planner_fallback_count"):
-            guardrail_total += _to_float(row.get(field)) or 0.0
+        timeout = _to_float(row.get("planner_timeout_count")) or 0.0
+        error = _to_float(row.get("planner_error_count")) or 0.0
+        fallback = _to_float(row.get("planner_fallback_count")) or 0.0
+        timeout_total += timeout
+        error_total += error
+        fallback_total += fallback
+        guardrail_total += timeout + error + fallback
         value = _to_float(row.get("planner_ms_per_tick_per_agent_p95"))
         if value is not None:
             planner_p95.append(value)
@@ -79,6 +87,9 @@ def _metric_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "rows": len(rows),
         "collision_episode_count": int(collision_episodes),
         "guardrail_total": int(guardrail_total),
+        "planner_timeout_total": int(timeout_total),
+        "planner_error_total": int(error_total),
+        "planner_fallback_total": int(fallback_total),
         "planner_p95_max_ms": max(planner_p95) if planner_p95 else None,
         "min_sep_min_m": min(min_sep) if min_sep else None,
     }
@@ -279,6 +290,8 @@ def _stable_v1_blockers(
         blockers.append("role_not_reference_baseline")
     if behavior_metrics["collision_episode_count"] > 0:
         blockers.append("smoke_collision_episode_present")
+    if behavior_metrics["guardrail_total"] > 0:
+        blockers.append("smoke_guardrail_present")
     if method_acceptance is not None and method_acceptance.get("status") != "PASS":
         blockers.append("experimental_suite_acceptance_not_pass")
     if not _band_passed(promotion_acceptance, PROMOTION_3D_BAND):
@@ -342,8 +355,11 @@ def run_baseline_promotion_calibration(
             "supports_3d": bool(audit_checks.get("supports_3d")),
             "behavior_rows_present": bool(behavior_rows),
             "behavior_finite_metrics": _check_ok(behavior, "finite_key_metrics"),
-            "behavior_zero_guardrails": _check_ok(behavior, "zero_planner_guardrails")
-            and behavior_metrics["guardrail_total"] == 0,
+            "behavior_no_planner_errors": _check_ok(behavior, "planner_errors_clear")
+            and behavior_metrics["planner_error_total"] == 0,
+            "behavior_public_alpha_guardrails": _check_ok(behavior, "public_alpha_guardrails_clear"),
+            "behavior_zero_guardrails": _check_ok(behavior, "public_alpha_guardrails_clear")
+            and behavior_metrics["planner_error_total"] == 0,
             "behavior_2d_3d_coverage": _check_ok(behavior, "two_d_and_three_d_coverage"),
             "method_signal_contract": _check_ok(behavior, method_signal),
             "experimental_suite_acceptance_pass": (

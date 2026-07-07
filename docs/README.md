@@ -96,6 +96,7 @@ python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-
 python -m microbench.cli rl-contract --json
 python -m microbench.cli rl-freeze-check --require-pass --json
 python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method learned_tiny --policy tiny_learned --require-pass
+python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass
 ```
 
 Check the current result-schema fixture:
@@ -126,4 +127,5 @@ Build a learned-policy submission bundle:
 
 ```bash
 python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method learned_tiny --policy tiny_learned --require-pass
+python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass
 ```

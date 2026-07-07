@@ -66,6 +66,14 @@ python -m microbench.cli learned-submission-bundle \
   --require-pass
 ```
 
+Then validate the saved bundle before attaching it:
+
+```bash
+python -m microbench.cli validate-learned-bundle \
+  --bundle runs_learned_bundle \
+  --require-pass
+```
+
 ## Reproduction Command
 
 Paste the exact command. Example:
@@ -110,6 +118,7 @@ Include the relevant rows from `summary.csv`. At minimum include:
 - [ ] I included all runs, including failures.
 - [ ] I disclosed learned weights or external services.
 - [ ] For learned/RL policies, I included the learned submission bundle or the equivalent RL contract, freeze check, smoke report, and calibration report.
+- [ ] For learned/RL policies, I ran `validate-learned-bundle --bundle runs_learned_bundle --require-pass` or validated the equivalent artifacts manually.
 - [ ] I included enough config and command detail to reproduce the result.
 
 ## Notes

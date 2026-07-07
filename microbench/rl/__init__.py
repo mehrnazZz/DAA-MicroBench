@@ -35,6 +35,12 @@ from microbench.rl.schema import (
     observation_schema,
     reward_schema,
 )
+from microbench.rl.submission_bundle import (
+    LEARNED_SUBMISSION_BUNDLE_SCHEMA_VERSION,
+    LEARNED_SUBMISSION_BUNDLE_VALIDATION_SCHEMA_VERSION,
+    run_learned_policy_submission_bundle,
+    validate_learned_policy_submission_bundle,
+)
 
 __all__ = [
     "CallablePolicyAdapter",
@@ -42,6 +48,8 @@ __all__ = [
     "DaaSingleAgentEnv",
     "GoalDirectionPolicy",
     "LEARNED_BASELINE_SCHEMA_VERSION",
+    "LEARNED_SUBMISSION_BUNDLE_SCHEMA_VERSION",
+    "LEARNED_SUBMISSION_BUNDLE_VALIDATION_SCHEMA_VERSION",
     "ModelPredictPolicyAdapter",
     "OBSERVATION_LAYOUT",
     "RL_ACTION_SCHEMA_VERSION",
@@ -73,9 +81,11 @@ __all__ = [
     "reward_schema",
     "rollout_parallel_env",
     "run_parallel_policy_rollouts",
+    "run_learned_policy_submission_bundle",
     "run_rl_freeze_check",
     "run_rl_policy_calibration",
     "run_rl_policy_smoke",
+    "validate_learned_policy_submission_bundle",
     "single_agent_env",
     "tiny_learned_model_path",
 ]

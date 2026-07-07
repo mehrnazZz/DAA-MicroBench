@@ -24,7 +24,7 @@ from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import run_rl_freeze_check
 from microbench.rl.policies import POLICY_NAMES
 from microbench.rl.schema import interface_contract
-from microbench.rl.submission_bundle import run_learned_policy_submission_bundle
+from microbench.rl.submission_bundle import run_learned_policy_submission_bundle, validate_learned_policy_submission_bundle
 from microbench.tools import (
     build_baseline_audit,
     build_current_schema_candidate,
@@ -819,6 +819,27 @@ def _learned_submission_bundle(args) -> None:
         raise SystemExit(f"learned submission bundle failed: {','.join(failed)}")
 
 
+def _validate_learned_bundle(args) -> None:
+    report = validate_learned_policy_submission_bundle(bundle=args.bundle)
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        print(
+            f"validate-learned-bundle: {status} method={report.get('method')} "
+            f"policy={report.get('policy')} suite={report.get('suite')}"
+        )
+        for check in report["checks"]:
+            check_status = "ok" if check["ok"] else "FAIL"
+            print(f"  {check_status}: {check['name']}")
+        print(f"  bundle: {report['bundle_json']}")
+
+    if args.require_pass and not report["ok"]:
+        failed = [check["name"] for check in report["checks"] if not check["ok"]]
+        raise SystemExit(f"learned bundle validation failed: {','.join(failed)}")
+
+
 def _golden_current_schema(args) -> None:
     if args.update and args.candidate:
         raise SystemExit("--update cannot be combined with --candidate")
@@ -1124,6 +1145,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_lsb.add_argument("--json", action="store_true", help="Emit machine-readable bundle report")
     p_lsb.add_argument("--require-pass", action="store_true", help="Fail if any bundle check fails")
 
+    p_vlb = sub.add_parser("validate-learned-bundle", help="Validate an existing learned-policy submission bundle")
+    p_vlb.add_argument("--bundle", required=True, help="Path to a bundle directory or learned_submission_bundle.json")
+    p_vlb.add_argument("--json", action="store_true", help="Emit machine-readable validation report")
+    p_vlb.add_argument("--require-pass", action="store_true", help="Fail if any bundle validation check fails")
+
     p_golden = sub.add_parser("golden-current-schema", help="Check or regenerate the current result-schema fixture")
     p_golden.add_argument("--golden-dir", default="golden/current_schema", help="Path to checked-in fixture")
     p_golden.add_argument("--candidate", default=None, help="Compare an existing candidate directory instead of running")
@@ -1274,6 +1300,9 @@ def main() -> None:
         return
     if args.cmd == "learned-submission-bundle":
         _learned_submission_bundle(args)
+        return
+    if args.cmd == "validate-learned-bundle":
+        _validate_learned_bundle(args)
         return
     if args.cmd == "golden-current-schema":
         _golden_current_schema(args)

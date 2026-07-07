@@ -233,6 +233,16 @@ The bundle writes:
 
 By default the planner sweep uses `official_smoke_generated`. Use `--suite`, `--max-runs`, and `--save-trace` to control the official planner CSV workload. Larger leaderboard claims should still run the full intended official suite and submit the generated suite manifest, `results.csv`, `summary.csv`, and `result_schema.json`.
 
+Review an existing bundle without rerunning simulations:
+
+```bash
+python -m microbench.cli validate-learned-bundle \
+  --bundle runs_learned_bundle \
+  --require-pass
+```
+
+The validator accepts either the bundle directory or `learned_submission_bundle.json`. It checks required artifacts, parses JSON/CSV files, confirms RL smoke/calibration/freeze reports are passing, confirms planner acceptance has no failures, and verifies the planner CSVs are present and nonempty.
+
 ## Compatibility Check
 
 For custom adapters, use the lightweight compatibility checker without installing PettingZoo's optional test helpers:
