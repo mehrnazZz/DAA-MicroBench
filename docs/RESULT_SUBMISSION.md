@@ -33,7 +33,7 @@ Attach or link:
 - `_generated_scenarios/<suite>/suite_manifest.yaml` when using a generated official suite
 - any changed scenario/config files
 - any planner source or package version needed to reproduce
-- `rl_contract.json`, `rl_smoke.json`, and `rl_calibration.json` for learned/RL policy submissions
+- `rl_contract.json`, `rl_freeze_check.json`, `rl_smoke.json`, and `rl_calibration.json` for learned/RL policy submissions
 - representative failure traces for nonzero collision or near-miss-heavy results
 
 `result_schema.json` is generated next to the CSV files and records the explicit result schema version plus the ordered `results.csv` and `summary.csv` fields. Results without this sidecar should be treated as legacy or unofficial unless the benchmark commit unambiguously identifies the schema.
@@ -98,7 +98,7 @@ Include the relevant rows from `summary.csv`. At minimum include:
 - [ ] I did not change shared neighbor, collision, dynamics, comm, or perception settings for only my method.
 - [ ] I included all runs, including failures.
 - [ ] I disclosed learned weights or external services.
-- [ ] For learned/RL policies, I included the RL interface contract, smoke report, and calibration report.
+- [ ] For learned/RL policies, I included the RL interface contract, freeze check, smoke report, and calibration report.
 - [ ] I included enough config and command detail to reproduce the result.
 
 ## Notes

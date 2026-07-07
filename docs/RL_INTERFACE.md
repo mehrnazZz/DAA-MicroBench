@@ -181,6 +181,20 @@ finally:
 
 For small scenario/seed matrices, `run_parallel_policy_rollouts(...)` creates and closes one environment per row and returns the same per-episode fields used by `rl-smoke`.
 
+## Learned-Policy Adapters
+
+For external policy objects, wrap model inference in one of the dependency-free adapters:
+
+```python
+from microbench.rl import ModelPredictPolicyAdapter
+
+policy = ModelPredictPolicyAdapter(my_model)
+```
+
+`ModelPredictPolicyAdapter` supports objects with `compute_single_action(observation)`, `predict(observation, deterministic=...)`, `predict(observation)`, or direct callable behavior. Tuple returns such as `(action, state)` are accepted. `CallablePolicyAdapter` supports plain functions shaped as `f(observation)`, `f(observation, info)`, or `f(agent, observation, action_space, info)`.
+
+Both adapters validate finite `(3,)` actions and clip to the action space bounds. See `examples/rl_external_policy_adapter.py` for a runnable learned-policy adapter example that does not require any external RL framework.
+
 ## Compatibility Check
 
 For custom adapters, use the lightweight compatibility checker without installing PettingZoo's optional test helpers:
@@ -209,6 +223,16 @@ python -m pytest tests/test_rl_optional_integrations.py -q
 ```
 
 These tests are skipped in core installs and verify the wrappers inherit from Gymnasium/PettingZoo base classes when those packages are present.
+
+## Stable-v1 Freeze Criteria
+
+The public-alpha interface is versioned but not frozen. To inspect stable-v1 freeze readiness:
+
+```bash
+python -m microbench.cli rl-freeze-check --require-pass --json
+```
+
+The check covers the versioned contract, action shape/bounds, observation layout, lack of privileged global observation state, reward documentation, wrapper health gates, and dependency-free adapter examples. See `docs/RL_STABLE_V1_FREEZE.md` for the compatibility policy and learned-policy artifact expectations.
 
 ## Public Alpha Caveats
 

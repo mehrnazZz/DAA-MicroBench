@@ -16,6 +16,7 @@ labels: learned-policy, benchmark-result
 ## RL Interface Contract
 
 - [ ] I ran `python -m microbench.cli rl-contract --json` and used the reported action/observation/reward schema.
+- [ ] I ran `python -m microbench.cli rl-freeze-check --require-pass --json` and attached the report.
 - [ ] I ran `python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass`.
 - [ ] I ran `python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass`.
 - [ ] I did not use simulator ground truth outside the public RL observation and info surfaces.
@@ -48,6 +49,7 @@ Attach or link:
 - `result_schema.json`
 - `_generated_scenarios/<suite>/suite_manifest.yaml`
 - `rl_contract.json`
+- `rl_freeze_check.json`
 - `rl_smoke.json`
 - `rl_calibration.json`
 - representative traces for collisions, near misses, deadlocks, or planner guardrail events
@@ -62,6 +64,7 @@ Attach or link:
 # validation commands
 python -m microbench.cli validate-scenarios ...
 python -m microbench.cli check-acceptance ...
+python -m microbench.cli rl-freeze-check --require-pass --json
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-contract --json
@@ -69,4 +72,4 @@ python -m microbench.cli rl-contract --json
 
 ## Notes
 
-See `docs/RL_INTERFACE.md`, `docs/RESULT_SUBMISSION.md`, and `docs/LEADERBOARD.md`.
+See `docs/RL_INTERFACE.md`, `docs/RL_STABLE_V1_FREEZE.md`, `docs/RESULT_SUBMISSION.md`, and `docs/LEADERBOARD.md`.

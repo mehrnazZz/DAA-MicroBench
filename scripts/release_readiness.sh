@@ -25,6 +25,7 @@ python -m microbench.cli baseline-evidence --out-dir "${WORK_DIR}/baseline_evide
 python -m microbench.cli rl-smoke --out-dir "${WORK_DIR}/rl_smoke" --require-pass --json >"${WORK_DIR}/rl_smoke.json"
 python -m microbench.cli rl-calibration --out-dir "${WORK_DIR}/rl_calibration" --require-pass --json >"${WORK_DIR}/rl_calibration.json"
 python -m microbench.cli rl-contract --json >"${WORK_DIR}/rl_contract.json"
+python -m microbench.cli rl-freeze-check --require-pass --json >"${WORK_DIR}/rl_freeze_check.json"
 python -m microbench.cli list-suites --json >"${WORK_DIR}/suites.json"
 python -m microbench.cli list-methods --json --include-aliases >"${WORK_DIR}/methods.json"
 

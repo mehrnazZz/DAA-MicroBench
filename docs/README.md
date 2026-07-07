@@ -13,6 +13,7 @@ Start here when navigating the public docs.
 - [BASELINES.md](BASELINES.md): built-in baseline roles, limitations, recommended comparison sets, and promotion criteria.
 - [LEADERBOARD.md](LEADERBOARD.md): ranking policy, primary metrics, result categories, reproducibility rules, and review policy.
 - [RL_INTERFACE.md](RL_INTERFACE.md): PettingZoo/Gymnasium-style wrappers for learning researchers.
+- [RL_STABLE_V1_FREEZE.md](RL_STABLE_V1_FREEZE.md): stable-v1 RL interface freeze criteria, compatibility policy, and learned-policy artifact expectations.
 - [RESULT_SUBMISSION.md](RESULT_SUBMISSION.md): result submission template, required artifacts, validation commands, and disclosure checklist.
 - [PUBLIC_ALPHA_NOTES.md](PUBLIC_ALPHA_NOTES.md): current public-alpha status, known limitations, and reproducibility commands.
 - [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md): public-alpha release checks, packaging smoke, CI expectations, and release-note requirements.
@@ -92,6 +93,7 @@ python -m pytest tests/test_rl_interface.py -q
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-contract --json
+python -m microbench.cli rl-freeze-check --require-pass --json
 ```
 
 Check the current result-schema fixture:
@@ -104,4 +106,10 @@ Smoke-test the public example planner:
 
 ```bash
 python -m pytest tests/test_public_docs_examples.py -q
+```
+
+Run the learned-policy adapter example:
+
+```bash
+python examples/rl_external_policy_adapter.py --max-steps 100
 ```

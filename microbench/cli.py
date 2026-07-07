@@ -21,6 +21,7 @@ from microbench.dataset import generate_dataset, expand_scenarios, expand_list, 
 from microbench.logging import wandb_logger
 from microbench.rl.calibration import run_rl_policy_calibration
 from microbench.rl.evaluate import run_rl_policy_smoke
+from microbench.rl.freeze import run_rl_freeze_check
 from microbench.rl.policies import POLICY_NAMES
 from microbench.rl.schema import interface_contract
 from microbench.tools import (
@@ -762,6 +763,29 @@ def _rl_contract(args) -> None:
         print(f"done: RL interface contract saved to {args.out}")
 
 
+def _rl_freeze_check(args) -> None:
+    report = run_rl_freeze_check(root=args.root)
+    if args.out:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        print(f"rl-freeze-check: {status} interface={report['interface_version']}")
+        for check in report["checks"]:
+            check_status = "ok" if check["ok"] else "FAIL"
+            print(f"  {check_status}: {check['name']}")
+        if args.out:
+            print(f"  report: {args.out}")
+
+    if args.require_pass and not report["ok"]:
+        failed = [check["name"] for check in report["checks"] if not check["ok"]]
+        raise SystemExit(f"RL freeze check failed: {','.join(failed)}")
+
+
 def _golden_current_schema(args) -> None:
     if args.update and args.candidate:
         raise SystemExit("--update cannot be combined with --candidate")
@@ -1044,6 +1068,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_rlc.add_argument("--out", default=None, help="Optional JSON output path")
     p_rlc.add_argument("--json", action="store_true", help="Emit machine-readable contract JSON")
 
+    p_rlf = sub.add_parser("rl-freeze-check", help="Check stable-v1 RL interface freeze criteria")
+    p_rlf.add_argument("--root", default=".", help="Repository root containing docs and examples")
+    p_rlf.add_argument("--out", default=None, help="Optional JSON output path")
+    p_rlf.add_argument("--json", action="store_true", help="Emit machine-readable freeze-check JSON")
+    p_rlf.add_argument("--require-pass", action="store_true", help="Fail if any freeze criterion check fails")
+
     p_golden = sub.add_parser("golden-current-schema", help="Check or regenerate the current result-schema fixture")
     p_golden.add_argument("--golden-dir", default="golden/current_schema", help="Path to checked-in fixture")
     p_golden.add_argument("--candidate", default=None, help="Compare an existing candidate directory instead of running")
@@ -1188,6 +1218,9 @@ def main() -> None:
         return
     if args.cmd == "rl-contract":
         _rl_contract(args)
+        return
+    if args.cmd == "rl-freeze-check":
+        _rl_freeze_check(args)
         return
     if args.cmd == "golden-current-schema":
         _golden_current_schema(args)

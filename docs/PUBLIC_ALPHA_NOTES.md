@@ -20,7 +20,7 @@ This is not yet a stable v1 release. The public contract is intended to be revie
 - `official_3d_stress`: volumetric, dense-swarm, vertical, and noncooperative 3D DAA stress cases.
 - `official_agentic_stress`: heterogeneous priorities, multi-intruder/noncooperative traffic, partial sensing, and agentic coordination.
 - `official_experimental_baselines`: compact calibration suite for experimental CBF-QP and MPC-local baselines.
-- `official_promotion_calibration`: compact 3D and degraded sensing/communication calibration suite used by `baseline-promotion`.
+- `official_promotion_calibration`: compact 3D and degraded sensing/communication calibration suite used by `baseline-promotion` and `rl-calibration`.
 
 ## Reproducibility Commands
 
@@ -51,6 +51,7 @@ python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --re
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-contract --json
+python -m microbench.cli rl-freeze-check --require-pass --json
 ```
 
 ## Known Public Alpha Limitations
@@ -63,7 +64,8 @@ python -m microbench.cli rl-contract --json
 - `rl-smoke` checks wrapper API health and 2D/3D coverage, not policy quality or leaderboard safety.
 - `rl-calibration` adds compact 3D/degraded wrapper exposure for learned-policy submissions, but it is not a leaderboard score.
 - `rl-contract` publishes schema-versioned action, observation, and reward metadata for adapter authors, but those versions are still pre-v1.
-- Learned-policy submissions should include `rl_contract.json`, `rl_smoke.json`, `rl_calibration.json`, weight/version disclosures, and training scenario disclosure.
+- `rl-freeze-check` publishes a machine-readable stable-v1 readiness checklist for the RL interface, but passing it does not make this public alpha a stable v1 release.
+- Learned-policy submissions should include `rl_contract.json`, `rl_freeze_check.json`, `rl_smoke.json`, `rl_calibration.json`, weight/version disclosures, and training scenario disclosure.
 - The benchmark models local planning and simplified dynamics; it is not a full flight stack, airspace model, PX4/ROS simulator, or certification tool.
 - Generated official suites are pre-v1 and may be adjusted as external users stress-test the benchmark.
 - Leaderboard policy and scoring dimensions are documented, but public submissions should still be reviewed manually during alpha.

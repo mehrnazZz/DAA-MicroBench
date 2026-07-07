@@ -46,6 +46,7 @@ def test_public_docs_index_and_templates_exist() -> None:
         "docs/BASELINES.md",
         "docs/LEADERBOARD.md",
         "docs/RESULT_SUBMISSION.md",
+        "docs/RL_STABLE_V1_FREEZE.md",
     ]
     for rel in required_docs:
         path = ROOT / rel
@@ -73,6 +74,7 @@ def test_public_docs_index_and_templates_exist() -> None:
 
     learned_template = (ROOT / ".github/ISSUE_TEMPLATE/learned_policy_submission.md").read_text(encoding="utf-8")
     assert "rl_contract.json" in learned_template
+    assert "rl_freeze_check.json" in learned_template
     assert "rl_smoke.json" in learned_template
     assert "rl_calibration.json" in learned_template
     assert "Training Disclosure" in learned_template

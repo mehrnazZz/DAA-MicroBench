@@ -64,13 +64,14 @@ python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-contract --json
+python -m microbench.cli rl-freeze-check --require-pass --json
 ```
 
 You can also inspect `microbench/planners/` (each planner module maps to a method name in the planner registry).
 `orca_heuristic` is the canonical ORCA-like geometric baseline; `orca_expert` remains accepted as a compatibility alias for older scripts and result folders.
 See [docs/BASELINES.md](docs/BASELINES.md) for baseline roles, limitations, and recommended comparison sets.
 See [docs/DESIGN_V1.md](docs/DESIGN_V1.md) for the benchmark contract and [docs/PLANNER_API.md](docs/PLANNER_API.md) for a planner implementation tutorial.
-See [docs/RL_INTERFACE.md](docs/RL_INTERFACE.md) for PettingZoo/Gymnasium-style wrappers and smoke checks.
+See [docs/RL_INTERFACE.md](docs/RL_INTERFACE.md) for PettingZoo/Gymnasium-style wrappers and smoke checks, and [docs/RL_STABLE_V1_FREEZE.md](docs/RL_STABLE_V1_FREEZE.md) for RL stable-v1 freeze criteria.
 See [docs/README.md](docs/README.md) for the full documentation map.
 
 Run a heterogeneous episode with one explicit planner per drone:
@@ -114,6 +115,7 @@ Set `perception.mode: "sensor"` or `"fused"` in the scenario YAML to switch from
 
 Optional install tracks (manual extras):
 - Core install: `pip install -e .`
+- RL wrappers with Gymnasium/PettingZoo classes: `pip install -e ".[rl]"`
 - Diffusion/ML extras: `pip install -e ".[ml]"`
 - Optimization extras: `pip install -e ".[opt]"`
 

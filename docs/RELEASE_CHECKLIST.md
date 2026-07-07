@@ -18,9 +18,10 @@ Use this checklist before tagging a public alpha, announcing a leaderboard run, 
 - [ ] `python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass` passes for PettingZoo/Gymnasium wrapper health.
 - [ ] `python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass` passes for compact 3D/degraded RL wrapper exposure.
 - [ ] `python -m microbench.cli rl-contract --json` prints the current RL interface contract.
+- [ ] `python -m microbench.cli rl-freeze-check --require-pass --json` passes and writes a stable-v1 readiness artifact when preparing learned-policy submissions or v1 candidates.
 - [ ] Optional when `.[rl]` is installed: `python -m pytest tests/test_rl_optional_integrations.py -q` passes.
 - [ ] GitHub Actions CI is green for Python 3.10, 3.11, and 3.12.
-- [ ] `docs/README.md`, `docs/PUBLIC_ALPHA_NOTES.md`, `docs/DESIGN_V1.md`, `docs/PLANNER_API.md`, `docs/SCENARIO_SUITES.md`, `docs/BASELINES.md`, `docs/LEADERBOARD.md`, `docs/RL_INTERFACE.md`, and `docs/RESULT_SUBMISSION.md` reflect the release behavior.
+- [ ] `docs/README.md`, `docs/PUBLIC_ALPHA_NOTES.md`, `docs/DESIGN_V1.md`, `docs/PLANNER_API.md`, `docs/SCENARIO_SUITES.md`, `docs/BASELINES.md`, `docs/LEADERBOARD.md`, `docs/RL_INTERFACE.md`, `docs/RL_STABLE_V1_FREEZE.md`, and `docs/RESULT_SUBMISSION.md` reflect the release behavior.
 - [ ] Issue templates and pull request template still match the current public contract.
 - [ ] Generated official suites validate with `python -m microbench.cli validate-scenarios --all-builtins --all-generated-suites --quiet`.
 - [ ] Any metric/schema change has an updated `result_schema.json` and current-schema golden fixture.
