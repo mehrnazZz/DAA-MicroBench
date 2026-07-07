@@ -210,3 +210,25 @@ def test_learned_bundle_policy_spec_artifacts_are_portable(tmp_path: Path) -> No
     validation = validate_learned_policy_submission_bundle(bundle=bundle_root)
     assert validation["ok"] is True
     assert _check(validation, "optional_artifacts_present")["ok"] is True
+
+
+def test_learned_bundle_policy_spec_can_drive_planner_sweep(tmp_path: Path) -> None:
+    spec_path = _tiny_policy_spec(tmp_path)
+    bundle_root = tmp_path / "bundle_with_spec_planner"
+    report = run_learned_policy_submission_bundle(
+        out_dir=bundle_root,
+        method="learned_policy_spec",
+        policy_spec=spec_path,
+        max_runs=1,
+        max_steps=3,
+    )
+
+    assert report["ok"] is True
+    assert report["method"] == "learned_policy_spec"
+    assert report["policy"] == "external_tiny_fixture"
+    assert report["planner_sweep"]["policy_spec"] == str(spec_path)
+    assert report["planner_sweep"]["run_count"] == 1
+    assert _check(report, "method_marked_learned")["ok"] is True
+
+    results_text = (bundle_root / "planner_sweep" / "results.csv").read_text(encoding="utf-8")
+    assert "learned_policy_spec" in results_text

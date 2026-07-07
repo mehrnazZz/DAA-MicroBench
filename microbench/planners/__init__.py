@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from dataclasses import asdict, dataclass
 
 from microbench.config import deep_merge, load_defaults
@@ -82,6 +83,14 @@ _FACTORIES: dict[str, Callable[[], ILocalPlanner]] = {
     "priority_yield": PriorityYieldPlanner,
     "negotiation_yield": NegotiationYieldPlanner,
 }
+
+
+def _make_learned_policy_spec(policy_spec: str | Path | None) -> ILocalPlanner:
+    if policy_spec is None:
+        raise ValueError("learned_policy_spec requires --policy-spec")
+    from microbench.planners.learned_policy_spec import LearnedPolicySpecPlanner
+
+    return LearnedPolicySpecPlanner(policy_spec=policy_spec)
 
 
 _METADATA: dict[str, PlannerMetadata] = {
@@ -227,6 +236,27 @@ _METADATA: dict[str, PlannerMetadata] = {
             "Uses local tracks supplied by PlannerInput rather than raw sensor processing.",
         ),
     ),
+    "learned_policy_spec": PlannerMetadata(
+        method="learned_policy_spec",
+        display_name="External learned-policy spec bridge",
+        planner_type="learned_policy",
+        role="submission_bridge",
+        status="experimental",
+        dimensions=("2d", "3d"),
+        observation_sources=("ego_state", "goal", "local_neighbors", "v2v", "sensor", "fused"),
+        uses_v2v=True,
+        uses_local_sensing=True,
+        learned=True,
+        description=(
+            "Loads a trusted JSON/YAML RL policy spec and evaluates it as a normal local planner "
+            "using the stable DAA RL observation/action contract."
+        ),
+        limitations=(
+            "External specs can execute local Python code for callable/model adapters; only run trusted specs.",
+            "Experimental submission bridge, not a built-in reference behavior.",
+            "Uses local tracks supplied by PlannerInput rather than raw sensor processing.",
+        ),
+    ),
     "priority_yield": PlannerMetadata(
         method="priority_yield",
         display_name="Priority-yield baseline",
@@ -293,8 +323,10 @@ def planner_metadata(*, include_aliases: bool = False) -> list[dict]:
     return entries
 
 
-def make_planner(name: str) -> ILocalPlanner:
+def make_planner(name: str, *, policy_spec: str | Path | None = None) -> ILocalPlanner:
     canonical = canonical_method(name)
+    if canonical == "learned_policy_spec":
+        return _make_learned_policy_spec(policy_spec)
     try:
         return _FACTORIES[canonical]()
     except KeyError as exc:

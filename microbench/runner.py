@@ -46,6 +46,7 @@ def run_episode(spec: RunSpec) -> dict:
         seed=spec.seed,
         comm_profile=spec.comm_profile,
         agent_methods=spec.agent_methods,
+        policy_spec=spec.policy_spec,
         planner_factory=make_planner,
     )
 

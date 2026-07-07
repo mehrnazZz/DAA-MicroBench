@@ -43,6 +43,10 @@ def test_baseline_audit_public_alpha_contract() -> None:
     assert by_method["learned_tiny"]["readiness"] == "experimental_runnable"
     assert by_method["learned_tiny"]["checks"]["docs_mentioned"] is True
     assert by_method["learned_tiny"]["checks"]["tests_mentioned"] is True
+    assert by_method["learned_policy_spec"]["readiness"] == "externally_configured_bridge"
+    assert by_method["learned_policy_spec"]["checks"]["factory_constructible"] is True
+    assert by_method["learned_policy_spec"]["checks"]["docs_mentioned"] is True
+    assert by_method["learned_policy_spec"]["checks"]["tests_mentioned"] is True
     assert by_method["negotiation_yield"]["readiness"] == "public_alpha_reference_ready"
     assert by_method["baseline_goal"]["readiness"] == "illustrative_or_template"
 

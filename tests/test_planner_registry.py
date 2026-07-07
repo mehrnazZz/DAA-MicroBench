@@ -5,9 +5,12 @@ from pathlib import Path
 import subprocess
 import sys
 
+import pytest
+
 from microbench.planners import canonical_method, list_methods, make_planner, planner_metadata
 from microbench.planners.cbf_qp import CbfQpPlanner
 from microbench.planners.learned_tiny import LearnedTinyPlanner
+from microbench.planners.learned_policy_spec import LearnedPolicySpecPlanner
 from microbench.planners.mpc_local import MpcLocalPlanner
 from microbench.planners.orca_expert import OrcaExpertPlanner
 
@@ -21,6 +24,7 @@ def test_orca_heuristic_is_canonical_and_orca_expert_is_alias() -> None:
     assert "cbf_qp" in list_methods()
     assert "mpc_local" in list_methods()
     assert "learned_tiny" in list_methods()
+    assert "learned_policy_spec" in list_methods()
     assert "orca_expert" not in list_methods()
     assert "orca_expert" in list_methods(include_aliases=True)
     assert isinstance(make_planner("orca_heuristic"), OrcaExpertPlanner)
@@ -28,7 +32,11 @@ def test_orca_heuristic_is_canonical_and_orca_expert_is_alias() -> None:
     assert isinstance(make_planner("cbf_qp"), CbfQpPlanner)
     assert isinstance(make_planner("mpc_local"), MpcLocalPlanner)
     assert isinstance(make_planner("learned_tiny"), LearnedTinyPlanner)
+    assert isinstance(make_planner("learned_policy_spec", policy_spec="examples/external_policy_spec.json"), LearnedPolicySpecPlanner)
     assert isinstance(make_planner("orca_expert"), OrcaExpertPlanner)
+
+    with pytest.raises(ValueError, match="policy-spec"):
+        make_planner("learned_policy_spec")
 
 
 def test_planner_metadata_includes_public_baseline_contract() -> None:
@@ -52,6 +60,9 @@ def test_planner_metadata_includes_public_baseline_contract() -> None:
     assert by_method["learned_tiny"]["planner_type"] == "learned_policy"
     assert by_method["learned_tiny"]["learned"] is True
     assert by_method["learned_tiny"]["uses_v2v"] is True
+    assert by_method["learned_policy_spec"]["role"] == "submission_bridge"
+    assert by_method["learned_policy_spec"]["planner_type"] == "learned_policy"
+    assert by_method["learned_policy_spec"]["learned"] is True
     assert by_method["negotiation_yield"]["role"] == "agentic_reference_baseline"
     assert by_method["negotiation_yield"]["status"] == "pre_v1"
     assert by_method["orca_expert"]["status"] == "alias"
@@ -92,5 +103,6 @@ def test_list_methods_cli_can_emit_metadata_json() -> None:
     assert by_method["cbf_qp"]["status"] == "experimental"
     assert by_method["mpc_local"]["status"] == "experimental"
     assert by_method["learned_tiny"]["learned"] is True
+    assert by_method["learned_policy_spec"]["role"] == "submission_bridge"
     assert by_method["negotiation_yield"]["status"] == "pre_v1"
     assert by_method["orca_expert"]["canonical_method"] == "orca_heuristic"

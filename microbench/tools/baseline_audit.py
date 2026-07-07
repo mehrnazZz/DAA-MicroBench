@@ -25,6 +25,7 @@ EXPERIMENTAL_METHODS = (
 
 REFERENCE_ROLES = {"reference_baseline", "agentic_reference_baseline"}
 ILLUSTRATIVE_ROLES = {"illustrative_baseline", "agentic_example", "developer_template"}
+BRIDGE_ROLES = {"submission_bridge"}
 
 
 def _read_many(paths: list[Path]) -> str:
@@ -83,6 +84,8 @@ def _classify_method(entry: dict[str, Any]) -> str:
         return "public_alpha_reference"
     if role in ILLUSTRATIVE_ROLES:
         return "illustrative"
+    if role in BRIDGE_ROLES:
+        return "submission_bridge"
     if status == "experimental" or str(entry.get("method")) in EXPERIMENTAL_METHODS:
         return "experimental"
     return "uncategorized"
@@ -97,13 +100,16 @@ def _method_entry(
     suite_acceptance: dict[str, list[str]],
 ) -> dict[str, Any]:
     method = str(entry["method"])
-    factory_ok, factory_error = _factory_ok(method)
     dimensions = tuple(str(d) for d in entry.get("dimensions", ()))
     docs_mentioned = method in docs_text
     tests_mentioned = method in tests_text
     default_suites = sorted(suite_defaults.get(method, []))
     acceptance_rules = sorted(suite_acceptance.get(method, []))
     category = _classify_method(entry)
+    if category == "submission_bridge":
+        factory_ok, factory_error = True, "requires external --policy-spec"
+    else:
+        factory_ok, factory_error = _factory_ok(method)
 
     checks = {
         "factory_constructible": factory_ok,
@@ -138,6 +144,8 @@ def _method_entry(
         readiness = "public_alpha_reference_ready"
     elif category == "experimental":
         readiness = "experimental_runnable"
+    elif category == "submission_bridge":
+        readiness = "externally_configured_bridge"
     elif category == "illustrative":
         readiness = "illustrative_or_template"
     else:

@@ -117,6 +117,7 @@ def _run_planner_sweep(
     out_dir: Path,
     suite: str,
     method: str,
+    policy_spec: str | Path | None = None,
     max_runs: int | None,
     save_trace: bool,
 ) -> dict[str, Any]:
@@ -148,6 +149,7 @@ def _run_planner_sweep(
                             comm_profile=str(comm_profile),
                             out_dir=str(out_dir),
                             save_trace=bool(save_trace),
+                            policy_spec=None if policy_spec is None else str(policy_spec),
                         )
                     )
 
@@ -191,6 +193,7 @@ def _run_planner_sweep(
     return {
         "suite": str(suite),
         "method": str(method),
+        "policy_spec": None if policy_spec is None else str(policy_spec),
         "planned_run_count": int(planned_run_count),
         "run_count": len(rows),
         "max_runs": None if max_runs is None else int(max_runs),
@@ -267,6 +270,7 @@ def run_learned_policy_submission_bundle(
         out_dir=out / "planner_sweep",
         suite=str(suite),
         method=str(method),
+        policy_spec=policy_spec,
         max_runs=max_runs,
         save_trace=bool(save_trace),
     )

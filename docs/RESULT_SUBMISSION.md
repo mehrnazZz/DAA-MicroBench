@@ -63,10 +63,12 @@ For learned/RL policies, build the standard artifact bundle:
 ```bash
 python -m microbench.cli learned-submission-bundle \
   --out-dir runs_learned_bundle \
-  --method your_method \
-  --policy your_policy \
+  --method learned_policy_spec \
+  --policy-spec path/to/policy_spec.json \
   --require-pass
 ```
+
+Use `--method learned_policy_spec --policy-spec ...` when your learned policy should be evaluated through the standard planner-sweep CSV path. The same spec is also used for RL wrapper smoke/calibration artifacts in the bundle.
 
 Then validate the saved bundle before attaching it:
 

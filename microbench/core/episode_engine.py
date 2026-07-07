@@ -207,7 +207,8 @@ class EpisodeEngine:
         seed: int,
         comm_profile: str,
         agent_methods: list[str] | None = None,
-        planner_factory: Callable[[str], object] | None = None,
+        policy_spec: str | None = None,
+        planner_factory: Callable[..., object] | None = None,
     ):
         self.scenario_path = scenario_path
         self.scenario_stem = Path(scenario_path).stem
@@ -215,6 +216,7 @@ class EpisodeEngine:
         self.n_agents = int(n_agents)
         self.seed = int(seed)
         self.comm_profile = comm_profile
+        self.policy_spec = None if policy_spec is None else str(policy_spec)
 
         self.defaults = load_defaults()
         self.profiles = load_comm_profiles()
@@ -282,13 +284,13 @@ class EpisodeEngine:
             resolved_agent_methods = profile_methods
         self.agent_methods, self.method_label = resolve_agent_methods(method, self.n_agents, resolved_agent_methods)
         make_planner = planner_factory or default_make_planner
-        self.planners = [make_planner(agent_method) for agent_method in self.agent_methods]
+        self.planners = [self._make_planner(make_planner, agent_method) for agent_method in self.agent_methods]
         self.agent_contexts: list[AgentContext] = []
         for i, planner in enumerate(self.planners):
             seed_i = _agent_seed(seed, i)
             profile = self.agent_profiles[i]
             profile.method = self.agent_methods[i]
-            config = _public_config(profile)
+            config = self._planner_public_config(profile)
             self._reset_planner(planner, agent_id=i, seed=seed_i, config=config)
             self.agent_contexts.append(
                 AgentContext(
@@ -424,6 +426,33 @@ class EpisodeEngine:
             failure_modes=dict(failure_modes),
             tags=[str(t) for t in tags],
         )
+
+    def _planner_public_config(self, profile: AgentProfile) -> dict:
+        cfg = _public_config(profile)
+        cfg.update(
+            {
+                "n_agents": int(self.n_agents),
+                "scenario_path": str(self.scenario_path),
+                "scenario_name": str(self.cfg.get("scenario", {}).get("name", self.scenario_stem)),
+                "planar": bool(self.planar),
+                "neighbor_top_k": int(self.neighbor_cfg.get("top_k", 8)),
+            }
+        )
+        return cfg
+
+    def _make_planner(self, planner_factory: Callable[..., object], method: str):
+        if self.policy_spec is None:
+            return planner_factory(method)
+        try:
+            sig = inspect.signature(planner_factory)
+        except (TypeError, ValueError):
+            return planner_factory(method)
+        params = list(sig.parameters.values())
+        names = {p.name for p in params}
+        accepts_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params)
+        if accepts_kwargs or "policy_spec" in names:
+            return planner_factory(method, policy_spec=self.policy_spec)
+        return planner_factory(method)
 
     @staticmethod
     def _reset_planner(planner, *, agent_id: int, seed: int, config: dict) -> None:
@@ -679,7 +708,7 @@ class EpisodeEngine:
         if self._closed:
             return
         for planner, context, profile in zip(self.planners, self.agent_contexts, self.agent_profiles):
-            self._finalize_planner(planner, context=context, config=_public_config(profile))
+            self._finalize_planner(planner, context=context, config=self._planner_public_config(profile))
         self._closed = True
 
     def done(self) -> bool:

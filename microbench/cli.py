@@ -142,6 +142,7 @@ def _build_run_config(
     seeds: list[int],
     comm_profiles: list[str],
     defaults: dict,
+    policy_spec: str | None = None,
 ) -> dict:
     ncfg = defaults.get("neighbors", {})
     dcfg = defaults.get("dynamics", {})
@@ -160,6 +161,7 @@ def _build_run_config(
         "seed_max": max(seeds) if seeds else None,
         "seed_count": len(seeds),
         "comm_profiles": comm_profiles,
+        "policy_spec": policy_spec,
         "dt_s": float(defaults.get("sim", {}).get("dt_s", 0.02)),
         "duration_s_default": float(defaults.get("sim", {}).get("duration_s", 60.0)),
         "top_k": int(ncfg.get("top_k", 8)),
@@ -190,6 +192,7 @@ def _run_once(args) -> dict:
         out_dir=out_dir,
         save_trace=save_trace,
         agent_methods=_parse_str_list(args.agent_methods) if args.agent_methods else None,
+        policy_spec=args.policy_spec,
     )
     row = run_episode(spec)
     append_result(out_dir, row)
@@ -224,6 +227,7 @@ def _run_sweep(args) -> None:
                                 comm_profile=comm,
                                 out_dir=out_dir,
                                 save_trace=save_trace,
+                                policy_spec=args.policy_spec,
                             )
                         )
 
@@ -236,6 +240,7 @@ def _run_sweep(args) -> None:
         seeds=seeds,
         comm_profiles=comm_profiles,
         defaults=defaults,
+        policy_spec=args.policy_spec,
     )
     wb_run = wandb_logger.init_run(args, run_cfg)
     try:
@@ -336,6 +341,7 @@ def _run_canonical_sweep(args) -> None:
                                 comm_profile=comm,
                                 out_dir=out_dir,
                                 save_trace=save_trace,
+                                policy_spec=args.policy_spec,
                             )
                         )
 
@@ -363,6 +369,7 @@ def _run_canonical_sweep(args) -> None:
         seeds=seeds,
         comm_profiles=comm_profiles,
         defaults=defaults,
+        policy_spec=args.policy_spec,
     )
     wb_run = wandb_logger.init_run(args, run_cfg)
     try:
@@ -949,6 +956,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--seed", required=True, type=int)
     p_run.add_argument("--comm", default=None)
     p_run.add_argument("--out-dir", default=None)
+    p_run.add_argument("--policy-spec", default=None, help="JSON/YAML external policy spec for --method learned_policy_spec")
     p_run.add_argument(
         "--agent-methods",
         default=None,
@@ -962,6 +970,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_sweep.add_argument("--n", required=True, help="Comma list and/or ranges of agent counts")
     p_sweep.add_argument("--comm", default=None, help="One or more comm profiles (comma-separated)")
     p_sweep.add_argument("--out-dir", default=None)
+    p_sweep.add_argument("--policy-spec", default=None, help="JSON/YAML external policy spec for learned_policy_spec runs")
     _add_wandb_flags(p_sweep)
 
     p_replay = sub.add_parser("replay", help="Render a saved episode or collision trace")
@@ -1026,6 +1035,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_cs.add_argument("--print-plan", action="store_true", help="Print resolved run matrix before execution")
     p_cs.add_argument("--no-run", action="store_true", help="Only print matrix; do not execute")
     p_cs.add_argument("--max-runs", type=int, default=None, help="Optional cap for debugging/smoke tests")
+    p_cs.add_argument("--policy-spec", default=None, help="JSON/YAML external policy spec for learned_policy_spec runs")
     _add_wandb_flags(p_cs)
 
     p_ms = sub.add_parser("materialize-suite", help="Write generated official suite scenarios and manifest")

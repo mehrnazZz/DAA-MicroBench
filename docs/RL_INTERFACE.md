@@ -233,12 +233,27 @@ python -m microbench.cli rl-calibration \
   --require-pass
 ```
 
+Run the same external spec as a normal benchmark planner to produce standard `results.csv` and `summary.csv` rows:
+
+```bash
+python -m microbench.cli run \
+  --scenario config/scenarios/stacked_swap_3d.yaml \
+  --method learned_policy_spec \
+  --policy-spec examples/external_policy_spec.json \
+  --n 4 \
+  --seed 0 \
+  --comm ideal_50hz \
+  --out-dir runs_external_policy_planner
+```
+
+The `learned_policy_spec` planner bridge loads the spec once per drone, converts each public `PlannerInput` into the stable RL local observation vector, calls `policy.action(agent, observation, action_space, info)`, clamps the normalized `(3,)` action, and scales it by the drone's `v_max`. It is a submission bridge, not a built-in reference baseline.
+
 Build, validate, and summarize a learned submission bundle with the same spec:
 
 ```bash
 python -m microbench.cli learned-submission-bundle \
   --out-dir runs_external_learned_bundle \
-  --method learned_tiny \
+  --method learned_policy_spec \
   --policy-spec examples/external_policy_spec.json \
   --require-pass
 

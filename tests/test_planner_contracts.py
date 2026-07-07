@@ -10,6 +10,7 @@ from microbench.types import AgentState, PlannerInput, PlannerOutput
 
 
 PLANNER_DIR = Path(__file__).resolve().parents[1] / "microbench" / "planners"
+ROOT = Path(__file__).resolve().parents[1]
 
 FORBIDDEN_MICROBENCH_IMPORTS = (
     "microbench.acceptance",
@@ -65,7 +66,10 @@ def test_builtin_planners_accept_public_planner_input_and_return_finite_vec3() -
     )
 
     for method in list_methods():
-        planner = make_planner(method)
+        if method == "learned_policy_spec":
+            planner = make_planner(method, policy_spec=ROOT / "examples" / "external_policy_spec.json")
+        else:
+            planner = make_planner(method)
         planner.reset(seed=123)
         out = planner.compute_cmd(planner_input)
         v_cmd = out.v_cmd if isinstance(out, PlannerOutput) else out

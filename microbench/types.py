@@ -173,3 +173,4 @@ class RunSpec:
     out_dir: str
     save_trace: bool
     agent_methods: list[str] | None = None
+    policy_spec: str | None = None
