@@ -25,6 +25,7 @@ Use this checklist before tagging a public alpha, announcing a leaderboard run, 
 - [ ] `python -m microbench.cli rl-freeze-check --require-pass --json` passes and writes a stable-v1 readiness artifact when preparing learned-policy submissions or v1 candidates.
 - [ ] `python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method learned_tiny --policy tiny_learned --require-pass` passes for the frozen learned-policy fixture.
 - [ ] `python -m microbench.cli learned-submission-bundle --out-dir runs_external_learned_bundle --method learned_policy_spec --policy-spec examples/external_policy_spec.json --require-pass` passes for an external policy-spec planner submission.
+- [ ] Learned bundles contain `learned_submission_manifest.json` with artifact hashes and policy-spec provenance.
 - [ ] `python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass` passes for the frozen learned-policy fixture bundle.
 - [ ] `python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --require-pass` summarizes the frozen learned-policy fixture bundle.
 - [ ] Optional when `.[rl]` is installed: `python -m pytest tests/test_rl_optional_integrations.py -q` passes.

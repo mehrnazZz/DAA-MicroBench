@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from pathlib import Path
 import shutil
+import sys
 from typing import Any
 
 from microbench.acceptance import check_acceptance
@@ -22,8 +24,11 @@ from microbench.types import RunSpec
 LEARNED_SUBMISSION_BUNDLE_SCHEMA_VERSION = "0.1"
 LEARNED_SUBMISSION_BUNDLE_VALIDATION_SCHEMA_VERSION = "0.1"
 LEARNED_SUBMISSION_BUNDLE_REVIEW_SCHEMA_VERSION = "0.1"
+LEARNED_SUBMISSION_MANIFEST_SCHEMA_VERSION = "0.1"
 LEARNED_SUBMISSION_BUNDLE_FILENAME = "learned_submission_bundle.json"
+LEARNED_SUBMISSION_MANIFEST_FILENAME = "learned_submission_manifest.json"
 EXPECTED_BUNDLE_ARTIFACTS = {
+    "learned_submission_manifest": LEARNED_SUBMISSION_MANIFEST_FILENAME,
     "rl_contract": "rl_contract.json",
     "rl_freeze_check": "rl_freeze_check.json",
     "rl_smoke": "rl_smoke.json",
@@ -71,6 +76,14 @@ def _read_json(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _read_csv_rows(path: Path) -> list[dict[str, str]]:
     import csv
 
@@ -110,6 +123,159 @@ def _round_or_none(value: float | None, ndigits: int = 6) -> float | None:
 def _method_metadata(method: str) -> dict[str, Any] | None:
     by_method = {entry["method"]: entry for entry in planner_metadata(include_aliases=False)}
     return by_method.get(str(method))
+
+
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _load_manifest_overrides(path: str | Path | None) -> dict[str, Any]:
+    if path is None:
+        return {}
+    payload = _read_json(Path(path))
+    return dict(payload)
+
+
+def _artifact_record(*, bundle_root: Path, name: str, rel_path: str, required: bool) -> dict[str, Any]:
+    path = bundle_root / rel_path
+    record: dict[str, Any] = {
+        "name": str(name),
+        "path": str(rel_path),
+        "required": bool(required),
+        "kind": path.suffix.lstrip(".") or "file",
+        "present": path.exists(),
+    }
+    if path.exists() and path.is_file():
+        record["size_bytes"] = int(path.stat().st_size)
+        record["sha256"] = _sha256(path)
+    return record
+
+
+def _default_training_disclosure() -> dict[str, Any]:
+    return {
+        "training_scenarios": [],
+        "training_suites": [],
+        "environment_steps": None,
+        "random_seeds": [],
+        "observation_normalization": "undisclosed",
+        "action_post_processing": "normalized velocity action clipped by DAA Microbench action contract",
+        "reward_configuration": "undisclosed",
+        "external_data": "undisclosed",
+        "pretrained_models": "undisclosed",
+        "hardware": "undisclosed",
+    }
+
+
+def _build_learned_submission_manifest(
+    *,
+    bundle_root: Path,
+    method: str,
+    policy: str,
+    suite: str,
+    root: str | Path,
+    n_agents: int,
+    seeds: list[int],
+    max_steps: int | None,
+    max_runs: int | None,
+    planner_sweep: dict[str, Any],
+    artifact_paths: dict[str, str],
+    policy_spec_summary: dict[str, Any] | None,
+    method_metadata: dict[str, Any] | None,
+    manifest_overrides: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    artifact_records = [
+        _artifact_record(
+            bundle_root=bundle_root,
+            name=name,
+            rel_path=rel_path,
+            required=name in EXPECTED_BUNDLE_ARTIFACTS,
+        )
+        for name, rel_path in sorted(artifact_paths.items())
+        if name != "learned_submission_manifest"
+    ]
+    policy_spec_block = None
+    if policy_spec_summary is not None:
+        policy_spec_block = {
+            "policy_name": policy_spec_summary.get("policy_name"),
+            "adapter": policy_spec_summary.get("adapter"),
+            "spec_path": policy_spec_summary.get("spec_path"),
+            "deterministic": bool(policy_spec_summary.get("deterministic", True)),
+            "clip": bool(policy_spec_summary.get("clip", True)),
+            "artifact_path": policy_spec_summary.get("artifact_path"),
+            "callable": policy_spec_summary.get("callable"),
+            "factory": policy_spec_summary.get("factory"),
+            "factory_kwargs": policy_spec_summary.get("factory_kwargs"),
+        }
+
+    manifest = {
+        "schema_version": LEARNED_SUBMISSION_MANIFEST_SCHEMA_VERSION,
+        "bundle_schema_version": LEARNED_SUBMISSION_BUNDLE_SCHEMA_VERSION,
+        "policy": {
+            "name": str(policy),
+            "method": str(method),
+            "method_metadata": method_metadata,
+            "policy_spec": policy_spec_block,
+        },
+        "benchmark": {
+            "suite": str(suite),
+            "root": str(root),
+            "n_agents": int(n_agents),
+            "seeds": [int(seed) for seed in seeds],
+            "max_steps": None if max_steps is None else int(max_steps),
+            "max_runs": None if max_runs is None else int(max_runs),
+            "planner_sweep_run_count": int(planner_sweep.get("run_count", 0) or 0),
+            "planner_sweep_planned_run_count": int(planner_sweep.get("planned_run_count", 0) or 0),
+        },
+        "artifacts": artifact_records,
+        "dependencies": {
+            "python_version": sys.version.split()[0],
+            "python_executable": sys.executable,
+            "inference_packages": [],
+            "notes": "Populate inference_packages through --submission-manifest for non-core dependencies.",
+        },
+        "training_disclosure": _default_training_disclosure(),
+        "inference_disclosure": {
+            "deterministic": bool(policy_spec_summary.get("deterministic", True)) if policy_spec_summary else True,
+            "uses_external_services": "undisclosed",
+            "external_services": [],
+            "runtime_notes": "undisclosed",
+        },
+        "review_notes": {
+            "privileged_information": "undisclosed",
+            "intended_category": "external_submission" if policy_spec_summary else "built_in_fixture",
+        },
+    }
+    if manifest_overrides:
+        manifest = _deep_merge(manifest, manifest_overrides)
+        manifest["schema_version"] = LEARNED_SUBMISSION_MANIFEST_SCHEMA_VERSION
+        manifest["bundle_schema_version"] = LEARNED_SUBMISSION_BUNDLE_SCHEMA_VERSION
+    return manifest
+
+
+def _manifest_artifact_map(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    artifacts = manifest.get("artifacts", [])
+    if not isinstance(artifacts, list):
+        return {}
+    return {str(item.get("name")): dict(item) for item in artifacts if isinstance(item, dict) and item.get("name")}
+
+
+def _manifest_unknown_fields(manifest: dict[str, Any]) -> list[str]:
+    unknown: list[str] = []
+    for section_name in ("training_disclosure", "inference_disclosure", "review_notes"):
+        section = manifest.get(section_name, {})
+        if not isinstance(section, dict):
+            unknown.append(section_name)
+            continue
+        for key, value in section.items():
+            if value == "undisclosed" or value is None:
+                unknown.append(f"{section_name}.{key}")
+    return unknown
 
 
 def _run_planner_sweep(
@@ -238,6 +404,7 @@ def run_learned_policy_submission_bundle(
     max_steps: int | None = None,
     max_runs: int | None = None,
     save_trace: bool = False,
+    submission_manifest: str | Path | None = None,
 ) -> dict[str, Any]:
     """Create a reproducible learned-policy submission artifact bundle."""
 
@@ -315,6 +482,25 @@ def run_learned_policy_submission_bundle(
         artifact_paths["policy_spec"] = policy_spec_artifact
     if policy_model_artifact is not None:
         artifact_paths["policy_artifact"] = policy_model_artifact
+    artifact_paths["learned_submission_manifest"] = LEARNED_SUBMISSION_MANIFEST_FILENAME
+    manifest = _build_learned_submission_manifest(
+        bundle_root=out,
+        method=str(method),
+        policy=str(smoke.get("policy", policy)),
+        suite=str(suite),
+        root=root,
+        n_agents=int(n_agents),
+        seeds=seed_list,
+        max_steps=max_steps,
+        max_runs=max_runs,
+        planner_sweep=planner_sweep,
+        artifact_paths=artifact_paths,
+        policy_spec_summary=smoke.get("policy_spec"),
+        method_metadata=meta,
+        manifest_overrides=_load_manifest_overrides(submission_manifest),
+    )
+    manifest_out = _write_json(out / LEARNED_SUBMISSION_MANIFEST_FILENAME, manifest)
+    artifact_paths["learned_submission_manifest"] = _rel(manifest_out, out)
     missing_artifacts = [name for name, path in artifact_paths.items() if not (out / path).exists()]
     checks = [
         _check("method_metadata_present", meta is not None, {"method": str(method)}),
@@ -350,6 +536,11 @@ def run_learned_policy_submission_bundle(
             },
         ),
         _check("expected_artifacts_present", not missing_artifacts, {"missing": missing_artifacts}),
+        _check(
+            "learned_submission_manifest_written",
+            (out / artifact_paths["learned_submission_manifest"]).exists(),
+            {"path": artifact_paths["learned_submission_manifest"], "schema_version": manifest.get("schema_version")},
+        ),
     ]
 
     report = {
@@ -358,6 +549,12 @@ def run_learned_policy_submission_bundle(
         "method": str(method),
         "policy": str(smoke.get("policy", policy)),
         "policy_spec": smoke.get("policy_spec"),
+        "submission_manifest": {
+            "schema_version": manifest.get("schema_version"),
+            "path": artifact_paths["learned_submission_manifest"],
+            "training_disclosure": manifest.get("training_disclosure"),
+            "inference_disclosure": manifest.get("inference_disclosure"),
+        },
         "suite": str(suite),
         "root": str(root),
         "n_agents": int(n_agents),
@@ -453,7 +650,14 @@ def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str
 
     json_payloads: dict[str, dict[str, Any]] = {}
     json_errors: list[dict[str, str]] = []
-    json_artifact_names = ["rl_contract", "rl_freeze_check", "rl_smoke", "rl_calibration", "planner_acceptance"]
+    json_artifact_names = [
+        "learned_submission_manifest",
+        "rl_contract",
+        "rl_freeze_check",
+        "rl_smoke",
+        "rl_calibration",
+        "planner_acceptance",
+    ]
     if "policy_spec" in optional_resolved:
         json_artifact_names.append("policy_spec")
     for name in json_artifact_names:
@@ -484,6 +688,43 @@ def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str
         except Exception as exc:
             result_schema_error = f"{type(exc).__name__}: {exc}"
 
+    manifest_payload = json_payloads.get("learned_submission_manifest", {})
+    manifest_artifacts = _manifest_artifact_map(manifest_payload) if isinstance(manifest_payload, dict) else {}
+    report_artifact_names = set((report.get("artifacts") or {}).keys()) - {"learned_submission_manifest"}
+    manifest_artifact_names = set(manifest_artifacts.keys())
+    missing_manifest_artifacts = sorted(report_artifact_names - manifest_artifact_names)
+    artifact_hash_mismatches: list[dict[str, Any]] = []
+    for name, item in manifest_artifacts.items():
+        rel_path = str(item.get("path", ""))
+        declared_hash = item.get("sha256")
+        if not declared_hash:
+            continue
+        artifact_path = bundle_root / rel_path
+        if artifact_path.exists() and artifact_path.is_file():
+            actual_hash = _sha256(artifact_path)
+            if actual_hash != declared_hash:
+                artifact_hash_mismatches.append(
+                    {
+                        "artifact": name,
+                        "path": rel_path,
+                        "declared": declared_hash,
+                        "actual": actual_hash,
+                    }
+                )
+    manifest_policy_spec = (manifest_payload.get("policy") or {}).get("policy_spec") if isinstance(manifest_payload, dict) else None
+    report_policy_spec = report.get("policy_spec")
+    if report_policy_spec is None:
+        policy_spec_provenance_ok = manifest_policy_spec is None
+    else:
+        policy_spec_provenance_ok = isinstance(manifest_policy_spec, dict) and all(
+            manifest_policy_spec.get(key) == report_policy_spec.get(key)
+            for key in ("policy_name", "adapter")
+        )
+    manifest_required_sections_present = isinstance(manifest_payload, dict) and all(
+        isinstance(manifest_payload.get(section), dict)
+        for section in ("policy", "benchmark", "dependencies", "training_disclosure", "inference_disclosure")
+    )
+
     bundle_checks = report.get("checks", []) if isinstance(report.get("checks"), list) else []
     failed_bundle_checks = [check.get("name") for check in bundle_checks if not check.get("ok")]
     checks = [
@@ -498,6 +739,32 @@ def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str
         _check("required_artifacts_present", not missing, {"missing": missing}),
         _check("optional_artifacts_present", not optional_missing, {"missing": optional_missing, "declared": optional_declared}),
         _check("json_artifacts_parse", not json_errors and result_schema_error is None, {"errors": json_errors, "result_schema_error": result_schema_error}),
+        _check(
+            "learned_submission_manifest_schema_supported",
+            isinstance(manifest_payload, dict)
+            and manifest_payload.get("schema_version") == LEARNED_SUBMISSION_MANIFEST_SCHEMA_VERSION,
+            {"schema_version": manifest_payload.get("schema_version") if isinstance(manifest_payload, dict) else None},
+        ),
+        _check(
+            "learned_submission_manifest_sections_present",
+            manifest_required_sections_present,
+            {"sections": list(manifest_payload.keys()) if isinstance(manifest_payload, dict) else []},
+        ),
+        _check(
+            "learned_submission_manifest_artifacts_match",
+            not missing_manifest_artifacts,
+            {"missing_from_manifest": missing_manifest_artifacts},
+        ),
+        _check(
+            "learned_submission_manifest_hashes_match",
+            not artifact_hash_mismatches,
+            {"mismatches": artifact_hash_mismatches[:20]},
+        ),
+        _check(
+            "learned_submission_manifest_policy_spec_provenance",
+            policy_spec_provenance_ok,
+            {"manifest_policy_spec": manifest_policy_spec, "bundle_policy_spec": report_policy_spec},
+        ),
         _check(
             "rl_reports_ok",
             bool(json_payloads.get("rl_freeze_check", {}).get("ok"))
@@ -543,6 +810,11 @@ def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str
         "policy": report.get("policy"),
         "suite": suite,
         "artifacts": {name: str(path) for name, path in all_resolved.items()},
+        "submission_manifest": {
+            "schema_version": manifest_payload.get("schema_version") if isinstance(manifest_payload, dict) else None,
+            "unknown_fields": _manifest_unknown_fields(manifest_payload) if isinstance(manifest_payload, dict) else [],
+            "artifact_count": len(manifest_artifacts),
+        },
         "checks": checks,
     }
 
@@ -618,6 +890,13 @@ def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, 
         bundle_load_error = f"{type(exc).__name__}: {exc}"
 
     artifacts = validation.get("artifacts", {})
+    manifest_payload: dict[str, Any] = {}
+    manifest_path = Path(str(artifacts.get("learned_submission_manifest", "")))
+    if manifest_path.exists():
+        try:
+            manifest_payload = _read_json(manifest_path)
+        except Exception:
+            manifest_payload = {}
     summary_rows: list[dict[str, str]] = []
     results_rows: list[dict[str, str]] = []
     csv_errors: list[dict[str, str]] = []
@@ -655,6 +934,9 @@ def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, 
         limitations.append("planner_guardrails_present")
     if not scores:
         limitations.append("score_v0_unavailable")
+    unknown_manifest_fields = _manifest_unknown_fields(manifest_payload) if manifest_payload else []
+    if unknown_manifest_fields:
+        limitations.append("submission_disclosure_incomplete")
 
     checks = [
         _check("bundle_validation_ok", bool(validation["ok"])),
@@ -662,6 +944,11 @@ def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, 
         _check("planner_summary_rows_present", len(summary_rows) > 0, {"rows": len(summary_rows)}),
         _check("planner_results_rows_present", len(results_rows) > 0, {"rows": len(results_rows)}),
         _check("score_v0_computable", bool(scores), {"summary_rows": len(summary_rows), "scored_rows": len(scores)}),
+        _check(
+            "submission_manifest_present",
+            bool(manifest_payload),
+            {"path": str(manifest_path) if str(manifest_path) else None},
+        ),
     ]
     ok = all(check["ok"] for check in checks)
     if not ok:
@@ -669,6 +956,8 @@ def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, 
     elif limited_sweep:
         recommendation = "manual_review_limited_sweep"
     elif total_collision_episodes or total_timeouts or total_errors or total_fallbacks:
+        recommendation = "manual_review_required"
+    elif unknown_manifest_fields:
         recommendation = "manual_review_required"
     else:
         recommendation = "leaderboard_candidate"
@@ -729,6 +1018,16 @@ def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, 
             "worst": _round_or_none(max(scores) if scores else None),
             "best": _round_or_none(min(scores) if scores else None),
             "rows": scored_rows,
+        },
+        "submission_manifest": {
+            "schema_version": manifest_payload.get("schema_version") if manifest_payload else None,
+            "policy": manifest_payload.get("policy") if manifest_payload else None,
+            "benchmark": manifest_payload.get("benchmark") if manifest_payload else None,
+            "dependencies": manifest_payload.get("dependencies") if manifest_payload else None,
+            "training_disclosure": manifest_payload.get("training_disclosure") if manifest_payload else None,
+            "inference_disclosure": manifest_payload.get("inference_disclosure") if manifest_payload else None,
+            "review_notes": manifest_payload.get("review_notes") if manifest_payload else None,
+            "unknown_fields": unknown_manifest_fields,
         },
         "dimensions": {
             "safety": safety,

@@ -34,6 +34,7 @@ Attach or link:
 - any changed scenario/config files
 - any planner source or package version needed to reproduce
 - `learned_submission_bundle.json` for learned/RL policy submissions when using the bundle command
+- `learned_submission_manifest.json` for learned/RL policy provenance, dependencies, artifact hashes, and training/inference disclosure
 - `learned_bundle_review.json` for learned/RL policy submissions when using the reviewer command
 - `policy_spec.json` and `policy_artifacts/` for learned/RL policy submissions loaded through `--policy-spec`
 - `rl_contract.json`, `rl_freeze_check.json`, `rl_smoke.json`, and `rl_calibration.json` for learned/RL policy submissions
@@ -65,10 +66,11 @@ python -m microbench.cli learned-submission-bundle \
   --out-dir runs_learned_bundle \
   --method learned_policy_spec \
   --policy-spec path/to/policy_spec.json \
+  --submission-manifest path/to/submission_manifest_overrides.json \
   --require-pass
 ```
 
-Use `--method learned_policy_spec --policy-spec ...` when your learned policy should be evaluated through the standard planner-sweep CSV path. The same spec is also used for RL wrapper smoke/calibration artifacts in the bundle. See [LEARNED_POLICY_ADOPTION.md](LEARNED_POLICY_ADOPTION.md) for a concrete exported-policy example using `model_predict`, `callable`, copied policy artifacts, validation, and reviewer summaries.
+Use `--method learned_policy_spec --policy-spec ...` when your learned policy should be evaluated through the standard planner-sweep CSV path. The same spec is also used for RL wrapper smoke/calibration artifacts in the bundle. Use `--submission-manifest` to fill in training/inference disclosures; otherwise the generated manifest marks unknown fields as `undisclosed` for reviewer follow-up. See [LEARNED_POLICY_ADOPTION.md](LEARNED_POLICY_ADOPTION.md) for a concrete exported-policy example using `model_predict`, `callable`, copied policy artifacts, validation, and reviewer summaries.
 
 Then validate the saved bundle before attaching it:
 
@@ -134,6 +136,7 @@ Include the relevant rows from `summary.csv`. At minimum include:
 - [ ] For learned/RL policies, I included `learned_bundle_review.json` or pasted the reviewer summary.
 - [ ] For learned/RL policies, I ran `validate-learned-bundle --bundle runs_learned_bundle --require-pass` or validated the equivalent artifacts manually.
 - [ ] For learned/RL policies, I ran `review-learned-bundle --bundle runs_learned_bundle --require-pass` or included an equivalent safety/mission/compute summary.
+- [ ] For learned/RL policies, I reviewed `learned_submission_manifest.json` and filled in training/inference disclosure fields rather than leaving material fields `undisclosed`.
 - [ ] I included enough config and command detail to reproduce the result.
 
 ## Notes

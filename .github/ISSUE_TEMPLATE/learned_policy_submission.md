@@ -19,7 +19,7 @@ labels: learned-policy, benchmark-result
 - [ ] I ran `python -m microbench.cli rl-freeze-check --require-pass --json` and attached the report.
 - [ ] I ran `python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass`.
 - [ ] I ran `python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass`.
-- [ ] I ran `python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method learned_policy_spec --policy-spec path/to/policy_spec.json --require-pass` or attached equivalent artifacts.
+- [ ] I ran `python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method learned_policy_spec --policy-spec path/to/policy_spec.json --submission-manifest path/to/submission_manifest_overrides.json --require-pass` or attached equivalent artifacts.
 - [ ] I ran `python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass` or validated equivalent artifacts manually.
 - [ ] I ran `python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --require-pass` or attached an equivalent reviewer summary.
 - [ ] I did not use simulator ground truth outside the public RL observation and info surfaces.
@@ -40,6 +40,7 @@ labels: learned-policy, benchmark-result
 
 - Weight artifact location/version:
 - Policy spec path:
+- Submission manifest path:
 - Inference dependencies:
 - Uses external services at inference time: yes/no
 - Deterministic inference with fixed seed: yes/no
@@ -53,6 +54,7 @@ Attach or link:
 - `result_schema.json`
 - `_generated_scenarios/<suite>/suite_manifest.yaml`
 - `learned_submission_bundle.json`
+- `learned_submission_manifest.json`
 - `learned_bundle_review.json`
 - `policy_spec.json` and `policy_artifacts/` if using `--policy-spec`
 - `rl_contract.json`
@@ -75,7 +77,7 @@ python -m microbench.cli rl-freeze-check --require-pass --json
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-contract --json
-python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method learned_policy_spec --policy-spec path/to/policy_spec.json --require-pass
+python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method learned_policy_spec --policy-spec path/to/policy_spec.json --submission-manifest path/to/submission_manifest_overrides.json --require-pass
 python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass
 python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --require-pass
 ```

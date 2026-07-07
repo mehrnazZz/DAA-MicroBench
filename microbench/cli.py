@@ -813,6 +813,7 @@ def _learned_submission_bundle(args) -> None:
         max_steps=args.max_steps,
         max_runs=args.max_runs,
         save_trace=bool(args.save_trace),
+        submission_manifest=args.submission_manifest,
     )
 
     if args.json:
@@ -1218,6 +1219,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_lsb.add_argument("--max-steps", type=int, default=None, help="Optional cap for each RL wrapper episode")
     p_lsb.add_argument("--max-runs", type=int, default=None, help="Optional cap for planner sweep episodes")
     p_lsb.add_argument("--save-trace", action="store_true", help="Save traces for planner sweep rows")
+    p_lsb.add_argument(
+        "--submission-manifest",
+        default=None,
+        help="Optional JSON disclosure overrides merged into learned_submission_manifest.json",
+    )
     p_lsb.add_argument("--json", action="store_true", help="Emit machine-readable bundle report")
     p_lsb.add_argument("--require-pass", action="store_true", help="Fail if any bundle check fails")
 

@@ -90,6 +90,45 @@ python -m microbench.cli learned-submission-bundle \
   --require-pass
 ```
 
+For real submissions, pass a JSON disclosure overlay to populate the generated `learned_submission_manifest.json`:
+
+```json
+{
+  "training_disclosure": {
+    "training_suites": ["my_training_suite"],
+    "environment_steps": 1000000,
+    "observation_normalization": "running mean/std fitted on training rollouts",
+    "reward_configuration": {"progress": 1.0, "collision": -10.0},
+    "external_data": "none",
+    "pretrained_models": "none",
+    "hardware": "1x local GPU"
+  },
+  "inference_disclosure": {
+    "uses_external_services": false,
+    "runtime_notes": "deterministic CPU inference"
+  },
+  "dependencies": {
+    "inference_packages": [
+      {"name": "numpy", "version": ">=1.24"}
+    ]
+  },
+  "review_notes": {
+    "privileged_information": "none"
+  }
+}
+```
+
+```bash
+python -m microbench.cli learned-submission-bundle \
+  --out-dir runs_external_model_predict_bundle \
+  --method learned_policy_spec \
+  --policy-spec examples/external_policy_model_predict_spec.json \
+  --submission-manifest path/to/submission_manifest_overrides.json \
+  --max-runs 1 \
+  --max-steps 3 \
+  --require-pass
+```
+
 Validate and summarize the bundle:
 
 ```bash
@@ -108,6 +147,7 @@ python -m microbench.cli review-learned-bundle \
 For review, include:
 
 - exact DAA Microbench commit and policy source commit
+- `learned_submission_manifest.json`
 - `policy_spec.json` and any `policy_artifacts/`
 - inference dependency versions and whether inference is deterministic
 - training scenarios/suites, seeds, number of environment steps, reward configuration, and observation normalization

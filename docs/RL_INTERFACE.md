@@ -274,7 +274,7 @@ python -m microbench.cli review-learned-bundle \
   --require-pass
 ```
 
-The bundle command writes a portable `policy_spec.json`; when the spec has a file `artifact_path`, it also copies the artifact under `policy_artifacts/` and rewrites the bundled spec to point at that copy.
+The bundle command writes a portable `policy_spec.json`; when the spec has a file `artifact_path`, it also copies the artifact under `policy_artifacts/` and rewrites the bundled spec to point at that copy. It also writes `learned_submission_manifest.json`, which records policy-spec provenance, artifact hashes, dependency declarations, and training/inference disclosure fields. Pass `--submission-manifest path/to/overrides.json` to merge reviewer-ready disclosures into the generated manifest.
 
 See [LEARNED_POLICY_ADOPTION.md](LEARNED_POLICY_ADOPTION.md) for the full exported-policy-to-bundle workflow and submission manifest checklist.
 
