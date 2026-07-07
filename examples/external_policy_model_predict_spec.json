@@ -1,0 +1,18 @@
+{
+  "schema_version": "0.1",
+  "policy_name": "external_model_predict_fixture",
+  "adapter": "model_predict",
+  "factory": "exported_policy:make_model",
+  "pythonpath": [
+    "."
+  ],
+  "artifact_path": "exported_linear_policy.json",
+  "factory_kwargs": {
+    "artifact_path": "exported_linear_policy.json",
+    "speed_fraction": 0.85,
+    "avoid_gain": 0.45
+  },
+  "deterministic": true,
+  "clip": true,
+  "description": "Dependency-free model_predict example that loads an exported JSON policy artifact through a Python factory."
+}

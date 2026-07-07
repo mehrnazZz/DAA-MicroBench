@@ -63,6 +63,7 @@ python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-
 python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
 python -m microbench.cli rl-smoke --out-dir runs_external_rl_smoke --policy-spec examples/external_policy_spec.json --require-pass
+python -m microbench.cli rl-smoke --out-dir runs_external_model_predict_smoke --policy-spec examples/external_policy_model_predict_spec.json --max-steps 3 --require-pass
 python -m microbench.cli run --scenario config/scenarios/stacked_swap_3d.yaml --method learned_policy_spec --policy-spec examples/external_policy_spec.json --n 4 --seed 0 --comm ideal_50hz --out-dir runs_external_policy_planner
 python -m microbench.cli rl-smoke --out-dir runs_rl_tiny_learned --policy tiny_learned --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
@@ -78,7 +79,7 @@ You can also inspect `microbench/planners/` (each planner module maps to a metho
 `orca_heuristic` is the canonical ORCA-like geometric baseline; `orca_expert` remains accepted as a compatibility alias for older scripts and result folders.
 See [docs/BASELINES.md](docs/BASELINES.md) for baseline roles, limitations, and recommended comparison sets.
 See [docs/DESIGN_V1.md](docs/DESIGN_V1.md) for the benchmark contract and [docs/PLANNER_API.md](docs/PLANNER_API.md) for a planner implementation tutorial.
-See [docs/RL_INTERFACE.md](docs/RL_INTERFACE.md) for PettingZoo/Gymnasium-style wrappers and smoke checks, and [docs/RL_STABLE_V1_FREEZE.md](docs/RL_STABLE_V1_FREEZE.md) for RL stable-v1 freeze criteria.
+See [docs/RL_INTERFACE.md](docs/RL_INTERFACE.md) for PettingZoo/Gymnasium-style wrappers and smoke checks, [docs/LEARNED_POLICY_ADOPTION.md](docs/LEARNED_POLICY_ADOPTION.md) for exported learned-policy specs and bundle review, and [docs/RL_STABLE_V1_FREEZE.md](docs/RL_STABLE_V1_FREEZE.md) for RL stable-v1 freeze criteria.
 See [docs/README.md](docs/README.md) for the full documentation map.
 
 Run a heterogeneous episode with one explicit planner per drone:

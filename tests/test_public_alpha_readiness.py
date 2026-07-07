@@ -43,6 +43,7 @@ def test_release_readiness_script_runs_expected_checks() -> None:
     assert "baseline-evidence --out-dir" in script
     assert "rl-smoke --out-dir" in script
     assert "--policy-spec examples/external_policy_spec.json" in script
+    assert "--policy-spec examples/external_policy_model_predict_spec.json" in script
     assert "--policy tiny_learned" in script
     assert "rl-calibration --out-dir" in script
     assert "rl-contract --json" in script

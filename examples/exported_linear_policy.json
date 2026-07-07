@@ -1,0 +1,8 @@
+{
+  "schema_version": "example-exported-linear-v0",
+  "model_id": "example_exported_linear_goal_avoidance_v0",
+  "speed_fraction": 0.85,
+  "avoid_gain": 0.45,
+  "neighbor_influence_radius_m": 4.0,
+  "description": "Dependency-free exported-policy fixture used by external_policy_model_predict_spec.json and external_policy_callable_spec.json."
+}

@@ -105,6 +105,20 @@ def _pythonpath_entries(spec: dict[str, Any], *, spec_path: Path) -> list[str]:
     return entries
 
 
+def _resolve_factory_kwargs(value: Any, *, spec_path: Path) -> Any:
+    if isinstance(value, dict):
+        out: dict[str, Any] = {}
+        for key, item in value.items():
+            if isinstance(item, str) and str(key).endswith(("_path", "_dir")):
+                out[str(key)] = str(_resolve_relative(item, spec_path=spec_path))
+            else:
+                out[str(key)] = _resolve_factory_kwargs(item, spec_path=spec_path)
+        return out
+    if isinstance(value, list):
+        return [_resolve_factory_kwargs(item, spec_path=spec_path) for item in value]
+    return value
+
+
 def _import_object(path: str, *, pythonpath: list[str]) -> Any:
     for entry in reversed(pythonpath):
         if entry and entry not in sys.path:
@@ -132,6 +146,7 @@ def _summary(spec: dict[str, Any], *, spec_path: Path) -> dict[str, Any]:
         "artifact_path": spec.get("artifact_path"),
         "callable": spec.get("callable"),
         "factory": spec.get("factory"),
+        "factory_kwargs": spec.get("factory_kwargs"),
     }
 
 
@@ -169,7 +184,7 @@ def load_policy_from_spec(path: str | Path, *, seed: int = 0) -> LoadedPolicySpe
         if not target:
             raise ValueError("model_predict policy spec requires factory")
         factory = _import_object(target, pythonpath=pythonpath)
-        kwargs = dict(spec.get("factory_kwargs", {}) or {})
+        kwargs = _resolve_factory_kwargs(dict(spec.get("factory_kwargs", {}) or {}), spec_path=spec_path)
         model = factory(**kwargs) if callable(factory) else factory
         policy = ModelPredictPolicyAdapter(model, deterministic=deterministic, clip=clip)
     else:  # pragma: no cover - validated before this branch.

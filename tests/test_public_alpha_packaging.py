@@ -46,6 +46,7 @@ def test_public_docs_index_and_templates_exist() -> None:
         "docs/BASELINES.md",
         "docs/LEADERBOARD.md",
         "docs/RESULT_SUBMISSION.md",
+        "docs/LEARNED_POLICY_ADOPTION.md",
         "docs/RL_STABLE_V1_FREEZE.md",
     ]
     for rel in required_docs:
@@ -56,6 +57,12 @@ def test_public_docs_index_and_templates_exist() -> None:
     external_spec = ROOT / "examples/external_policy_spec.json"
     assert external_spec.exists()
     assert "tiny_linear_json" in external_spec.read_text(encoding="utf-8")
+    model_spec = ROOT / "examples/external_policy_model_predict_spec.json"
+    callable_spec = ROOT / "examples/external_policy_callable_spec.json"
+    assert model_spec.exists()
+    assert callable_spec.exists()
+    assert "model_predict" in model_spec.read_text(encoding="utf-8")
+    assert "callable" in callable_spec.read_text(encoding="utf-8")
 
     required_templates = [
         ".github/ISSUE_TEMPLATE/benchmark_result.md",
@@ -80,6 +87,7 @@ def test_public_docs_index_and_templates_exist() -> None:
     assert "learned_submission_bundle.json" in learned_template
     assert "learned_bundle_review.json" in learned_template
     assert "policy_spec.json" in learned_template
+    assert "LEARNED_POLICY_ADOPTION.md" in learned_template
     assert "rl_contract.json" in learned_template
     assert "rl_freeze_check.json" in learned_template
     assert "rl_smoke.json" in learned_template

@@ -50,6 +50,7 @@ python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --
 python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
 python -m microbench.cli rl-smoke --out-dir runs_external_rl_smoke --policy-spec examples/external_policy_spec.json --require-pass
+python -m microbench.cli rl-smoke --out-dir runs_external_model_predict_smoke --policy-spec examples/external_policy_model_predict_spec.json --max-steps 3 --require-pass
 python -m microbench.cli run --scenario config/scenarios/stacked_swap_3d.yaml --method learned_policy_spec --policy-spec examples/external_policy_spec.json --n 4 --seed 0 --comm ideal_50hz --out-dir runs_external_policy_planner
 python -m microbench.cli rl-smoke --out-dir runs_rl_tiny_learned --policy tiny_learned --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
@@ -71,6 +72,7 @@ python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --re
 - The PettingZoo/Gymnasium-style RL interface is available for public-alpha experimentation, but observation vectors and reward defaults are not stable-v1 contracts yet.
 - `rl-smoke` checks wrapper API health and 2D/3D coverage, not policy quality or leaderboard safety.
 - `--policy-spec` lets `rl-smoke`, `rl-calibration`, `learned_policy_spec`, and `learned-submission-bundle` load trusted external JSON/YAML policy specs for learned-policy adoption tests.
+- `examples/external_policy_model_predict_spec.json` and `examples/external_policy_callable_spec.json` show dependency-free import-based specs for exported learned-policy adopters.
 - `learned_policy_spec` is an externally configured planner bridge for standard CSV sweeps, not a built-in reference baseline.
 - `rl-calibration` adds compact 3D/degraded wrapper exposure for learned-policy submissions, but it is not a leaderboard score.
 - `rl-contract` publishes schema-versioned action, observation, and reward metadata for adapter authors, but those versions are still pre-v1.

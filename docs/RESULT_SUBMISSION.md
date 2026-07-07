@@ -68,7 +68,7 @@ python -m microbench.cli learned-submission-bundle \
   --require-pass
 ```
 
-Use `--method learned_policy_spec --policy-spec ...` when your learned policy should be evaluated through the standard planner-sweep CSV path. The same spec is also used for RL wrapper smoke/calibration artifacts in the bundle.
+Use `--method learned_policy_spec --policy-spec ...` when your learned policy should be evaluated through the standard planner-sweep CSV path. The same spec is also used for RL wrapper smoke/calibration artifacts in the bundle. See [LEARNED_POLICY_ADOPTION.md](LEARNED_POLICY_ADOPTION.md) for a concrete exported-policy example using `model_predict`, `callable`, copied policy artifacts, validation, and reviewer summaries.
 
 Then validate the saved bundle before attaching it:
 

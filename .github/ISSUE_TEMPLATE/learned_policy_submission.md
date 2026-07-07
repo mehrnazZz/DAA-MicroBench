@@ -19,7 +19,7 @@ labels: learned-policy, benchmark-result
 - [ ] I ran `python -m microbench.cli rl-freeze-check --require-pass --json` and attached the report.
 - [ ] I ran `python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass`.
 - [ ] I ran `python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass`.
-- [ ] I ran `python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method <method> --policy <policy> --require-pass` or attached equivalent artifacts.
+- [ ] I ran `python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method learned_policy_spec --policy-spec path/to/policy_spec.json --require-pass` or attached equivalent artifacts.
 - [ ] I ran `python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass` or validated equivalent artifacts manually.
 - [ ] I ran `python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --require-pass` or attached an equivalent reviewer summary.
 - [ ] I did not use simulator ground truth outside the public RL observation and info surfaces.
@@ -39,6 +39,7 @@ labels: learned-policy, benchmark-result
 ## Weights And Dependencies
 
 - Weight artifact location/version:
+- Policy spec path:
 - Inference dependencies:
 - Uses external services at inference time: yes/no
 - Deterministic inference with fixed seed: yes/no
@@ -74,11 +75,11 @@ python -m microbench.cli rl-freeze-check --require-pass --json
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-contract --json
-python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method <method> --policy <policy> --require-pass
+python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method learned_policy_spec --policy-spec path/to/policy_spec.json --require-pass
 python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass
 python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --require-pass
 ```
 
 ## Notes
 
-See `docs/RL_INTERFACE.md`, `docs/RL_STABLE_V1_FREEZE.md`, `docs/RESULT_SUBMISSION.md`, and `docs/LEADERBOARD.md`.
+See `docs/RL_INTERFACE.md`, `docs/LEARNED_POLICY_ADOPTION.md`, `docs/RL_STABLE_V1_FREEZE.md`, `docs/RESULT_SUBMISSION.md`, and `docs/LEADERBOARD.md`.

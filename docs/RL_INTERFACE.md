@@ -210,6 +210,8 @@ Use a JSON or YAML policy spec when you want the CLI to load an exported learned
 }
 ```
 
+For production-style import paths, see `examples/external_policy_model_predict_spec.json` and `examples/external_policy_callable_spec.json`. They load `examples/exported_linear_policy.json` through `examples/exported_policy.py` without requiring any external RL framework.
+
 Supported public-alpha adapters are:
 
 - `tiny_linear_json`: loads a DAA tiny-linear JSON weight artifact.
@@ -217,7 +219,7 @@ Supported public-alpha adapters are:
 - `model_predict`: imports a Python factory/class with `factory: "module:Factory"` and wraps objects exposing `predict(...)`, `compute_single_action(...)`, or callable inference.
 - `builtin`: aliases an existing built-in policy name for reproducible command files.
 
-Relative `artifact_path` and `pythonpath` entries resolve from the spec file. Import-based specs execute local Python code, so only use specs from trusted sources.
+Relative `artifact_path` and `pythonpath` entries resolve from the spec file. Path-like `factory_kwargs` such as `artifact_path` and `checkpoint_dir` also resolve from the spec file. Import-based specs execute local Python code, so only use specs from trusted sources.
 
 Run the spec through the learned-policy health gates:
 
@@ -230,6 +232,12 @@ python -m microbench.cli rl-smoke \
 python -m microbench.cli rl-calibration \
   --out-dir runs_external_rl_calibration \
   --policy-spec examples/external_policy_spec.json \
+  --require-pass
+
+python -m microbench.cli rl-smoke \
+  --out-dir runs_external_model_predict_smoke \
+  --policy-spec examples/external_policy_model_predict_spec.json \
+  --max-steps 3 \
   --require-pass
 ```
 
@@ -267,6 +275,8 @@ python -m microbench.cli review-learned-bundle \
 ```
 
 The bundle command writes a portable `policy_spec.json`; when the spec has a file `artifact_path`, it also copies the artifact under `policy_artifacts/` and rewrites the bundled spec to point at that copy.
+
+See [LEARNED_POLICY_ADOPTION.md](LEARNED_POLICY_ADOPTION.md) for the full exported-policy-to-bundle workflow and submission manifest checklist.
 
 DAA Microbench also ships a tiny frozen learned-policy fixture:
 

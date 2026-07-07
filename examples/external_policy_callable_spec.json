@@ -1,0 +1,14 @@
+{
+  "schema_version": "0.1",
+  "policy_name": "external_callable_fixture",
+  "adapter": "callable",
+  "callable": "exported_policy:callable_policy",
+  "signature": "observation_info",
+  "pythonpath": [
+    "."
+  ],
+  "artifact_path": "exported_linear_policy.json",
+  "deterministic": true,
+  "clip": true,
+  "description": "Dependency-free callable example shaped as callable_policy(observation, info) -> normalized action."
+}
