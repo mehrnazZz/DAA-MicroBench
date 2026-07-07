@@ -5,7 +5,11 @@ from pathlib import Path
 import subprocess
 import sys
 
-from microbench.rl.submission_bundle import run_learned_policy_submission_bundle, validate_learned_policy_submission_bundle
+from microbench.rl.submission_bundle import (
+    review_learned_policy_submission_bundle,
+    run_learned_policy_submission_bundle,
+    validate_learned_policy_submission_bundle,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,6 +51,15 @@ def test_learned_policy_submission_bundle_helper_writes_expected_artifacts(tmp_p
     validation_from_json = validate_learned_policy_submission_bundle(bundle=bundle_root / "learned_submission_bundle.json")
     assert validation_from_json["ok"] is True
     assert validation_from_json["bundle_json"].endswith("learned_submission_bundle.json")
+
+    review = review_learned_policy_submission_bundle(bundle=bundle_root)
+    assert review["schema_version"] == "0.1"
+    assert review["ok"] is True
+    assert review["method"] == "learned_tiny"
+    assert review["recommendation"] == "manual_review_limited_sweep"
+    assert "limited_planner_sweep" in review["limitations"]
+    assert review["score_v0"]["mean"] is not None
+    assert review["dimensions"]["safety"]["collision_episode_count"] == 0
 
 
 def test_learned_submission_bundle_cli_json_and_gate(tmp_path: Path) -> None:
@@ -106,6 +119,28 @@ def test_learned_submission_bundle_cli_json_and_gate(tmp_path: Path) -> None:
     validation = json.loads(validation_proc.stdout)
     assert validation["ok"] is True
     assert validation["method"] == "learned_tiny"
+
+    review_proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "microbench.cli",
+            "review-learned-bundle",
+            "--bundle",
+            str(out_dir),
+            "--require-pass",
+            "--json",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    review = json.loads(review_proc.stdout)
+    assert review["ok"] is True
+    assert review["method"] == "learned_tiny"
+    assert review["recommendation"] == "manual_review_limited_sweep"
+    assert review["dimensions"]["compute"]["planner_error_count"] == 0
 
 
 def test_validate_learned_bundle_reports_missing_artifacts(tmp_path: Path) -> None:

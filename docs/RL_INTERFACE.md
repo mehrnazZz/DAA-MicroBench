@@ -243,6 +243,16 @@ python -m microbench.cli validate-learned-bundle \
 
 The validator accepts either the bundle directory or `learned_submission_bundle.json`. It checks required artifacts, parses JSON/CSV files, confirms RL smoke/calibration/freeze reports are passing, confirms planner acceptance has no failures, and verifies the planner CSVs are present and nonempty.
 
+Summarize the same bundle for manual leaderboard review:
+
+```bash
+python -m microbench.cli review-learned-bundle \
+  --bundle runs_learned_bundle \
+  --require-pass
+```
+
+The reviewer does not rerun simulations. It validates the bundle, computes the documented v0 score from `summary.csv`, reports safety/mission/compute/communication/observation dimensions, and flags limitations such as limited planner sweeps, collision episodes, or planner guardrails.
+
 ## Compatibility Check
 
 For custom adapters, use the lightweight compatibility checker without installing PettingZoo's optional test helpers:

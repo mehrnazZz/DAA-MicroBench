@@ -19,6 +19,7 @@ from microbench.types import RunSpec
 
 LEARNED_SUBMISSION_BUNDLE_SCHEMA_VERSION = "0.1"
 LEARNED_SUBMISSION_BUNDLE_VALIDATION_SCHEMA_VERSION = "0.1"
+LEARNED_SUBMISSION_BUNDLE_REVIEW_SCHEMA_VERSION = "0.1"
 LEARNED_SUBMISSION_BUNDLE_FILENAME = "learned_submission_bundle.json"
 EXPECTED_BUNDLE_ARTIFACTS = {
     "rl_contract": "rl_contract.json",
@@ -69,6 +70,35 @@ def _read_csv_rows(path: Path) -> list[dict[str, str]]:
 
     with path.open("r", newline="", encoding="utf-8") as f:
         return list(csv.DictReader(f))
+
+
+def _to_float(value: Any) -> float | None:
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    return out if math.isfinite(out) else None
+
+
+def _values(rows: list[dict[str, Any]], field: str) -> list[float]:
+    out: list[float] = []
+    for row in rows:
+        value = _to_float(row.get(field))
+        if value is not None:
+            out.append(value)
+    return out
+
+
+def _mean(values: list[float]) -> float | None:
+    return sum(values) / len(values) if values else None
+
+
+def _sum_values(values: list[float]) -> float | None:
+    return sum(values) if values else None
+
+
+def _round_or_none(value: float | None, ndigits: int = 6) -> float | None:
+    return None if value is None else round(float(value), ndigits)
 
 
 def _method_metadata(method: str) -> dict[str, Any] | None:
@@ -462,4 +492,200 @@ def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str
         "suite": suite,
         "artifacts": {name: str(path) for name, path in resolved.items()},
         "checks": checks,
+    }
+
+
+def _score_v0(row: dict[str, Any]) -> float | None:
+    collision_episode_rate = _to_float(row.get("collision_episode_rate"))
+    unique_collision_pairs_mean = _to_float(row.get("unique_collision_pairs_mean"))
+    collision_pair_ticks_mean = _to_float(row.get("collision_pair_ticks_mean"))
+    min_sep_p05_mean = _to_float(row.get("min_sep_p05_mean"))
+    completion_rate_mean = _to_float(row.get("completion_rate_mean"))
+    deadlock_time_pct_mean = _to_float(row.get("deadlock_time_pct_mean"))
+    planner_ms_p95 = _to_float(row.get("planner_ms_p95"))
+
+    required = (
+        collision_episode_rate,
+        unique_collision_pairs_mean,
+        collision_pair_ticks_mean,
+        min_sep_p05_mean,
+        completion_rate_mean,
+        deadlock_time_pct_mean,
+        planner_ms_p95,
+    )
+    if any(value is None for value in required):
+        return None
+
+    mean_time_to_goal_mean = _to_float(row.get("mean_time_to_goal_mean")) or 0.0
+    safety_penalty = (
+        1000.0 * collision_episode_rate
+        + 50.0 * unique_collision_pairs_mean
+        + 0.1 * collision_pair_ticks_mean
+        + 10.0 * max(0.0, -min_sep_p05_mean)
+    )
+    mission_penalty = (
+        100.0 * (1.0 - completion_rate_mean)
+        + 2.0 * deadlock_time_pct_mean
+        + 0.01 * mean_time_to_goal_mean
+    )
+    compute_penalty = 0.1 * planner_ms_p95
+    return safety_penalty + mission_penalty + compute_penalty
+
+
+def _score_rows(summary_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    scored: list[dict[str, Any]] = []
+    for row in summary_rows:
+        score = _score_v0(row)
+        scored.append(
+            {
+                "method": row.get("method"),
+                "scenario": row.get("scenario"),
+                "comm_profile": row.get("comm_profile"),
+                "N": row.get("N"),
+                "episodes": row.get("episodes"),
+                "score_v0": _round_or_none(score),
+                "collision_episode_rate": _round_or_none(_to_float(row.get("collision_episode_rate"))),
+                "completion_rate_mean": _round_or_none(_to_float(row.get("completion_rate_mean"))),
+                "min_sep_p05_mean": _round_or_none(_to_float(row.get("min_sep_p05_mean"))),
+                "planner_ms_p95": _round_or_none(_to_float(row.get("planner_ms_p95"))),
+            }
+        )
+    return scored
+
+
+def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, Any]:
+    """Build a concise reviewer summary for a learned-policy submission bundle."""
+
+    validation = validate_learned_policy_submission_bundle(bundle=bundle)
+    bundle_json = Path(validation["bundle_json"])
+    try:
+        bundle_report = _read_json(bundle_json)
+        bundle_load_error = None
+    except Exception as exc:
+        bundle_report = {}
+        bundle_load_error = f"{type(exc).__name__}: {exc}"
+
+    artifacts = validation.get("artifacts", {})
+    summary_rows: list[dict[str, str]] = []
+    results_rows: list[dict[str, str]] = []
+    csv_errors: list[dict[str, str]] = []
+    for name, target in (("planner_summary", summary_rows), ("planner_results", results_rows)):
+        path = Path(str(artifacts.get(name, "")))
+        if not path.exists():
+            continue
+        try:
+            target.extend(_read_csv_rows(path))
+        except Exception as exc:
+            csv_errors.append({"artifact": name, "path": str(path), "error": f"{type(exc).__name__}: {exc}"})
+
+    scored_rows = _score_rows(summary_rows)
+    scores = [float(row["score_v0"]) for row in scored_rows if row.get("score_v0") is not None]
+    total_collision_episodes = int(_sum_values(_values(results_rows, "collision_episode")) or 0)
+    total_timeouts = int(_sum_values(_values(results_rows, "planner_timeout_count")) or 0)
+    total_errors = int(_sum_values(_values(results_rows, "planner_error_count")) or 0)
+    total_fallbacks = int(_sum_values(_values(results_rows, "planner_fallback_count")) or 0)
+
+    run_count = int(bundle_report.get("planner_sweep", {}).get("run_count", 0) or 0)
+    planned_run_count = int(bundle_report.get("planner_sweep", {}).get("planned_run_count", 0) or 0)
+    max_runs = bundle_report.get("max_runs")
+    limited_sweep = max_runs is not None and planned_run_count > run_count
+
+    limitations: list[str] = []
+    if not validation["ok"]:
+        limitations.append("bundle_validation_failed")
+    if bundle_load_error is not None:
+        limitations.append("bundle_report_unreadable")
+    if limited_sweep:
+        limitations.append("limited_planner_sweep")
+    if total_collision_episodes > 0:
+        limitations.append("collision_episodes_present")
+    if total_timeouts or total_errors or total_fallbacks:
+        limitations.append("planner_guardrails_present")
+    if not scores:
+        limitations.append("score_v0_unavailable")
+
+    checks = [
+        _check("bundle_validation_ok", bool(validation["ok"])),
+        _check("bundle_report_loads", bundle_load_error is None, {"error": bundle_load_error}),
+        _check("planner_summary_rows_present", len(summary_rows) > 0, {"rows": len(summary_rows)}),
+        _check("planner_results_rows_present", len(results_rows) > 0, {"rows": len(results_rows)}),
+        _check("score_v0_computable", bool(scores), {"summary_rows": len(summary_rows), "scored_rows": len(scores)}),
+    ]
+    ok = all(check["ok"] for check in checks)
+    if not ok:
+        recommendation = "fix_artifacts"
+    elif limited_sweep:
+        recommendation = "manual_review_limited_sweep"
+    elif total_collision_episodes or total_timeouts or total_errors or total_fallbacks:
+        recommendation = "manual_review_required"
+    else:
+        recommendation = "leaderboard_candidate"
+
+    safety = {
+        "collision_episode_count": total_collision_episodes,
+        "collision_episode_rate_mean": _round_or_none(_mean(_values(summary_rows, "collision_episode_rate"))),
+        "collision_episode_rate_max": _round_or_none(max(_values(summary_rows, "collision_episode_rate")) if _values(summary_rows, "collision_episode_rate") else None),
+        "near_miss_episode_rate_mean": _round_or_none(_mean(_values(summary_rows, "near_miss_episode_rate"))),
+        "min_sep_p05_min_m": _round_or_none(min(_values(summary_rows, "min_sep_p05_mean")) if _values(summary_rows, "min_sep_p05_mean") else None),
+        "min_sep_min_m": _round_or_none(min(_values(summary_rows, "min_sep_min_mean")) if _values(summary_rows, "min_sep_min_mean") else None),
+    }
+    mission = {
+        "completion_rate_mean": _round_or_none(_mean(_values(summary_rows, "completion_rate_mean"))),
+        "completion_rate_min": _round_or_none(min(_values(summary_rows, "completion_rate_mean")) if _values(summary_rows, "completion_rate_mean") else None),
+        "deadlock_time_pct_mean": _round_or_none(_mean(_values(summary_rows, "deadlock_time_pct_mean"))),
+        "mean_time_to_goal_mean": _round_or_none(_mean(_values(summary_rows, "mean_time_to_goal_mean"))),
+    }
+    compute = {
+        "planner_ms_p95_max": _round_or_none(max(_values(summary_rows, "planner_ms_p95")) if _values(summary_rows, "planner_ms_p95") else None),
+        "planner_ms_mean_mean": _round_or_none(_mean(_values(summary_rows, "planner_ms_mean"))),
+        "planner_timeout_count": total_timeouts,
+        "planner_error_count": total_errors,
+        "planner_fallback_count": total_fallbacks,
+    }
+    communication = {
+        "bandwidth_Bps_mean": _round_or_none(_mean(_values(summary_rows, "comm_agent_msg_bandwidth_Bps_mean"))),
+        "drop_fraction_max": _round_or_none(max(_values(summary_rows, "comm_agent_msg_drop_fraction_mean")) if _values(summary_rows, "comm_agent_msg_drop_fraction_mean") else None),
+        "delivery_fraction_min": _round_or_none(min(_values(summary_rows, "comm_agent_msg_delivery_fraction_mean")) if _values(summary_rows, "comm_agent_msg_delivery_fraction_mean") else None),
+        "negotiation_proposals_mean": _round_or_none(_mean(_values(summary_rows, "comm_negotiation_proposals_mean"))),
+        "negotiation_acks_mean": _round_or_none(_mean(_values(summary_rows, "comm_negotiation_acks_mean"))),
+    }
+    observation = {
+        "neighbors_mean": _round_or_none(_mean(_values(summary_rows, "obs_neighbors_mean"))),
+        "v2v_fraction_mean": _round_or_none(_mean(_values(summary_rows, "obs_v2v_fraction_mean"))),
+        "sensor_fraction_mean": _round_or_none(_mean(_values(summary_rows, "obs_sensor_fraction_mean"))),
+        "stale_fraction_mean": _round_or_none(_mean(_values(summary_rows, "obs_stale_fraction_mean"))),
+        "empty_fraction_mean": _round_or_none(_mean(_values(summary_rows, "obs_empty_fraction_mean"))),
+    }
+
+    return {
+        "schema_version": LEARNED_SUBMISSION_BUNDLE_REVIEW_SCHEMA_VERSION,
+        "ok": ok,
+        "recommendation": recommendation,
+        "limitations": limitations,
+        "method": validation.get("method"),
+        "policy": validation.get("policy"),
+        "suite": validation.get("suite"),
+        "bundle_json": validation.get("bundle_json"),
+        "bundle_root": validation.get("bundle_root"),
+        "run_count": run_count,
+        "planned_run_count": planned_run_count,
+        "max_runs": max_runs,
+        "summary_row_count": len(summary_rows),
+        "result_row_count": len(results_rows),
+        "score_v0": {
+            "mean": _round_or_none(_mean(scores)),
+            "worst": _round_or_none(max(scores) if scores else None),
+            "best": _round_or_none(min(scores) if scores else None),
+            "rows": scored_rows,
+        },
+        "dimensions": {
+            "safety": safety,
+            "mission": mission,
+            "compute": compute,
+            "communication": communication,
+            "observation": observation,
+        },
+        "validation": validation,
+        "checks": checks,
+        "csv_errors": csv_errors,
     }

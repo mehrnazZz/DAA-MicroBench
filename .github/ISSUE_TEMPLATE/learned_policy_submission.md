@@ -21,6 +21,7 @@ labels: learned-policy, benchmark-result
 - [ ] I ran `python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass`.
 - [ ] I ran `python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method <method> --policy <policy> --require-pass` or attached equivalent artifacts.
 - [ ] I ran `python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass` or validated equivalent artifacts manually.
+- [ ] I ran `python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --require-pass` or attached an equivalent reviewer summary.
 - [ ] I did not use simulator ground truth outside the public RL observation and info surfaces.
 - [ ] I disclosed any reward shaping beyond the default public-alpha reward.
 
@@ -51,6 +52,7 @@ Attach or link:
 - `result_schema.json`
 - `_generated_scenarios/<suite>/suite_manifest.yaml`
 - `learned_submission_bundle.json`
+- `learned_bundle_review.json`
 - `rl_contract.json`
 - `rl_freeze_check.json`
 - `rl_smoke.json`
@@ -73,6 +75,7 @@ python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-
 python -m microbench.cli rl-contract --json
 python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method <method> --policy <policy> --require-pass
 python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass
+python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --require-pass
 ```
 
 ## Notes

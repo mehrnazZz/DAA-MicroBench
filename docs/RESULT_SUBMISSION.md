@@ -34,6 +34,7 @@ Attach or link:
 - any changed scenario/config files
 - any planner source or package version needed to reproduce
 - `learned_submission_bundle.json` for learned/RL policy submissions when using the bundle command
+- `learned_bundle_review.json` for learned/RL policy submissions when using the reviewer command
 - `rl_contract.json`, `rl_freeze_check.json`, `rl_smoke.json`, and `rl_calibration.json` for learned/RL policy submissions
 - representative failure traces for nonzero collision or near-miss-heavy results
 
@@ -71,6 +72,15 @@ Then validate the saved bundle before attaching it:
 ```bash
 python -m microbench.cli validate-learned-bundle \
   --bundle runs_learned_bundle \
+  --require-pass
+```
+
+Generate the reviewer summary to attach or paste into the submission:
+
+```bash
+python -m microbench.cli review-learned-bundle \
+  --bundle runs_learned_bundle \
+  --out runs_learned_bundle/learned_bundle_review.json \
   --require-pass
 ```
 
@@ -118,7 +128,9 @@ Include the relevant rows from `summary.csv`. At minimum include:
 - [ ] I included all runs, including failures.
 - [ ] I disclosed learned weights or external services.
 - [ ] For learned/RL policies, I included the learned submission bundle or the equivalent RL contract, freeze check, smoke report, and calibration report.
+- [ ] For learned/RL policies, I included `learned_bundle_review.json` or pasted the reviewer summary.
 - [ ] For learned/RL policies, I ran `validate-learned-bundle --bundle runs_learned_bundle --require-pass` or validated the equivalent artifacts manually.
+- [ ] For learned/RL policies, I ran `review-learned-bundle --bundle runs_learned_bundle --require-pass` or included an equivalent safety/mission/compute summary.
 - [ ] I included enough config and command detail to reproduce the result.
 
 ## Notes

@@ -68,6 +68,7 @@ python -m microbench.cli rl-contract --json
 python -m microbench.cli rl-freeze-check --require-pass --json
 python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method learned_tiny --policy tiny_learned --require-pass
 python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass
+python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --require-pass
 ```
 
 You can also inspect `microbench/planners/` (each planner module maps to a method name in the planner registry).

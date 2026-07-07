@@ -24,7 +24,11 @@ from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import run_rl_freeze_check
 from microbench.rl.policies import POLICY_NAMES
 from microbench.rl.schema import interface_contract
-from microbench.rl.submission_bundle import run_learned_policy_submission_bundle, validate_learned_policy_submission_bundle
+from microbench.rl.submission_bundle import (
+    review_learned_policy_submission_bundle,
+    run_learned_policy_submission_bundle,
+    validate_learned_policy_submission_bundle,
+)
 from microbench.tools import (
     build_baseline_audit,
     build_current_schema_candidate,
@@ -840,6 +844,62 @@ def _validate_learned_bundle(args) -> None:
         raise SystemExit(f"learned bundle validation failed: {','.join(failed)}")
 
 
+def _review_learned_bundle(args) -> None:
+    report = review_learned_policy_submission_bundle(bundle=args.bundle)
+
+    if args.out:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        score = report.get("score_v0", {})
+        safety = report.get("dimensions", {}).get("safety", {})
+        mission = report.get("dimensions", {}).get("mission", {})
+        compute = report.get("dimensions", {}).get("compute", {})
+        print(
+            f"review-learned-bundle: {status} method={report.get('method')} "
+            f"policy={report.get('policy')} suite={report.get('suite')} "
+            f"recommendation={report.get('recommendation')}"
+        )
+        print(
+            f"  runs: {report.get('run_count')}/{report.get('planned_run_count')} "
+            f"summary_rows={report.get('summary_row_count')} result_rows={report.get('result_row_count')}"
+        )
+        print(
+            f"  score_v0: mean={score.get('mean')} best={score.get('best')} worst={score.get('worst')}"
+        )
+        print(
+            "  safety: "
+            f"collision_episodes={safety.get('collision_episode_count')} "
+            f"collision_rate_mean={safety.get('collision_episode_rate_mean')} "
+            f"min_sep_p05_min_m={safety.get('min_sep_p05_min_m')}"
+        )
+        print(
+            "  mission: "
+            f"completion_rate_mean={mission.get('completion_rate_mean')} "
+            f"deadlock_time_pct_mean={mission.get('deadlock_time_pct_mean')}"
+        )
+        print(
+            "  compute: "
+            f"planner_ms_p95_max={compute.get('planner_ms_p95_max')} "
+            f"timeouts={compute.get('planner_timeout_count')} "
+            f"errors={compute.get('planner_error_count')} "
+            f"fallbacks={compute.get('planner_fallback_count')}"
+        )
+        if report.get("limitations"):
+            print(f"  limitations: {','.join(report['limitations'])}")
+        if args.out:
+            print(f"  report: {args.out}")
+
+    if args.require_pass and not report["ok"]:
+        failed = [check["name"] for check in report["checks"] if not check["ok"]]
+        raise SystemExit(f"learned bundle review failed: {','.join(failed)}")
+
+
 def _golden_current_schema(args) -> None:
     if args.update and args.candidate:
         raise SystemExit("--update cannot be combined with --candidate")
@@ -1150,6 +1210,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_vlb.add_argument("--json", action="store_true", help="Emit machine-readable validation report")
     p_vlb.add_argument("--require-pass", action="store_true", help="Fail if any bundle validation check fails")
 
+    p_rlb = sub.add_parser("review-learned-bundle", help="Summarize an existing learned-policy bundle for review")
+    p_rlb.add_argument("--bundle", required=True, help="Path to a bundle directory or learned_submission_bundle.json")
+    p_rlb.add_argument("--out", default=None, help="Optional JSON review output path")
+    p_rlb.add_argument("--json", action="store_true", help="Emit machine-readable review report")
+    p_rlb.add_argument("--require-pass", action="store_true", help="Fail if the bundle is not structurally reviewable")
+
     p_golden = sub.add_parser("golden-current-schema", help="Check or regenerate the current result-schema fixture")
     p_golden.add_argument("--golden-dir", default="golden/current_schema", help="Path to checked-in fixture")
     p_golden.add_argument("--candidate", default=None, help="Compare an existing candidate directory instead of running")
@@ -1303,6 +1369,9 @@ def main() -> None:
         return
     if args.cmd == "validate-learned-bundle":
         _validate_learned_bundle(args)
+        return
+    if args.cmd == "review-learned-bundle":
+        _review_learned_bundle(args)
         return
     if args.cmd == "golden-current-schema":
         _golden_current_schema(args)
