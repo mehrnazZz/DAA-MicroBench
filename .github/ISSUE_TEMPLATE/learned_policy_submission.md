@@ -17,6 +17,7 @@ labels: learned-policy, benchmark-result
 
 - [ ] I ran `python -m microbench.cli rl-contract --json` and used the reported action/observation/reward schema.
 - [ ] I ran `python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass`.
+- [ ] I ran `python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass`.
 - [ ] I did not use simulator ground truth outside the public RL observation and info surfaces.
 - [ ] I disclosed any reward shaping beyond the default public-alpha reward.
 
@@ -48,6 +49,7 @@ Attach or link:
 - `_generated_scenarios/<suite>/suite_manifest.yaml`
 - `rl_contract.json`
 - `rl_smoke.json`
+- `rl_calibration.json`
 - representative traces for collisions, near misses, deadlocks, or planner guardrail events
 
 ## Commands
@@ -61,6 +63,7 @@ Attach or link:
 python -m microbench.cli validate-scenarios ...
 python -m microbench.cli check-acceptance ...
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
+python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-contract --json
 ```
 

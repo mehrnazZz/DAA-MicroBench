@@ -43,7 +43,7 @@ Every submitted result should include:
 - hardware and Python version
 - any changed config files
 - whether the method uses V2V, intent, agent messages, local sensing, or learned weights
-- for RL/learned-policy submissions, `rl_contract.json`, `rl_smoke.json`, training-data disclosure, and weight artifact/version
+- for RL/learned-policy submissions, `rl_contract.json`, `rl_smoke.json`, `rl_calibration.json`, training-data disclosure, and weight artifact/version
 
 ## Safety Metrics
 

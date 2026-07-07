@@ -74,4 +74,5 @@ def test_public_docs_index_and_templates_exist() -> None:
     learned_template = (ROOT / ".github/ISSUE_TEMPLATE/learned_policy_submission.md").read_text(encoding="utf-8")
     assert "rl_contract.json" in learned_template
     assert "rl_smoke.json" in learned_template
+    assert "rl_calibration.json" in learned_template
     assert "Training Disclosure" in learned_template

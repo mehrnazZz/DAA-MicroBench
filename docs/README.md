@@ -90,6 +90,7 @@ Smoke-test the RL interface:
 ```bash
 python -m pytest tests/test_rl_interface.py -q
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
+python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-contract --json
 ```
 

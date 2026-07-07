@@ -138,6 +138,17 @@ python -m microbench.cli rl-smoke \
 
 The command materializes `official_smoke_generated`, runs one 2D and one 3D scenario through the RL wrapper, writes `rl_smoke.json`, and writes per-episode rows to `rl_smoke_episodes.csv`. Built-in smoke policies are `zero`, `random`, and `goal_direction`.
 
+Run compact 3D/degraded calibration before submitting learned-policy results:
+
+```bash
+python -m microbench.cli rl-calibration \
+  --out-dir runs_rl_calibration \
+  --policy goal_direction \
+  --require-pass
+```
+
+The calibration command materializes `official_promotion_calibration`, runs a compact 3D volumetric lane and a degraded V2V/fused-sensing lane, writes `rl_calibration.json`, and writes per-episode rows to `rl_calibration_episodes.csv`. Passing it means the wrapper, policy interface, and finite rollout metrics survived stronger 3D/degraded exposure; it is not a leaderboard score.
+
 The same runner is available from Python:
 
 ```python

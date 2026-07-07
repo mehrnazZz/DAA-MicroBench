@@ -19,6 +19,7 @@ from microbench.metrics import append_result, write_summary
 from microbench.replay import render_interactive_trace, render_trace
 from microbench.dataset import generate_dataset, expand_scenarios, expand_list, sanity_check_shard
 from microbench.logging import wandb_logger
+from microbench.rl.calibration import run_rl_policy_calibration
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.policies import POLICY_NAMES
 from microbench.rl.schema import interface_contract
@@ -718,6 +719,36 @@ def _rl_smoke(args) -> None:
         raise SystemExit(f"RL smoke failed: {','.join(failed)}")
 
 
+def _rl_calibration(args) -> None:
+    report = run_rl_policy_calibration(
+        out_dir=args.out_dir,
+        policy=str(args.policy),
+        n_agents=int(args.n),
+        seeds=_parse_int_list(args.seeds),
+        max_steps=args.max_steps,
+    )
+    report_path = Path(args.out_dir) / "rl_calibration.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        print(
+            f"rl-calibration: {status} policy={report['policy']} runs={report['run_count']} "
+            f"bands={'+'.join(report['bands'])}"
+        )
+        for check in report["checks"]:
+            check_status = "ok" if check["ok"] else "FAIL"
+            print(f"  {check_status}: {check['name']}")
+        print(f"  report: {report_path}")
+
+    if args.require_pass and not report["ok"]:
+        failed = [check["name"] for check in report["checks"] if not check["ok"]]
+        raise SystemExit(f"RL calibration failed: {','.join(failed)}")
+
+
 def _rl_contract(args) -> None:
     report = interface_contract(top_k=int(args.top_k))
     payload = json.dumps(report, indent=2, sort_keys=True)
@@ -999,6 +1030,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_rl.add_argument("--json", action="store_true", help="Emit machine-readable RL smoke report")
     p_rl.add_argument("--require-pass", action="store_true", help="Fail if any RL smoke check fails")
 
+    p_rlcal = sub.add_parser("rl-calibration", help="Run compact 3D/degraded RL policy calibration lanes")
+    p_rlcal.add_argument("--out-dir", required=True, help="Fresh output directory for RL calibration artifacts")
+    p_rlcal.add_argument("--policy", choices=POLICY_NAMES, default="goal_direction", help="Built-in calibration policy")
+    p_rlcal.add_argument("--n", type=int, default=4, help="Agent count for each RL calibration episode")
+    p_rlcal.add_argument("--seeds", default="0", help="Seed list/range, e.g. 0:2")
+    p_rlcal.add_argument("--max-steps", type=int, default=None, help="Optional cap for each episode")
+    p_rlcal.add_argument("--json", action="store_true", help="Emit machine-readable RL calibration report")
+    p_rlcal.add_argument("--require-pass", action="store_true", help="Fail if any RL calibration check fails")
+
     p_rlc = sub.add_parser("rl-contract", help="Print the versioned RL action/observation/reward contract")
     p_rlc.add_argument("--top-k", type=int, default=8, help="Neighbor slots used to compute observation shape")
     p_rlc.add_argument("--out", default=None, help="Optional JSON output path")
@@ -1142,6 +1182,9 @@ def main() -> None:
         return
     if args.cmd == "rl-smoke":
         _rl_smoke(args)
+        return
+    if args.cmd == "rl-calibration":
+        _rl_calibration(args)
         return
     if args.cmd == "rl-contract":
         _rl_contract(args)

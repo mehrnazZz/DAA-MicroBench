@@ -10,10 +10,12 @@ import numpy as np
 from microbench.rl import (
     DaaParallelEnv,
     OBSERVATION_LAYOUT,
+    RL_CALIBRATION_SCHEMA_VERSION,
     RL_INTERFACE_VERSION,
     GoalDirectionPolicy,
     RandomPolicy,
     interface_contract,
+    run_rl_policy_calibration,
     rollout_parallel_env,
     run_parallel_policy_rollouts,
     run_rl_policy_smoke,
@@ -84,6 +86,54 @@ def test_rl_smoke_cli_json_and_gate(tmp_path: Path) -> None:
     assert report["run_count"] == 2
     assert (out_dir / "rl_smoke.json").exists()
     assert (out_dir / "rl_smoke_episodes.csv").exists()
+
+
+def test_rl_policy_calibration_runs_3d_and_degraded_lanes(tmp_path: Path) -> None:
+    report = run_rl_policy_calibration(
+        out_dir=tmp_path / "rl_calibration",
+        policy="goal_direction",
+        max_steps=5,
+    )
+
+    assert report["schema_version"] == RL_CALIBRATION_SCHEMA_VERSION
+    assert report["ok"] is True
+    assert report["run_count"] == 2
+    assert set(report["bands"]) == {"rl_3d_stress", "rl_degraded_sensing_comm"}
+    assert {row["dimension"] for row in report["episodes"]} == {"3d"}
+    assert {row["comm_profile"] for row in report["episodes"]} == {"ideal_50hz", "degraded_20hz"}
+    assert Path(report["episode_csv"]).exists()
+    assert Path(report["suite_manifest"]).exists()
+
+
+def test_rl_calibration_cli_json_and_gate(tmp_path: Path) -> None:
+    out_dir = tmp_path / "cli_rl_calibration"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "microbench.cli",
+            "rl-calibration",
+            "--out-dir",
+            str(out_dir),
+            "--policy",
+            "zero",
+            "--max-steps",
+            "3",
+            "--require-pass",
+            "--json",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    report = json.loads(proc.stdout)
+    assert report["ok"] is True
+    assert report["policy"] == "zero"
+    assert report["run_count"] == 2
+    assert (out_dir / "rl_calibration.json").exists()
+    assert (out_dir / "rl_calibration_episodes.csv").exists()
 
 
 def test_rl_contract_cli_json_and_schema_helper(tmp_path: Path) -> None:
