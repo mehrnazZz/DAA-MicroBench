@@ -66,6 +66,7 @@ python -m microbench.cli rl-smoke --out-dir runs_rl_tiny_learned --policy tiny_l
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-contract --json
 python -m microbench.cli rl-freeze-check --require-pass --json
+python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method learned_tiny --policy tiny_learned --require-pass
 ```
 
 You can also inspect `microbench/planners/` (each planner module maps to a method name in the planner registry).

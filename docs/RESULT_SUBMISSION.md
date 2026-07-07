@@ -33,6 +33,7 @@ Attach or link:
 - `_generated_scenarios/<suite>/suite_manifest.yaml` when using a generated official suite
 - any changed scenario/config files
 - any planner source or package version needed to reproduce
+- `learned_submission_bundle.json` for learned/RL policy submissions when using the bundle command
 - `rl_contract.json`, `rl_freeze_check.json`, `rl_smoke.json`, and `rl_calibration.json` for learned/RL policy submissions
 - representative failure traces for nonzero collision or near-miss-heavy results
 
@@ -53,6 +54,16 @@ python -m microbench.cli check-acceptance \
   --summary path/to/summary.csv \
   --results path/to/results.csv \
   --suite-manifest path/to/suite_manifest.yaml
+```
+
+For learned/RL policies, build the standard artifact bundle:
+
+```bash
+python -m microbench.cli learned-submission-bundle \
+  --out-dir runs_learned_bundle \
+  --method your_method \
+  --policy your_policy \
+  --require-pass
 ```
 
 ## Reproduction Command
@@ -98,7 +109,7 @@ Include the relevant rows from `summary.csv`. At minimum include:
 - [ ] I did not change shared neighbor, collision, dynamics, comm, or perception settings for only my method.
 - [ ] I included all runs, including failures.
 - [ ] I disclosed learned weights or external services.
-- [ ] For learned/RL policies, I included the RL interface contract, freeze check, smoke report, and calibration report.
+- [ ] For learned/RL policies, I included the learned submission bundle or the equivalent RL contract, freeze check, smoke report, and calibration report.
 - [ ] I included enough config and command detail to reproduce the result.
 
 ## Notes

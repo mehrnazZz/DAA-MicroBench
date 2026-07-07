@@ -73,6 +73,7 @@ def test_public_docs_index_and_templates_exist() -> None:
     assert "docs/RESULT_SUBMISSION.md" in result_template
 
     learned_template = (ROOT / ".github/ISSUE_TEMPLATE/learned_policy_submission.md").read_text(encoding="utf-8")
+    assert "learned_submission_bundle.json" in learned_template
     assert "rl_contract.json" in learned_template
     assert "rl_freeze_check.json" in learned_template
     assert "rl_smoke.json" in learned_template

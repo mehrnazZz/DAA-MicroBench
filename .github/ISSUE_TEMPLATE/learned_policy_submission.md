@@ -19,6 +19,7 @@ labels: learned-policy, benchmark-result
 - [ ] I ran `python -m microbench.cli rl-freeze-check --require-pass --json` and attached the report.
 - [ ] I ran `python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass`.
 - [ ] I ran `python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass`.
+- [ ] I ran `python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method <method> --policy <policy> --require-pass` or attached equivalent artifacts.
 - [ ] I did not use simulator ground truth outside the public RL observation and info surfaces.
 - [ ] I disclosed any reward shaping beyond the default public-alpha reward.
 
@@ -48,6 +49,7 @@ Attach or link:
 - `summary.csv`
 - `result_schema.json`
 - `_generated_scenarios/<suite>/suite_manifest.yaml`
+- `learned_submission_bundle.json`
 - `rl_contract.json`
 - `rl_freeze_check.json`
 - `rl_smoke.json`
@@ -68,6 +70,7 @@ python -m microbench.cli rl-freeze-check --require-pass --json
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-contract --json
+python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method <method> --policy <policy> --require-pass
 ```
 
 ## Notes

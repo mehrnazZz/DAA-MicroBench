@@ -34,6 +34,7 @@ Before stable v1, schema versions may change while the interface is still public
 
 Learned-policy submissions should include:
 
+- `learned_submission_bundle.json`
 - `rl_contract.json`
 - `rl_freeze_check.json`
 - `rl_smoke.json`

@@ -27,6 +27,7 @@ python -m microbench.cli rl-smoke --out-dir "${WORK_DIR}/rl_tiny_learned" --poli
 python -m microbench.cli rl-calibration --out-dir "${WORK_DIR}/rl_calibration" --require-pass --json >"${WORK_DIR}/rl_calibration.json"
 python -m microbench.cli rl-contract --json >"${WORK_DIR}/rl_contract.json"
 python -m microbench.cli rl-freeze-check --require-pass --json >"${WORK_DIR}/rl_freeze_check.json"
+python -m microbench.cli learned-submission-bundle --out-dir "${WORK_DIR}/learned_submission_bundle" --method learned_tiny --policy tiny_learned --max-runs 1 --max-steps 3 --require-pass --json >"${WORK_DIR}/learned_submission_bundle.json"
 python -m microbench.cli list-suites --json >"${WORK_DIR}/suites.json"
 python -m microbench.cli list-methods --json --include-aliases >"${WORK_DIR}/methods.json"
 

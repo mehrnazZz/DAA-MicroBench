@@ -24,6 +24,7 @@ from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import run_rl_freeze_check
 from microbench.rl.policies import POLICY_NAMES
 from microbench.rl.schema import interface_contract
+from microbench.rl.submission_bundle import run_learned_policy_submission_bundle
 from microbench.tools import (
     build_baseline_audit,
     build_current_schema_candidate,
@@ -786,6 +787,38 @@ def _rl_freeze_check(args) -> None:
         raise SystemExit(f"RL freeze check failed: {','.join(failed)}")
 
 
+def _learned_submission_bundle(args) -> None:
+    report = run_learned_policy_submission_bundle(
+        out_dir=args.out_dir,
+        method=str(args.method),
+        policy=str(args.policy),
+        suite=str(args.suite),
+        root=args.root,
+        n_agents=int(args.n),
+        seeds=_parse_int_list(args.seeds),
+        max_steps=args.max_steps,
+        max_runs=args.max_runs,
+        save_trace=bool(args.save_trace),
+    )
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        print(
+            f"learned-submission-bundle: {status} method={report['method']} policy={report['policy']} "
+            f"suite={report['suite']} runs={report['planner_sweep']['run_count']}"
+        )
+        for check in report["checks"]:
+            check_status = "ok" if check["ok"] else "FAIL"
+            print(f"  {check_status}: {check['name']}")
+        print(f"  report: {Path(args.out_dir) / 'learned_submission_bundle.json'}")
+
+    if args.require_pass and not report["ok"]:
+        failed = [check["name"] for check in report["checks"] if not check["ok"]]
+        raise SystemExit(f"learned submission bundle failed: {','.join(failed)}")
+
+
 def _golden_current_schema(args) -> None:
     if args.update and args.candidate:
         raise SystemExit("--update cannot be combined with --candidate")
@@ -1074,6 +1107,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_rlf.add_argument("--json", action="store_true", help="Emit machine-readable freeze-check JSON")
     p_rlf.add_argument("--require-pass", action="store_true", help="Fail if any freeze criterion check fails")
 
+    p_lsb = sub.add_parser(
+        "learned-submission-bundle",
+        help="Create RL and planner artifacts for a learned-policy submission",
+    )
+    p_lsb.add_argument("--out-dir", required=True, help="Fresh output directory for learned-policy submission artifacts")
+    p_lsb.add_argument("--method", default="learned_tiny", help="Planner method to evaluate for official CSV artifacts")
+    p_lsb.add_argument("--policy", choices=POLICY_NAMES, default="tiny_learned", help="RL policy to evaluate for wrapper artifacts")
+    p_lsb.add_argument("--suite", default="official_smoke_generated", choices=list_official_suites(), help="Generated suite for planner CSV artifacts")
+    p_lsb.add_argument("--root", default=".", help="Repository root used for freeze-check docs/examples")
+    p_lsb.add_argument("--n", type=int, default=4, help="Agent count for RL wrapper smoke/calibration artifacts")
+    p_lsb.add_argument("--seeds", default="0", help="Seed list/range for RL wrapper artifacts, e.g. 0:2")
+    p_lsb.add_argument("--max-steps", type=int, default=None, help="Optional cap for each RL wrapper episode")
+    p_lsb.add_argument("--max-runs", type=int, default=None, help="Optional cap for planner sweep episodes")
+    p_lsb.add_argument("--save-trace", action="store_true", help="Save traces for planner sweep rows")
+    p_lsb.add_argument("--json", action="store_true", help="Emit machine-readable bundle report")
+    p_lsb.add_argument("--require-pass", action="store_true", help="Fail if any bundle check fails")
+
     p_golden = sub.add_parser("golden-current-schema", help="Check or regenerate the current result-schema fixture")
     p_golden.add_argument("--golden-dir", default="golden/current_schema", help="Path to checked-in fixture")
     p_golden.add_argument("--candidate", default=None, help="Compare an existing candidate directory instead of running")
@@ -1221,6 +1271,9 @@ def main() -> None:
         return
     if args.cmd == "rl-freeze-check":
         _rl_freeze_check(args)
+        return
+    if args.cmd == "learned-submission-bundle":
+        _learned_submission_bundle(args)
         return
     if args.cmd == "golden-current-schema":
         _golden_current_schema(args)

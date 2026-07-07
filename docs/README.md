@@ -95,6 +95,7 @@ python -m microbench.cli rl-smoke --out-dir runs_rl_tiny_learned --policy tiny_l
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-contract --json
 python -m microbench.cli rl-freeze-check --require-pass --json
+python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method learned_tiny --policy tiny_learned --require-pass
 ```
 
 Check the current result-schema fixture:
@@ -119,4 +120,10 @@ Regenerate a compatible tiny learned-policy weight artifact:
 
 ```bash
 python examples/rl_train_tiny_linear_policy.py --out /tmp/tiny_linear_policy.json
+```
+
+Build a learned-policy submission bundle:
+
+```bash
+python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method learned_tiny --policy tiny_learned --require-pass
 ```

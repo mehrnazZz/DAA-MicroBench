@@ -206,6 +206,33 @@ python -m microbench.cli rl-smoke \
 
 The matching official planner method is `learned_tiny`, which produces normal benchmark `results.csv` and `summary.csv` rows. Its deterministic synthetic training recipe is in `examples/rl_train_tiny_linear_policy.py`, and the checked-in weight artifact is `microbench/bundled_config/learned_baselines/tiny_linear_policy.json`.
 
+## Learned Submission Bundle
+
+Use the bundle command when preparing learned-policy artifacts for review:
+
+```bash
+python -m microbench.cli learned-submission-bundle \
+  --out-dir runs_learned_bundle \
+  --method learned_tiny \
+  --policy tiny_learned \
+  --require-pass
+```
+
+The bundle writes:
+
+- `learned_submission_bundle.json`
+- `rl_contract.json`
+- `rl_freeze_check.json`
+- `rl_smoke.json`
+- `rl_calibration.json`
+- `planner_sweep/results.csv`
+- `planner_sweep/summary.csv`
+- `planner_sweep/result_schema.json`
+- `planner_sweep/_generated_scenarios/<suite>/suite_manifest.yaml`
+- `planner_sweep/acceptance.json`
+
+By default the planner sweep uses `official_smoke_generated`. Use `--suite`, `--max-runs`, and `--save-trace` to control the official planner CSV workload. Larger leaderboard claims should still run the full intended official suite and submit the generated suite manifest, `results.csv`, `summary.csv`, and `result_schema.json`.
+
 ## Compatibility Check
 
 For custom adapters, use the lightweight compatibility checker without installing PettingZoo's optional test helpers:
