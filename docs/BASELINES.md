@@ -11,6 +11,7 @@ python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-
 python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass
 python -m microbench.cli baseline-review --out-dir runs_baseline_review --duration-s 20
+python -m microbench.cli baseline-leaderboard --out-dir runs_baseline_leaderboard --suites all
 ```
 
 The public-alpha baseline gate is intentionally stricter than "the code imports":
@@ -182,6 +183,29 @@ python -m microbench.cli baseline-report \
 ```
 
 The checked-in example lives at `golden/baseline_comparison/report.json`.
+
+Build an all-official-suite baseline leaderboard:
+
+```bash
+python -m microbench.cli baseline-leaderboard \
+  --out-dir runs_baseline_leaderboard \
+  --suites all \
+  --require-pass
+```
+
+This materializes every generated official suite, runs the serious built-in baselines over each suite's default scenario, N, seed, and communication matrix, writes per-suite `results.csv`, `summary.csv`, `baseline_report.json`, `acceptance.json`, and writes an aggregate `baseline_leaderboard.json`. Use this for serious baseline claims. For quick local plumbing checks, cap each suite:
+
+```bash
+python -m microbench.cli baseline-leaderboard \
+  --out-dir runs_baseline_leaderboard_smoke \
+  --suites official_smoke_generated \
+  --methods baseline_goal,velocity_obstacle \
+  --n 4 \
+  --seeds 0 \
+  --comm ideal_50hz \
+  --max-runs 2 \
+  --require-pass
+```
 
 ## Stale-Aware ORCA Preset
 

@@ -7,6 +7,10 @@ from microbench.tools.baseline_evidence import (
     run_baseline_reference_evidence,
     write_baseline_reference_evidence,
 )
+from microbench.tools.baseline_leaderboard import (
+    SERIOUS_BASELINE_METHODS,
+    run_baseline_leaderboard,
+)
 from microbench.tools.baseline_promotion import (
     run_baseline_promotion_calibration,
     write_baseline_promotion_calibration,
@@ -29,11 +33,13 @@ __all__ = [
     "build_current_schema_candidate",
     "compare_current_schema_golden",
     "mine_worst_cases",
+    "run_baseline_leaderboard",
     "run_baseline_behavior_smoke",
     "run_baseline_reference_evidence",
     "run_baseline_promotion_calibration",
     "run_baseline_stable_review",
     "write_baseline_report",
+    "SERIOUS_BASELINE_METHODS",
     "write_baseline_audit",
     "write_baseline_behavior_smoke",
     "write_baseline_reference_evidence",

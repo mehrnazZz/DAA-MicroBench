@@ -36,6 +36,7 @@ from microbench.tools import (
     build_current_schema_candidate,
     compare_current_schema_golden,
     mine_worst_cases,
+    run_baseline_leaderboard,
     run_baseline_behavior_smoke,
     run_baseline_reference_evidence,
     run_baseline_promotion_calibration,
@@ -528,6 +529,43 @@ def _baseline_report(args) -> None:
         generated_by=args.generated_by,
     )
     print(f"done: baseline comparison report saved to {out}")
+
+
+def _baseline_leaderboard(args) -> None:
+    suites = list_official_suites() if args.suites == "all" else _parse_str_list(args.suites)
+    report = run_baseline_leaderboard(
+        out_dir=args.out_dir,
+        suites=suites,
+        methods=_parse_str_list(args.methods) if args.methods else None,
+        n_agents=_parse_int_list(args.n) if args.n else None,
+        seeds=_parse_int_list(args.seeds) if args.seeds else None,
+        comm_profiles=_parse_str_list(args.comm) if args.comm else None,
+        max_runs=args.max_runs,
+        stretch=bool(args.stretch),
+    )
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "REVIEW"
+        print(
+            "baseline-leaderboard: "
+            f"{status} suites={len(report['suites'])} methods={len(report['methods'])} "
+            f"leaderboard={report['leaderboard_path']}"
+        )
+        for suite in report["suites"]:
+            truncated = " truncated" if suite["truncated_by_max_runs"] else ""
+            print(
+                f"  {suite['suite']}: runs={suite['run_count']}/{suite['planned_run_count']} "
+                f"ok={suite['ok']}{truncated} report={suite['report_path']}"
+            )
+        if report["aggregate_ranking"]:
+            best = report["aggregate_ranking"][0]
+            print(f"  best_score_v0: rank=1 method={best['method']} score={best['score_v0_mean']}")
+
+    if args.require_pass and not report["ok"]:
+        failed = [suite["suite"] for suite in report["suites"] if not suite["ok"]]
+        raise SystemExit(f"baseline leaderboard acceptance failed: {','.join(failed)}")
 
 
 def _baseline_audit(args) -> None:
@@ -1135,6 +1173,26 @@ def build_parser() -> argparse.ArgumentParser:
     p_br.add_argument("--results", default=None, help="Optional results.csv path for run_count")
     p_br.add_argument("--generated-by", default=None, help="Optional reproducibility command or label")
 
+    p_bl = sub.add_parser("baseline-leaderboard", help="Run baselines across official suites and write leaderboard JSON")
+    p_bl.add_argument("--out-dir", required=True, help="Fresh output directory for leaderboard artifacts")
+    p_bl.add_argument(
+        "--suites",
+        default="all",
+        help="Comma-separated official suite ids, or 'all' for every generated official suite",
+    )
+    p_bl.add_argument(
+        "--methods",
+        default=None,
+        help="Comma-separated methods; defaults to serious built-in baseline methods",
+    )
+    p_bl.add_argument("--n", default=None, help="Optional agent-count override list/range, e.g. 4,8")
+    p_bl.add_argument("--seeds", default=None, help="Optional seed override list/range, e.g. 0:2")
+    p_bl.add_argument("--comm", default=None, help="Optional comm-profile override list")
+    p_bl.add_argument("--max-runs", type=int, default=None, help="Optional per-suite run cap for smoke checks")
+    p_bl.add_argument("--stretch", action="store_true", help="Use stretch suite defaults")
+    p_bl.add_argument("--json", action="store_true", help="Emit machine-readable leaderboard summary")
+    p_bl.add_argument("--require-pass", action="store_true", help="Fail if generated-suite acceptance fails")
+
     p_ba = sub.add_parser("baseline-audit", help="Audit built-in baseline metadata, docs, tests, and suite coverage")
     p_ba.add_argument("--root", default=".", help="Repository root used for docs/tests coverage checks")
     p_ba.add_argument("--json", action="store_true", help="Emit machine-readable audit report")
@@ -1432,6 +1490,9 @@ def main() -> None:
         return
     if args.cmd == "baseline-report":
         _baseline_report(args)
+        return
+    if args.cmd == "baseline-leaderboard":
+        _baseline_leaderboard(args)
         return
     if args.cmd == "baseline-audit":
         _baseline_audit(args)

@@ -46,6 +46,7 @@ python -m microbench.cli golden-current-schema --golden-dir golden/current_schem
 python -m microbench.cli validate-scenarios --all-builtins --all-generated-suites --quiet
 python -m microbench.cli baseline-audit --require-public-alpha-ready
 python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
+python -m microbench.cli baseline-leaderboard --out-dir runs_baseline_leaderboard --suites all --require-pass
 python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
@@ -68,6 +69,7 @@ python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --re
 
 - `orca_heuristic` and `orca_with_staleness` are geometric reference heuristics, not expert or certified DAA controllers.
 - `cbf_qp`, `mpc_local`, `velocity_obstacle`, and `negotiation_yield` are part of the growing advanced baseline library, but still have stable-v1 promotion blockers; do not treat them as stable-v1 leaderboard anchors yet.
+- Serious baseline claims should use `baseline-leaderboard --suites all` and publish the per-suite reports, not only smoke or promotion-calibration rows.
 - `learned_tiny` is a frozen tiny learned-model fixture for adapter, disclosure, and CSV-plumbing tests; it is not a competitive learned DAA baseline.
 - `cbf_qp` and `mpc_local` also pass the longer stable-metadata prep lanes in `baseline-review`, but they remain experimental until the reference-role decision, CBF validation, and MPC compute/stress characterization are stronger.
 - `velocity_obstacle` is a deterministic VO-cone sampling baseline for 2D/3D local deconfliction; it still needs official stress-suite calibration before promotion.

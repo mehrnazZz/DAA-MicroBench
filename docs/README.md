@@ -82,6 +82,12 @@ Run targeted CBF/MPC reference-evidence checks:
 python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass
 ```
 
+Run the all-suite baseline leaderboard:
+
+```bash
+python -m microbench.cli baseline-leaderboard --out-dir runs_baseline_leaderboard --suites all --require-pass
+```
+
 Plan optional longer stable-metadata review rows:
 
 ```bash

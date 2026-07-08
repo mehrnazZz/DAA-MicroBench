@@ -86,11 +86,51 @@ def _metric_values(rows: list[dict[str, Any]], metric: str) -> list[float]:
     return out
 
 
+def score_v0(row: dict[str, Any]) -> float | None:
+    collision_episode_rate = _num(row.get("collision_episode_rate"))
+    unique_collision_pairs_mean = _num(row.get("unique_collision_pairs_mean"))
+    collision_pair_ticks_mean = _num(row.get("collision_pair_ticks_mean")) or 0.0
+    min_sep_p05_mean = _num(row.get("min_sep_p05_mean"))
+    completion_rate_mean = _num(row.get("completion_rate_mean"))
+    deadlock_time_pct_mean = _num(row.get("deadlock_time_pct_mean"))
+    mean_time_to_goal_mean = _num(row.get("mean_time_to_goal_mean"))
+    planner_ms_p95 = _num(row.get("planner_ms_p95"))
+
+    required = (
+        collision_episode_rate,
+        unique_collision_pairs_mean,
+        min_sep_p05_mean,
+        completion_rate_mean,
+        deadlock_time_pct_mean,
+        planner_ms_p95,
+    )
+    if any(value is None for value in required):
+        return None
+
+    safety_penalty = (
+        1000.0 * float(collision_episode_rate)
+        + 50.0 * float(unique_collision_pairs_mean)
+        + 0.1 * float(collision_pair_ticks_mean)
+        + 10.0 * max(0.0, -float(min_sep_p05_mean))
+    )
+    mission_penalty = (
+        100.0 * (1.0 - float(completion_rate_mean))
+        + 2.0 * float(deadlock_time_pct_mean)
+        + 0.01 * float(mean_time_to_goal_mean or 0.0)
+    )
+    compute_penalty = 0.1 * float(planner_ms_p95)
+    return round(float(safety_penalty + mission_penalty + compute_penalty), 6)
+
+
 def _method_projection(method: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    scores = _metric_values(rows, "score_v0")
     return {
         "method": method,
         "scenario_count": len({str(row.get("scenario")) for row in rows}),
         "episodes": int(sum(int(row.get("episodes") or 0) for row in rows)),
+        "score_v0_mean": _mean(scores),
+        "score_v0_best": _min(scores),
+        "score_v0_worst": _max(scores),
         "collision_episode_rate_mean": _mean(_metric_values(rows, "collision_episode_rate")),
         "completion_rate_mean": _mean(_metric_values(rows, "completion_rate_mean")),
         "min_sep_min_worst": _min(_metric_values(rows, "min_sep_min_mean")),
@@ -121,6 +161,8 @@ def build_baseline_report(
     generated_by: str | None = None,
 ) -> dict[str, Any]:
     rows = [_row_projection(row) for row in _read_csv(summary_csv)]
+    for row in rows:
+        row["score_v0"] = score_v0(row)
     rows.sort(key=lambda row: (str(row["method"]), str(row["scenario"]), str(row["comm_profile"]), int(row["N"] or 0)))
 
     methods = sorted({str(row["method"]) for row in rows})
@@ -139,6 +181,7 @@ def build_baseline_report(
         "n_agents": n_agents,
         "run_count": _result_run_count(results_csv),
         "metric_note": "Timing fields are machine-dependent; use broad bands and guardrail counts for regression checks.",
+        "score_note": "score_v0 follows docs/LEADERBOARD.md; lower is better and components should be published.",
         "rows": rows,
         "method_summaries": method_summaries,
     }

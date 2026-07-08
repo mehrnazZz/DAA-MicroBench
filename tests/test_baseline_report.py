@@ -108,9 +108,12 @@ def test_build_baseline_report_is_path_independent_and_sorted(tmp_path: Path) ->
     assert report["run_count"] == 2
     assert report["rows"][0]["method"] == "cbf_qp"
     assert report["rows"][0]["mean_time_to_goal_mean"] is None
+    assert report["rows"][0]["score_v0"] == 1150.022
     assert report["rows"][1]["planner_ms_p95"] == 2.123457
+    assert report["rows"][1]["score_v0"] == 0.487346
     assert report["method_summaries"][0]["method"] == "cbf_qp"
     assert report["method_summaries"][0]["min_sep_min_worst"] == -0.2
+    assert report["method_summaries"][1]["score_v0_mean"] == 0.487346
 
 
 def test_baseline_report_cli_writes_json(tmp_path: Path) -> None:

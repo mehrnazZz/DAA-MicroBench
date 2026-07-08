@@ -142,6 +142,17 @@ Use `python -m microbench.cli list-suites --json` to inspect pre-v1 acceptance m
 See [BASELINES.md](BASELINES.md) for canonical baseline roles, aliases, and limitations.
 For learned-policy bundles, use `python -m microbench.cli review-learned-bundle --bundle <bundle> --json` to generate a machine-readable summary of the safety, mission, compute, communication, observation, and v0-score dimensions used during manual review.
 
+For built-in baselines, use:
+
+```bash
+python -m microbench.cli baseline-leaderboard \
+  --out-dir runs_baseline_leaderboard \
+  --suites all \
+  --require-pass
+```
+
+This writes one per-suite `baseline_report.json` plus an aggregate `baseline_leaderboard.json`. The aggregate is a navigation and smoke-comparison artifact; official comparisons should still be read per suite because suite difficulty and purpose differ.
+
 ## Reproducibility Rules
 
 Submitted results must:
