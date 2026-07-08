@@ -126,6 +126,7 @@ Optional install tracks (manual extras):
 - Core install: `pip install -e .`
 - RL wrappers with Gymnasium/PettingZoo classes: `pip install -e ".[rl]"`
 - Diffusion/ML extras: `pip install -e ".[ml]"`
+- Self-contained Plotly episode reports: `pip install -e ".[viz]"`
 - Optimization extras: `pip install -e ".[opt]"`
 
 ## 3) Core Concepts
@@ -508,7 +509,7 @@ Quick navigation:
 |---|---|
 | run one 3D episode | Section `7.2 Quick 3D Run` |
 | benchmark a planner in generated 3D stress cases | Section `7.3 Official 3D Stress Suite` |
-| inspect a 3D replay/trace | Section `7.4 3D Replay and Traces` |
+| inspect a 3D replay/trace | Section `7.4 Episode Reports, 3D Replay, and Traces` |
 | profile 3D planner runtime | Section `7.5 3D Profiling Notes` |
 | generate 3D diffusion data | Section `7.6 3D Diffusion Data` |
 
@@ -593,11 +594,22 @@ Stretch mode:
 
 If `--methods` is omitted for `three_d`, it defaults to `orca_heuristic`.
 
-### 7.4 3D Replay and Traces
+### 7.4 Episode Reports, 3D Replay, and Traces
 
 - full-episode replay works the same way as planar replay
 - for non-planar episodes, replay automatically switches to a 3D view
-- for deeper debugging, use the interactive HTML replay to orbit, zoom, and scrub through the episode with obstacle wireframes visible
+- for deeper debugging, start with the multi-panel episode report: it shows top-down, side/altitude, 3D context, separation, speed, saturation, and sensing freshness in one synchronized HTML artifact
+- use the interactive HTML replay when you mainly need orbit/zoom/scrub playback with obstacle wireframes visible
+
+Episode analysis report:
+
+```bash
+python -m microbench.cli episode-report \
+  --trace runs/<run_id>/episodes/<episode_dir>/trace_episode.jsonl \
+  --out runs/<run_id>/episode_report.html
+```
+
+Install `daa-microbench[viz]` and pass `--plotly-source inline` when you want a fully self-contained HTML artifact with Plotly embedded in the file. The default `auto` mode embeds Plotly when it is installed and otherwise falls back to the Plotly CDN.
 
 Example:
 
@@ -625,6 +637,13 @@ What the interactive replay shows:
 - received intent tubes
 - side plots for neighbor distance and obstacle clearance
 - hover tooltips with per-agent position, speed, command speed, and neighbor staleness summary
+
+What the episode report adds:
+- synchronized top-down x-z and side x-y projections
+- a supporting 3D context panel rather than only a 3D camera view
+- nearest-pair and focus-pair separation curves
+- speed/command magnitude, control saturation, and V2V/sensing freshness plots
+- event markers for collision and near-miss traces when `events.jsonl` is present
 
 ### 7.5 3D Profiling Notes
 
@@ -829,7 +848,15 @@ logging:
   trace_window_s: 3.0
 ```
 
-Render a full-episode replay:
+Render a full-episode analysis report:
+
+```bash
+python -m microbench.cli episode-report \
+  --trace runs/<run_id>/episodes/<episode_dir>/trace_episode.jsonl \
+  --out runs/<run_id>/episode_report.html
+```
+
+Render a lightweight full-episode replay:
 
 ```bash
 python -m microbench.cli replay \
@@ -837,7 +864,7 @@ python -m microbench.cli replay \
   --out runs/<run_id>/episode.gif
 ```
 
-For non-planar episodes, replay automatically switches to a 3D view.
+For non-planar episodes, replay automatically switches to a 3D view. For interpretation, prefer `episode-report`; for a compact shareable animation, use `replay`.
 
 Render a replay from a trace:
 

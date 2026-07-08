@@ -88,6 +88,16 @@ Run the all-suite baseline leaderboard:
 python -m microbench.cli baseline-leaderboard --out-dir runs_baseline_leaderboard --suites all --require-pass --require-complete
 ```
 
+Render a multi-panel episode report from a saved trace:
+
+```bash
+python -m microbench.cli episode-report \
+  --trace runs/<run_id>/episodes/<episode_dir>/trace_episode.jsonl \
+  --out runs/<run_id>/episode_report.html
+```
+
+Use `--plotly-source inline` after installing `daa-microbench[viz]` for a single-file report that works offline.
+
 Plan optional longer stable-metadata review rows:
 
 ```bash

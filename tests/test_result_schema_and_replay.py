@@ -3,6 +3,8 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
+import subprocess
+import sys
 
 from microbench.metrics.io import (
     RESULT_FIELDS,
@@ -13,7 +15,7 @@ from microbench.metrics.io import (
     result_schema_manifest,
     write_summary,
 )
-from microbench.replay import render_interactive_trace
+from microbench.replay import render_episode_report, render_interactive_trace
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -80,3 +82,50 @@ def test_golden_collision_trace_renders_interactive_html(tmp_path: Path) -> None
     assert "const replay =" in html
     assert "trace_collision_0_9_t15.18" in html
     assert "collision_pair" in html
+
+
+def test_golden_collision_trace_renders_episode_report_html(tmp_path: Path) -> None:
+    trace = ROOT / "golden" / "traces" / "trace_collision_0_9_t15.18.jsonl"
+    out = tmp_path / "trace_collision_report.html"
+
+    render_episode_report(trace, out, max_frames=25, plotly_source="cdn")
+
+    html = out.read_text(encoding="utf-8")
+    assert out.exists()
+    assert "DAA Microbench episode report" in html
+    assert "Top-Down View" in html
+    assert "Side / Altitude View" in html
+    assert "Separation Over Time" in html
+    assert 'id="frame"' in html
+    assert 'id="frame-label"' in html
+    assert "const report =" in html
+
+
+def test_episode_report_cli_writes_html(tmp_path: Path) -> None:
+    trace = ROOT / "golden" / "traces" / "trace_collision_0_9_t15.18.jsonl"
+    out = tmp_path / "cli_report.html"
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "microbench.cli",
+            "episode-report",
+            "--trace",
+            str(trace),
+            "--out",
+            str(out),
+            "--max-frames",
+            "20",
+            "--plotly-source",
+            "cdn",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "episode report saved" in proc.stdout
+    assert out.exists()
+    assert "Control Saturation Count" in out.read_text(encoding="utf-8")

@@ -16,7 +16,7 @@ from microbench.planners import list_methods, planner_metadata
 from microbench.types import RunSpec
 from microbench.runner import run_episode
 from microbench.metrics import append_result, write_summary
-from microbench.replay import render_interactive_trace, render_trace
+from microbench.replay import render_episode_report, render_interactive_trace, render_trace
 from microbench.dataset import generate_dataset, expand_scenarios, expand_list, sanity_check_shard
 from microbench.logging import wandb_logger
 from microbench.rl.calibration import run_rl_policy_calibration
@@ -1101,6 +1101,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show sensed-neighbor links",
     )
 
+    p_episode_report = sub.add_parser("episode-report", help="Render a multi-panel HTML episode analysis report")
+    p_episode_report.add_argument("--trace", required=True, help="Path to trace_episode.jsonl or trace_collision_*.jsonl")
+    p_episode_report.add_argument("--out", required=True, help="Output HTML path")
+    p_episode_report.add_argument(
+        "--max-frames",
+        type=int,
+        default=800,
+        help="Maximum frames embedded in the report; <=0 keeps all frames",
+    )
+    p_episode_report.add_argument(
+        "--plotly-source",
+        choices=("auto", "inline", "cdn"),
+        default="auto",
+        help="How to load Plotly: inline when installed, force inline, or CDN fallback",
+    )
+
     p_ds = sub.add_parser("generate-dataset", help="Generate diffusion training dataset shards")
     p_ds.add_argument("--scenario", required=True, help="Scenario path(s) or globs (comma-separated)")
     p_ds.add_argument("--method", default="orca_heuristic")
@@ -1445,6 +1461,15 @@ def main() -> None:
             max_sensed_per_agent=args.max_sensed,
         )
         print(f"done: interactive replay saved to {out}")
+        return
+    if args.cmd == "episode-report":
+        out = render_episode_report(
+            args.trace,
+            args.out,
+            max_frames=args.max_frames,
+            plotly_source=args.plotly_source,
+        )
+        print(f"done: episode report saved to {out}")
         return
     if args.cmd == "generate-dataset":
         defaults = load_defaults()
