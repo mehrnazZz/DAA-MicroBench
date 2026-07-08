@@ -148,10 +148,30 @@ For built-in baselines, use:
 python -m microbench.cli baseline-leaderboard \
   --out-dir runs_baseline_leaderboard \
   --suites all \
-  --require-pass
+  --require-pass \
+  --require-complete
 ```
 
 This writes one per-suite `baseline_report.json` plus an aggregate `baseline_leaderboard.json`. The aggregate is a navigation and smoke-comparison artifact; official comparisons should still be read per suite because suite difficulty and purpose differ.
+
+For long baseline development jobs, `baseline-leaderboard` can checkpoint progress:
+
+```bash
+python -m microbench.cli baseline-leaderboard \
+  --out-dir runs_baseline_leaderboard \
+  --suites all \
+  --methods reciprocal_velocity_obstacle \
+  --max-wall-time-s 1800 \
+  --run-timeout-s 120
+
+python -m microbench.cli baseline-leaderboard \
+  --out-dir runs_baseline_leaderboard \
+  --suites all \
+  --methods reciprocal_velocity_obstacle \
+  --resume
+```
+
+Checkpointed runs write per-suite `leaderboard_progress.json` files. Official submissions should not be partial: require `complete: true`, `selected_complete: true`, `timeout_run_count: 0`, and no suite-level `stopped_by_wall_time`.
 
 ## Reproducibility Rules
 

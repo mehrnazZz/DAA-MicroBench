@@ -11,7 +11,7 @@ python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-
 python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass
 python -m microbench.cli baseline-review --out-dir runs_baseline_review --duration-s 20
-python -m microbench.cli baseline-leaderboard --out-dir runs_baseline_leaderboard --suites all
+python -m microbench.cli baseline-leaderboard --out-dir runs_baseline_leaderboard --suites all --require-pass --require-complete
 ```
 
 The public-alpha baseline gate is intentionally stricter than "the code imports":
@@ -204,7 +204,8 @@ Build an all-official-suite baseline leaderboard:
 python -m microbench.cli baseline-leaderboard \
   --out-dir runs_baseline_leaderboard \
   --suites all \
-  --require-pass
+  --require-pass \
+  --require-complete
 ```
 
 This materializes every generated official suite, runs the serious built-in baselines over each suite's default scenario, N, seed, and communication matrix, writes per-suite `results.csv`, `summary.csv`, `baseline_report.json`, `acceptance.json`, and writes an aggregate `baseline_leaderboard.json`. Use this for serious baseline claims. For quick local plumbing checks, cap each suite:
@@ -220,6 +221,26 @@ python -m microbench.cli baseline-leaderboard \
   --max-runs 2 \
   --require-pass
 ```
+
+Long 3D stress runs can be checkpointed. Use `--max-wall-time-s` to stop launching new episodes after a global wall-clock budget, `--resume` to continue from existing per-suite `results.csv` rows, and `--run-timeout-s` to write a failed timeout row instead of letting one episode monopolize the job:
+
+```bash
+python -m microbench.cli baseline-leaderboard \
+  --out-dir runs_baseline_leaderboard \
+  --suites all \
+  --methods reciprocal_velocity_obstacle \
+  --max-wall-time-s 1800 \
+  --run-timeout-s 120
+
+python -m microbench.cli baseline-leaderboard \
+  --out-dir runs_baseline_leaderboard \
+  --suites all \
+  --methods reciprocal_velocity_obstacle \
+  --resume \
+  --require-pass
+```
+
+Each suite also writes `leaderboard_progress.json`. For publication-grade claims, the aggregate report should have `ok: true`, `complete: true`, `timeout_run_count: 0`, and no `truncated_by_max_runs` or `stopped_by_wall_time` suite entries.
 
 ## Stale-Aware ORCA Preset
 

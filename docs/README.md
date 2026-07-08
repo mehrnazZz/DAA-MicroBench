@@ -85,7 +85,7 @@ python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --re
 Run the all-suite baseline leaderboard:
 
 ```bash
-python -m microbench.cli baseline-leaderboard --out-dir runs_baseline_leaderboard --suites all --require-pass
+python -m microbench.cli baseline-leaderboard --out-dir runs_baseline_leaderboard --suites all --require-pass --require-complete
 ```
 
 Plan optional longer stable-metadata review rows:

@@ -542,6 +542,9 @@ def _baseline_leaderboard(args) -> None:
         comm_profiles=_parse_str_list(args.comm) if args.comm else None,
         max_runs=args.max_runs,
         stretch=bool(args.stretch),
+        resume=bool(args.resume),
+        max_wall_time_s=args.max_wall_time_s,
+        run_timeout_s=args.run_timeout_s,
     )
 
     if args.json:
@@ -555,9 +558,13 @@ def _baseline_leaderboard(args) -> None:
         )
         for suite in report["suites"]:
             truncated = " truncated" if suite["truncated_by_max_runs"] else ""
+            incomplete = " incomplete" if not suite.get("selected_complete", False) else ""
+            stopped = " wall-time-stop" if suite.get("stopped_by_wall_time") else ""
+            timeouts = f" timeouts={suite.get('timeout_run_count', 0)}" if suite.get("timeout_run_count", 0) else ""
             print(
-                f"  {suite['suite']}: runs={suite['run_count']}/{suite['planned_run_count']} "
-                f"ok={suite['ok']}{truncated} report={suite['report_path']}"
+                f"  {suite['suite']}: runs={suite['selected_completed_count']}/{suite['selected_run_count']} "
+                f"planned={suite['planned_run_count']} ok={suite['ok']}"
+                f"{truncated}{incomplete}{stopped}{timeouts} report={suite['report_path']}"
             )
         if report["aggregate_ranking"]:
             best = report["aggregate_ranking"][0]
@@ -566,6 +573,9 @@ def _baseline_leaderboard(args) -> None:
     if args.require_pass and not report["ok"]:
         failed = [suite["suite"] for suite in report["suites"] if not suite["ok"]]
         raise SystemExit(f"baseline leaderboard acceptance failed: {','.join(failed)}")
+    if args.require_complete and not report["complete"]:
+        incomplete = [suite["suite"] for suite in report["suites"] if not suite.get("complete", False)]
+        raise SystemExit(f"baseline leaderboard incomplete: {','.join(incomplete)}")
 
 
 def _baseline_audit(args) -> None:
@@ -1189,9 +1199,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_bl.add_argument("--seeds", default=None, help="Optional seed override list/range, e.g. 0:2")
     p_bl.add_argument("--comm", default=None, help="Optional comm-profile override list")
     p_bl.add_argument("--max-runs", type=int, default=None, help="Optional per-suite run cap for smoke checks")
+    p_bl.add_argument("--resume", action="store_true", help="Resume from existing per-suite results.csv rows")
+    p_bl.add_argument(
+        "--max-wall-time-s",
+        type=float,
+        default=None,
+        help="Optional global wall-clock budget; writes partial progress when exceeded",
+    )
+    p_bl.add_argument(
+        "--run-timeout-s",
+        type=float,
+        default=None,
+        help="Optional hard per-episode wall-clock timeout for leaderboard jobs",
+    )
     p_bl.add_argument("--stretch", action="store_true", help="Use stretch suite defaults")
     p_bl.add_argument("--json", action="store_true", help="Emit machine-readable leaderboard summary")
     p_bl.add_argument("--require-pass", action="store_true", help="Fail if generated-suite acceptance fails")
+    p_bl.add_argument("--require-complete", action="store_true", help="Fail if the selected leaderboard matrix is incomplete")
 
     p_ba = sub.add_parser("baseline-audit", help="Audit built-in baseline metadata, docs, tests, and suite coverage")
     p_ba.add_argument("--root", default=".", help="Repository root used for docs/tests coverage checks")
