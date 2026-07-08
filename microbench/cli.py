@@ -30,6 +30,7 @@ from microbench.rl.submission_bundle import (
     validate_learned_policy_submission_bundle,
     validate_learned_submission_manifest,
 )
+from microbench.rl.submission_schema_check import run_learned_submission_schema_check
 from microbench.tools import (
     build_baseline_audit,
     build_current_schema_candidate,
@@ -801,6 +802,29 @@ def _rl_freeze_check(args) -> None:
         raise SystemExit(f"RL freeze check failed: {','.join(failed)}")
 
 
+def _learned_submission_schema_check(args) -> None:
+    report = run_learned_submission_schema_check(root=args.root)
+    if args.out:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        print(f"learned-submission-schema-check: {status} schema={report['schema_version']}")
+        for check in report["checks"]:
+            check_status = "ok" if check["ok"] else "FAIL"
+            print(f"  {check_status}: {check['name']}")
+        if args.out:
+            print(f"  report: {args.out}")
+
+    if args.require_pass and not report["ok"]:
+        failed = [check["name"] for check in report["checks"] if not check["ok"]]
+        raise SystemExit(f"learned submission schema check failed: {','.join(failed)}")
+
+
 def _learned_submission_bundle(args) -> None:
     report = run_learned_policy_submission_bundle(
         out_dir=args.out_dir,
@@ -1234,6 +1258,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_rlf.add_argument("--json", action="store_true", help="Emit machine-readable freeze-check JSON")
     p_rlf.add_argument("--require-pass", action="store_true", help="Fail if any freeze criterion check fails")
 
+    p_lssc = sub.add_parser(
+        "learned-submission-schema-check",
+        help="Check learned-submission schema readiness criteria",
+    )
+    p_lssc.add_argument("--root", default=".", help="Repository root containing docs, examples, and schemas")
+    p_lssc.add_argument("--out", default=None, help="Optional JSON output path")
+    p_lssc.add_argument("--json", action="store_true", help="Emit machine-readable schema-check JSON")
+    p_lssc.add_argument("--require-pass", action="store_true", help="Fail if any schema readiness check fails")
+
     p_lsb = sub.add_parser(
         "learned-submission-bundle",
         help="Create RL and planner artifacts for a learned-policy submission",
@@ -1426,6 +1459,9 @@ def main() -> None:
         return
     if args.cmd == "rl-freeze-check":
         _rl_freeze_check(args)
+        return
+    if args.cmd == "learned-submission-schema-check":
+        _learned_submission_schema_check(args)
         return
     if args.cmd == "learned-submission-bundle":
         _learned_submission_bundle(args)

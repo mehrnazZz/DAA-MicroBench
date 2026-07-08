@@ -62,6 +62,10 @@ python -m microbench.cli check-acceptance \
 For learned/RL policies, validate your disclosure draft and then build the standard artifact bundle:
 
 ```bash
+python -m microbench.cli learned-submission-schema-check --require-pass
+```
+
+```bash
 python -m microbench.cli validate-learned-manifest \
   --manifest path/to/learned_submission_manifest.json \
   --require-pass
@@ -140,6 +144,7 @@ Include the relevant rows from `summary.csv`. At minimum include:
 - [ ] I disclosed learned weights or external services.
 - [ ] For learned/RL policies, I included the learned submission bundle or the equivalent RL contract, freeze check, smoke report, and calibration report.
 - [ ] For learned/RL policies, I included `learned_bundle_review.json` or pasted the reviewer summary.
+- [ ] For learned/RL policies, I ran `learned-submission-schema-check --require-pass` before validating or building bundle artifacts.
 - [ ] For learned/RL policies, I ran `validate-learned-manifest --manifest path/to/manifest.json --require-pass` after filling disclosure fields.
 - [ ] For learned/RL policies, I ran `validate-learned-bundle --bundle runs_learned_bundle --require-pass` or validated the equivalent artifacts manually.
 - [ ] For learned/RL policies, I ran `review-learned-bundle --bundle runs_learned_bundle --require-pass` or included an equivalent safety/mission/compute summary.

@@ -19,6 +19,7 @@ labels: learned-policy, benchmark-result
 - [ ] I ran `python -m microbench.cli rl-freeze-check --require-pass --json` and attached the report.
 - [ ] I ran `python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass`.
 - [ ] I ran `python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass`.
+- [ ] I ran `python -m microbench.cli learned-submission-schema-check --require-pass`.
 - [ ] I ran `python -m microbench.cli validate-learned-manifest --manifest path/to/learned_submission_manifest.json --require-pass` after filling training/inference disclosures.
 - [ ] I ran `python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method learned_policy_spec --policy-spec path/to/policy_spec.json --submission-manifest path/to/submission_manifest_overrides.json --require-pass` or attached equivalent artifacts.
 - [ ] I ran `python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass` or validated equivalent artifacts manually.
@@ -78,6 +79,7 @@ python -m microbench.cli rl-freeze-check --require-pass --json
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-contract --json
+python -m microbench.cli learned-submission-schema-check --require-pass
 python -m microbench.cli validate-learned-manifest --manifest path/to/learned_submission_manifest.json --require-pass
 python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method learned_policy_spec --policy-spec path/to/policy_spec.json --submission-manifest path/to/submission_manifest_overrides.json --require-pass
 python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass

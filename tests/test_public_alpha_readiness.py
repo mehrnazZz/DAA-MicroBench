@@ -48,6 +48,7 @@ def test_release_readiness_script_runs_expected_checks() -> None:
     assert "rl-calibration --out-dir" in script
     assert "rl-contract --json" in script
     assert "rl-freeze-check --require-pass" in script
+    assert "learned-submission-schema-check --require-pass" in script
     assert "learned-submission-bundle --out-dir" in script
     assert "validate-learned-manifest --manifest" in script
     assert "validate-learned-bundle --bundle" in script
@@ -71,6 +72,7 @@ def test_docs_index_and_checklist_reference_alpha_notes_and_dry_run() -> None:
     assert "rl-calibration --out-dir" in docs_index
     assert "rl-contract --json" in docs_index
     assert "rl-freeze-check --require-pass" in docs_index
+    assert "learned-submission-schema-check --require-pass" in docs_index
     assert "learned-submission-bundle --out-dir" in docs_index
     assert "validate-learned-manifest --manifest" in docs_index
     assert "validate-learned-bundle --bundle" in docs_index
@@ -85,6 +87,7 @@ def test_docs_index_and_checklist_reference_alpha_notes_and_dry_run() -> None:
     assert "--policy tiny_learned" in checklist
     assert "rl-calibration --out-dir" in checklist
     assert "rl-freeze-check --require-pass" in checklist
+    assert "learned-submission-schema-check --require-pass" in checklist
     assert "learned-submission-bundle --out-dir" in checklist
     assert "learned_submission_manifest.json" in checklist
     assert "LEARNED_SUBMISSION_SCHEMAS.md" in checklist

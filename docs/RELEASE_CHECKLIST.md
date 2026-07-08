@@ -25,6 +25,7 @@ Use this checklist before tagging a public alpha, announcing a leaderboard run, 
 - [ ] `python -m microbench.cli rl-freeze-check --require-pass --json` passes and writes a stable-v1 readiness artifact when preparing learned-policy submissions or v1 candidates.
 - [ ] `python -m microbench.cli validate-learned-manifest --manifest examples/learned_submission_manifest_template.json --require-pass` passes for the learned manifest template.
 - [ ] Learned submission schemas are packaged under `microbench/bundled_config/schemas/` and documented in `docs/LEARNED_SUBMISSION_SCHEMAS.md`.
+- [ ] `python -m microbench.cli learned-submission-schema-check --require-pass` passes for schema packaging, template validity, docs coverage, and overlay guidance.
 - [ ] `python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method learned_tiny --policy tiny_learned --require-pass` passes for the frozen learned-policy fixture.
 - [ ] `python -m microbench.cli learned-submission-bundle --out-dir runs_external_learned_bundle --method learned_policy_spec --policy-spec examples/external_policy_spec.json --require-pass` passes for an external policy-spec planner submission.
 - [ ] Learned bundles contain `learned_submission_manifest.json` with artifact hashes and policy-spec provenance.

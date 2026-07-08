@@ -57,6 +57,10 @@ from microbench.rl.submission_bundle import (
     validate_learned_policy_submission_bundle,
     validate_learned_submission_manifest,
 )
+from microbench.rl.submission_schema_check import (
+    LEARNED_SUBMISSION_SCHEMA_CHECK_VERSION,
+    run_learned_submission_schema_check,
+)
 from microbench.rl.submission_schemas import (
     LEARNED_BUNDLE_REVIEW_SCHEMA_FILE,
     LEARNED_SUBMISSION_BUNDLE_SCHEMA_FILE,
@@ -79,6 +83,7 @@ __all__ = [
     "LEARNED_SUBMISSION_MANIFEST_SCHEMA_VERSION",
     "LEARNED_SUBMISSION_MANIFEST_SCHEMA_FILE",
     "LEARNED_SUBMISSION_MANIFEST_VALIDATION_SCHEMA_VERSION",
+    "LEARNED_SUBMISSION_SCHEMA_CHECK_VERSION",
     "ModelPredictPolicyAdapter",
     "OBSERVATION_LAYOUT",
     "RL_ACTION_SCHEMA_VERSION",
@@ -122,6 +127,7 @@ __all__ = [
     "rollout_parallel_env",
     "run_parallel_policy_rollouts",
     "run_learned_policy_submission_bundle",
+    "run_learned_submission_schema_check",
     "run_rl_freeze_check",
     "run_rl_policy_calibration",
     "run_rl_policy_smoke",

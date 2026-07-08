@@ -61,16 +61,19 @@ def test_public_docs_index_and_templates_exist() -> None:
     model_spec = ROOT / "examples/external_policy_model_predict_spec.json"
     callable_spec = ROOT / "examples/external_policy_callable_spec.json"
     manifest_template = ROOT / "examples/learned_submission_manifest_template.json"
+    manifest_overlay = ROOT / "examples/learned_submission_manifest_overlay_example.json"
     schema_dir = ROOT / "microbench" / "bundled_config" / "schemas"
     assert model_spec.exists()
     assert callable_spec.exists()
     assert manifest_template.exists()
+    assert manifest_overlay.exists()
     assert (schema_dir / "learned_submission_manifest.schema.json").exists()
     assert (schema_dir / "learned_submission_bundle.schema.json").exists()
     assert (schema_dir / "learned_bundle_review.schema.json").exists()
     assert "model_predict" in model_spec.read_text(encoding="utf-8")
     assert "callable" in callable_spec.read_text(encoding="utf-8")
     assert "inference_packages" in manifest_template.read_text(encoding="utf-8")
+    assert "training_disclosure" in manifest_overlay.read_text(encoding="utf-8")
     assert "bundled_config/schemas/*.json" in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
     required_templates = [
@@ -99,6 +102,7 @@ def test_public_docs_index_and_templates_exist() -> None:
     assert "policy_spec.json" in learned_template
     assert "LEARNED_POLICY_ADOPTION.md" in learned_template
     assert "--submission-manifest" in learned_template
+    assert "learned-submission-schema-check" in learned_template
     assert "validate-learned-manifest" in learned_template
     assert "rl_contract.json" in learned_template
     assert "rl_freeze_check.json" in learned_template

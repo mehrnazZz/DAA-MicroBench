@@ -57,6 +57,7 @@ python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-
 python -m microbench.cli rl-contract --json
 python -m microbench.cli rl-freeze-check --require-pass --json
 python -m microbench.cli validate-learned-manifest --manifest examples/learned_submission_manifest_template.json --require-pass
+python -m microbench.cli learned-submission-schema-check --require-pass
 python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle --method learned_tiny --policy tiny_learned --require-pass
 python -m microbench.cli learned-submission-bundle --out-dir runs_external_learned_bundle --method learned_policy_spec --policy-spec examples/external_policy_spec.json --require-pass
 python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass
@@ -80,7 +81,7 @@ python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --re
 - `rl-freeze-check` publishes a machine-readable stable-v1 readiness checklist for the RL interface, but passing it does not make this public alpha a stable v1 release.
 - `tiny_learned` is available as a built-in RL smoke policy and maps to the same frozen model family as the planner method `learned_tiny`.
 - `validate-learned-manifest` checks learned-policy disclosure drafts, dependency declarations, and optional artifact hashes before running the heavier learned bundle workflow.
-- Learned-submission JSON Schemas are packaged under `microbench/bundled_config/schemas/` and documented in `docs/LEARNED_SUBMISSION_SCHEMAS.md`; schema `0.1` is still public-alpha.
+- Learned-submission JSON Schemas are packaged under `microbench/bundled_config/schemas/` and documented in `docs/LEARNED_SUBMISSION_SCHEMAS.md`; schema `0.1` is still public-alpha, and `learned-submission-schema-check` gates schema packaging, docs coverage, template validity, and overlay guidance.
 - `learned-submission-bundle` creates the standard learned-policy artifact folder, including `learned_submission_manifest.json`, RL contract/freeze/smoke/calibration reports, and official planner CSVs.
 - `validate-learned-bundle` reviews an existing learned-policy bundle without rerunning simulations and checks required artifacts, manifest schema/provenance/hash consistency, parseability, passing RL reports, planner acceptance, and nonempty planner CSVs.
 - `review-learned-bundle` summarizes an existing learned-policy bundle into manifest disclosure, safety, mission, compute, communication, observation, and v0-score fields for manual leaderboard review.

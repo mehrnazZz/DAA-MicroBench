@@ -20,6 +20,8 @@ The dependency-free examples are:
 - `examples/exported_policy.py`: inference wrapper with `predict(...)`, `make_model(...)`, and `callable_policy(...)`.
 - `examples/external_policy_model_predict_spec.json`: `model_predict` spec using a Python factory and `factory_kwargs`.
 - `examples/external_policy_callable_spec.json`: `callable` spec using `callable_policy(observation, info)`.
+- `examples/learned_submission_manifest_template.json`: full reviewer-ready manifest template.
+- `examples/learned_submission_manifest_overlay_example.json`: compact disclosure overlay for `--submission-manifest`.
 
 The `model_predict` pattern is the recommended shape for real exported models because the factory can load weights, construct preprocessing objects, and own inference state:
 
@@ -90,7 +92,7 @@ python -m microbench.cli learned-submission-bundle \
   --require-pass
 ```
 
-For real submissions, pass a JSON disclosure overlay to populate the generated `learned_submission_manifest.json`:
+For real submissions, pass a JSON disclosure overlay to populate the generated `learned_submission_manifest.json`. Start with `examples/learned_submission_manifest_overlay_example.json` when you only need to fill disclosure fields:
 
 ```json
 {
@@ -118,7 +120,11 @@ For real submissions, pass a JSON disclosure overlay to populate the generated `
 }
 ```
 
-The fuller reviewer-ready shape is available at `examples/learned_submission_manifest_template.json`, and the packaged schema reference is in [LEARNED_SUBMISSION_SCHEMAS.md](LEARNED_SUBMISSION_SCHEMAS.md). Validate a full draft before running the heavier bundle command:
+The fuller reviewer-ready shape is available at `examples/learned_submission_manifest_template.json`, and the packaged schema reference is in [LEARNED_SUBMISSION_SCHEMAS.md](LEARNED_SUBMISSION_SCHEMAS.md). Validate the schema/docs release gate and then validate a full draft before running the heavier bundle command:
+
+```bash
+python -m microbench.cli learned-submission-schema-check --require-pass
+```
 
 ```bash
 python -m microbench.cli validate-learned-manifest \

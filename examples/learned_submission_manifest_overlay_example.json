@@ -1,0 +1,33 @@
+{
+  "dependencies": {
+    "inference_packages": [
+      {
+        "name": "numpy",
+        "source": "pip",
+        "version": ">=1.24"
+      }
+    ],
+    "notes": "Overlay example: merge these fields into the generated learned_submission_manifest.json."
+  },
+  "inference_disclosure": {
+    "runtime_notes": "deterministic local CPU inference",
+    "uses_external_services": false
+  },
+  "review_notes": {
+    "privileged_information": "none"
+  },
+  "training_disclosure": {
+    "environment_steps": 1000000,
+    "external_data": "none",
+    "hardware": "1x local GPU",
+    "observation_normalization": "running mean/std fitted on training rollouts",
+    "pretrained_models": "none",
+    "reward_configuration": {
+      "collision": -10.0,
+      "progress": 1.0
+    },
+    "training_suites": [
+      "custom_training_suite"
+    ]
+  }
+}

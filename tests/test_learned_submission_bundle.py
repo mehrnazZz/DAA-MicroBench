@@ -13,6 +13,10 @@ from microbench.rl.submission_bundle import (
     validate_learned_policy_submission_bundle,
     validate_learned_submission_manifest,
 )
+from microbench.rl.submission_schema_check import (
+    LEARNED_SUBMISSION_SCHEMA_CHECK_VERSION,
+    run_learned_submission_schema_check,
+)
 from microbench.rl.submission_schemas import (
     LEARNED_BUNDLE_REVIEW_SCHEMA_FILE,
     LEARNED_SUBMISSION_BUNDLE_SCHEMA_FILE,
@@ -218,6 +222,38 @@ def test_learned_submission_manifest_template_validates_and_cli_gates() -> None:
     cli_report = json.loads(proc.stdout)
     assert cli_report["ok"] is True
     assert cli_report["policy"]["name"] == "external_model_predict_fixture"
+
+
+def test_learned_submission_schema_check_helper_and_cli_gate() -> None:
+    report = run_learned_submission_schema_check(root=ROOT)
+
+    assert report["ok"] is True
+    assert report["schema_version"] == LEARNED_SUBMISSION_SCHEMA_CHECK_VERSION
+    assert report["schema_versions"]["manifest_schema_const"] == "0.1"
+    check_names = {check["name"] for check in report["checks"]}
+    assert "learned_submission_manifest_template_valid" in check_names
+    assert "learned_submission_overlay_example_is_overlay" in check_names
+    assert "learned_submission_release_docs_include_schema_gate" in check_names
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "microbench.cli",
+            "learned-submission-schema-check",
+            "--root",
+            str(ROOT),
+            "--require-pass",
+            "--json",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    cli_report = json.loads(proc.stdout)
+    assert cli_report["ok"] is True
+    assert cli_report["schema_version"] == report["schema_version"]
 
 
 def test_learned_submission_json_schemas_are_packaged_and_detect_shape_errors() -> None:

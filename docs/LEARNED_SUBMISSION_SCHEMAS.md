@@ -18,11 +18,13 @@ All three schemas currently use artifact schema version `0.1`. The JSON Schema `
 examples/learned_submission_manifest_template.json
 ```
 
-The `learned-submission-bundle --submission-manifest` flag accepts an overlay file, not necessarily a full manifest. The overlay is deep-merged into the generated manifest so users can fill disclosures without duplicating generated artifact hashes and benchmark metadata.
+The `learned-submission-bundle --submission-manifest` flag accepts an overlay file, not necessarily a full manifest. The overlay is deep-merged into the generated manifest so users can fill disclosures without duplicating generated artifact hashes and benchmark metadata. Use `examples/learned_submission_manifest_overlay_example.json` as a compact overlay starting point.
 
 Recommended flow:
 
 ```bash
+python -m microbench.cli learned-submission-schema-check --require-pass
+
 python -m microbench.cli validate-learned-manifest \
   --manifest examples/learned_submission_manifest_template.json \
   --require-pass
@@ -52,6 +54,15 @@ For schema `0.1`:
 - Validators should tolerate unknown fields for forward-compatible review metadata.
 - Legacy bundles that predate `learned_submission_manifest.json` remain structurally valid, but reviewer output flags `legacy_bundle_without_submission_manifest`.
 - Reviewer-ready manifests should not leave material training, inference, dependency, external-service, or privileged-information fields as `undisclosed`.
+
+## Schema Changelog
+
+### 0.1
+
+- Added `learned_submission_manifest.schema.json` for reviewer-ready learned-policy disclosure.
+- Added `learned_submission_bundle.schema.json` for bundle reports produced by `learned-submission-bundle`.
+- Added `learned_bundle_review.schema.json` for reviewer summaries produced by `review-learned-bundle`.
+- Added `learned-submission-schema-check` as the release gate for schema packaging, version constants, docs, template validity, and overlay guidance.
 
 ## Programmatic Use
 
