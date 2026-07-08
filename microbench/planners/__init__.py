@@ -15,6 +15,7 @@ from microbench.planners.negotiation_yield import NegotiationYieldPlanner
 from microbench.planners.orca_expert import OrcaExpertPlanner
 from microbench.planners.priority_yield import PriorityYieldPlanner
 from microbench.planners.template_planner import TemplatePlanner
+from microbench.planners.velocity_obstacle import VelocityObstaclePlanner
 
 
 @dataclass(frozen=True)
@@ -71,12 +72,18 @@ def _make_mpc_local() -> ILocalPlanner:
     return MpcLocalPlanner(cfg=defaults.get("mpc_local", {}))
 
 
+def _make_velocity_obstacle() -> ILocalPlanner:
+    defaults = load_defaults()
+    return VelocityObstaclePlanner(cfg=defaults.get("velocity_obstacle", {}))
+
+
 _FACTORIES: dict[str, Callable[[], ILocalPlanner]] = {
     "baseline_goal": BaselineGoalPlanner,
     "orca_heuristic": _make_orca_heuristic,
     "orca_with_staleness": _make_orca_with_staleness,
     "cbf_qp": _make_cbf_qp,
     "mpc_local": _make_mpc_local,
+    "velocity_obstacle": _make_velocity_obstacle,
     "template": TemplatePlanner,
     "intent_dummy": IntentDummyPlanner,
     "learned_tiny": LearnedTinyPlanner,
@@ -188,6 +195,27 @@ _METADATA: dict[str, PlannerMetadata] = {
             "Not a full nonlinear MPC solver.",
             "Experimental; not recommended as a leaderboard anchor until calibrated.",
             "Uses constant-velocity neighbor predictions from PlannerInput.",
+        ),
+    ),
+    "velocity_obstacle": PlannerMetadata(
+        method="velocity_obstacle",
+        display_name="Velocity-obstacle cone baseline",
+        planner_type="velocity_obstacle_sampling",
+        role="experimental_baseline",
+        status="experimental",
+        dimensions=("2d", "3d"),
+        observation_sources=("local_neighbors", "v2v", "sensor", "fused"),
+        uses_v2v=True,
+        uses_local_sensing=True,
+        uses_obstacles=True,
+        description=(
+            "Deterministic 2D/3D velocity-obstacle cone sampler that scores finite-horizon "
+            "candidate commands against local tracks and static obstacles."
+        ),
+        limitations=(
+            "Experimental; not a formally validated VO/RVO/HRVO implementation.",
+            "Uses constant-velocity local track predictions from PlannerInput.",
+            "Not a stable-v1 leaderboard anchor until calibrated on official stress suites.",
         ),
     ),
     "template": PlannerMetadata(

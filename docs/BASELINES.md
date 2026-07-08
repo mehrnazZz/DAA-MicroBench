@@ -16,7 +16,7 @@ python -m microbench.cli baseline-review --out-dir runs_baseline_review --durati
 The public-alpha baseline gate is intentionally stricter than "the code imports":
 
 - required public-alpha reference baselines: `orca_heuristic`, `orca_with_staleness`, `priority_yield`, `negotiation_yield`
-- experimental but runnable baselines: `cbf_qp`, `mpc_local`, `learned_tiny`
+- experimental but runnable baselines: `cbf_qp`, `mpc_local`, `velocity_obstacle`, `learned_tiny`
 - illustrative or template methods: `baseline_goal`, `intent_dummy`, `template`
 
 Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pass`, and `baseline-promotion --require-calibrated` before inviting external baseline comparisons. Stable v1 still requires promotion work; `baseline-audit --require-stable-v1-ready` and `baseline-promotion --require-stable-v1-ready` are expected to fail while experimental baselines remain experimental.
@@ -30,6 +30,7 @@ Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pas
 | `orca_with_staleness` | reference baseline | same as `orca_heuristic`, with stronger stale-track inflation | 2D, 3D | Degraded communication or stale sensor-track comparison baseline. |
 | `cbf_qp` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Dependency-free CBF projection baseline with optional SciPy solver mode. |
 | `mpc_local` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Deterministic short-horizon predictive sampling baseline. |
+| `velocity_obstacle` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Deterministic finite-horizon velocity-obstacle cone sampling baseline. |
 | `learned_tiny` | experimental learned baseline | frozen JSON weights, goal, local neighbor tracks, V2V/sensor/fused observations | 2D, 3D | Tiny learned-model fixture for packaging, disclosure, adapter, and benchmark-result plumbing. |
 | `learned_policy_spec` | learned submission bridge | trusted JSON/YAML policy spec, RL observation/action contract, local neighbor tracks, V2V/sensor/fused observations | 2D, 3D | Externally configured bridge for evaluating learned policies as standard planner CSV rows; not a reference baseline. |
 | `priority_yield` | agentic reference baseline | local tracks, priority, agent messages | 2D, 3D | Simple decentralized right-of-way behavior. |
@@ -55,6 +56,7 @@ Experimental baselines are runnable but not leaderboard anchors yet:
 
 - `cbf_qp`
 - `mpc_local`
+- `velocity_obstacle`
 - `learned_tiny`
 
 Illustrative baselines are useful for sanity checks and tutorials but should not be treated as serious DAA competitors:
@@ -135,6 +137,18 @@ python -m microbench.cli run \
   --seed 0 \
   --comm ideal_50hz \
   --out-dir runs_mpc_local_smoke
+```
+
+Velocity-obstacle smoke:
+
+```bash
+python -m microbench.cli run \
+  --scenario config/scenarios/stacked_swap_3d.yaml \
+  --method velocity_obstacle \
+  --n 4 \
+  --seed 0 \
+  --comm ideal_50hz \
+  --out-dir runs_velocity_obstacle_smoke
 ```
 
 Learned-model baseline smoke:
@@ -261,6 +275,30 @@ Observed local calibration on tiny generated suites before public-alpha tuning:
 - a 20-second stable-metadata prep review with `baseline-review --methods cbf_qp,mpc_local --duration-s 20` passes the selected 3D/degraded review lanes for both methods, but reports `needs_reference_role_decision` because both remain `experimental_baseline`
 - passing that review is evidence for promotion discussion, not promotion by itself; CBF still needs stronger solver/fallback validation, and MPC still needs broader compute and dense-3D stress characterization before either should become a public reference baseline
 - `baseline-evidence` adds a cheap dense-3D MPC candidate-cap and p95 profiling check; passing it is a local evidence point, not a substitute for generated-suite stress characterization
+
+## Velocity-Obstacle Cone Baseline
+
+`velocity_obstacle` is an experimental 2D/3D finite-horizon VO-cone sampler. It samples bounded candidate velocity commands, predicts each local neighbor with constant velocity, penalizes candidates that enter the inflated velocity-obstacle cone within the configured horizon, and also scores static AABB obstacle clearance.
+
+Useful debug fields include:
+
+- `vo_algorithm`
+- `vo_candidates`
+- `vo_conflict_count`
+- `vo_min_ttc_s`
+- `vo_min_pred_clearance_m`
+- `vo_cone_penalty`
+- `vo_obstacle_penalty`
+- `vo_planar`
+
+Requirements before promoting it to a reference baseline:
+
+- clear distinction from the existing ORCA-like heuristic in docs and calibration reports
+- collision-free or bounded-collision behavior on calibrated head-on, crossing, merge, and 3D swap lanes
+- degraded-sensing and stale-track calibration, since VO behavior is sensitive to track uncertainty
+- obstacle-field tests beyond single AABB smoke cases
+- runtime p95 bands on generated 3D stress rows
+- comparison against ORCA-like, CBF-QP, and MPC-local on the same official suites
 
 ## Tiny Learned Baseline
 

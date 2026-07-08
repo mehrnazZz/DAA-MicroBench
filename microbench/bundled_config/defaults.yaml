@@ -122,3 +122,25 @@ mpc_local:
   approach_weight: 20000.0
   low_speed_weight: 0.05
   direction_scales: [1.0, 0.5]
+
+velocity_obstacle:
+  time_horizon_s: 3.0
+  obstacle_time_horizon_s: 3.0
+  rollout_dt_s: 0.35
+  max_neighbors: 8
+  safety_margin_m: 0.25
+  obstacle_margin_m: 0.2
+  near_clearance_m: 1.25
+  stale_inflation_gain: 0.7
+  goal_slowdown_radius_m: 6.0
+  candidate_samples_2d: 24
+  candidate_samples_3d: 36
+  max_candidates: 96
+  speed_scales: [1.0, 0.75, 0.5, 0.25, 0.0]
+  tracking_weight: 1.0
+  progress_weight: 0.25
+  smoothness_weight: 0.08
+  cone_weight: 1200.0
+  collision_weight: 5000.0
+  clearance_weight: 80.0
+  obstacle_weight: 160.0

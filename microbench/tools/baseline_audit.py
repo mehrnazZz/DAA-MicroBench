@@ -20,6 +20,7 @@ PUBLIC_ALPHA_REFERENCE_METHODS = (
 EXPERIMENTAL_METHODS = (
     "cbf_qp",
     "mpc_local",
+    "velocity_obstacle",
     "learned_tiny",
 )
 

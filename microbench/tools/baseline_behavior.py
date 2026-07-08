@@ -22,6 +22,7 @@ BASELINE_BEHAVIOR_METHODS = (
     "orca_with_staleness",
     "cbf_qp",
     "mpc_local",
+    "velocity_obstacle",
     "learned_tiny",
     "intent_dummy",
     "priority_yield",
@@ -168,6 +169,30 @@ def _planner_output_contracts(methods: list[str]) -> list[dict[str, Any]]:
             )
         except Exception as exc:
             checks.append(_check("mpc_local_debug_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
+
+    if "velocity_obstacle" in methods:
+        try:
+            planner = make_planner("velocity_obstacle")
+            planner.reset(0)
+            out = planner.compute_cmd(_planner_input(neighbors=[_neighbor()], planar=False))
+            info = getattr(out, "debug_info", {})
+            checks.append(
+                _check(
+                    "velocity_obstacle_debug_contract",
+                    int(info.get("vo_candidates", 0)) > 0
+                    and int(info.get("vo_conflict_count", 0)) >= 1
+                    and info.get("vo_min_pred_clearance_m") is not None
+                    and info.get("vo_planar") is False,
+                    {
+                        "vo_candidates": info.get("vo_candidates"),
+                        "vo_conflict_count": info.get("vo_conflict_count"),
+                        "vo_min_pred_clearance_m": info.get("vo_min_pred_clearance_m"),
+                        "vo_planar": info.get("vo_planar"),
+                    },
+                )
+            )
+        except Exception as exc:
+            checks.append(_check("velocity_obstacle_debug_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
 
     if "intent_dummy" in methods:
         try:
