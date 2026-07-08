@@ -88,6 +88,16 @@ Run the all-suite baseline leaderboard:
 python -m microbench.cli baseline-leaderboard --out-dir runs_baseline_leaderboard --suites all --require-pass --require-complete
 ```
 
+Export a saved trace to a Foxglove-compatible MCAP log:
+
+```bash
+python -m microbench.cli foxglove-export \
+  --trace runs/<run_id>/episodes/<episode_dir>/trace_episode.jsonl \
+  --out runs/<run_id>/episode.mcap
+```
+
+Install `daa-microbench[foxglove]` first. The MCAP contains `/tf`, agent scene entities, trails, sensing links, frame diagnostics, and events for Foxglove Studio.
+
 Render a multi-panel episode report from a saved trace:
 
 ```bash

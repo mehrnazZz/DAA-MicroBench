@@ -127,6 +127,7 @@ Optional install tracks (manual extras):
 - RL wrappers with Gymnasium/PettingZoo classes: `pip install -e ".[rl]"`
 - Diffusion/ML extras: `pip install -e ".[ml]"`
 - Self-contained Plotly episode reports: `pip install -e ".[viz]"`
+- Foxglove/MCAP trace export: `pip install -e ".[foxglove]"`
 - Optimization extras: `pip install -e ".[opt]"`
 
 ## 3) Core Concepts
@@ -598,8 +599,19 @@ If `--methods` is omitted for `three_d`, it defaults to `orca_heuristic`.
 
 - full-episode replay works the same way as planar replay
 - for non-planar episodes, replay automatically switches to a 3D view
+- for lab-grade robotics visualization, export traces to Foxglove MCAP and open them in Foxglove Studio
 - for deeper debugging, start with the multi-panel episode report: it shows top-down, side/altitude, 3D context, separation, speed, saturation, and sensing freshness in one synchronized HTML artifact
 - use the interactive HTML replay when you mainly need orbit/zoom/scrub playback with obstacle wireframes visible
+
+Foxglove MCAP export:
+
+```bash
+python -m microbench.cli foxglove-export \
+  --trace runs/<run_id>/episodes/<episode_dir>/trace_episode.jsonl \
+  --out runs/<run_id>/episode.mcap
+```
+
+Install `daa-microbench[foxglove]` to enable MCAP writing. The export writes Foxglove-recognized channels for `/tf`, `/daa/static`, `/daa/agents`, `/daa/trails`, `/daa/sensing_links`, `/daa/diagnostics`, and `/daa/events`. DAA Microbench stores altitude on the native `y` axis; the Foxglove export maps coordinates to `x, y=lateral, z=altitude` so the 3D panel is z-up.
 
 Episode analysis report:
 

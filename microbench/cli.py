@@ -16,7 +16,7 @@ from microbench.planners import list_methods, planner_metadata
 from microbench.types import RunSpec
 from microbench.runner import run_episode
 from microbench.metrics import append_result, write_summary
-from microbench.replay import render_episode_report, render_interactive_trace, render_trace
+from microbench.replay import export_foxglove_mcap, render_episode_report, render_interactive_trace, render_trace
 from microbench.dataset import generate_dataset, expand_scenarios, expand_list, sanity_check_shard
 from microbench.logging import wandb_logger
 from microbench.rl.calibration import run_rl_policy_calibration
@@ -1117,6 +1117,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="How to load Plotly: inline when installed, force inline, or CDN fallback",
     )
 
+    p_foxglove = sub.add_parser("foxglove-export", help="Export a trace as a Foxglove-compatible MCAP log")
+    p_foxglove.add_argument("--trace", required=True, help="Path to trace_episode.jsonl or trace_collision_*.jsonl")
+    p_foxglove.add_argument("--out", required=True, help="Output MCAP path")
+    p_foxglove.add_argument("--trail-frames", type=int, default=200, help="Number of history frames in trail entities")
+    p_foxglove.add_argument("--max-sensing-links", type=int, default=200, help="Maximum sensing/V2V links per frame")
+
     p_ds = sub.add_parser("generate-dataset", help="Generate diffusion training dataset shards")
     p_ds.add_argument("--scenario", required=True, help="Scenario path(s) or globs (comma-separated)")
     p_ds.add_argument("--method", default="orca_heuristic")
@@ -1470,6 +1476,18 @@ def main() -> None:
             plotly_source=args.plotly_source,
         )
         print(f"done: episode report saved to {out}")
+        return
+    if args.cmd == "foxglove-export":
+        try:
+            out = export_foxglove_mcap(
+                args.trace,
+                args.out,
+                trail_frames=args.trail_frames,
+                max_sensing_links=args.max_sensing_links,
+            )
+        except RuntimeError as exc:
+            raise SystemExit(str(exc))
+        print(f"done: Foxglove MCAP saved to {out}")
         return
     if args.cmd == "generate-dataset":
         defaults = load_defaults()
