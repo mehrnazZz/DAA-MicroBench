@@ -19,6 +19,7 @@ SERIOUS_BASELINE_METHODS = (
     "orca_heuristic",
     "orca_with_staleness",
     "velocity_obstacle",
+    "reciprocal_velocity_obstacle",
     "cbf_qp",
     "mpc_local",
     "priority_yield",

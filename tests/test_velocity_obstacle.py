@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import numpy as np
 
-from microbench.planners.velocity_obstacle import VelocityObstaclePlanner
-from microbench.types import AABBObs, AgentState, NeighborObs, PlannerInput
+from microbench.planners.velocity_obstacle import ReciprocalVelocityObstaclePlanner, VelocityObstaclePlanner
+from microbench.types import AABBObs, AgentContext, AgentState, NeighborObs, PlannerInput
 
 
-def _ego(*, vel: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> AgentState:
+def _ego(*, idx: int = 0, vel: tuple[float, float, float] = (0.0, 0.0, 0.0)) -> AgentState:
     return AgentState(
-        idx=0,
+        idx=idx,
         pos=np.asarray([0.0, 0.0, 0.0], dtype=np.float32),
         vel=np.asarray(vel, dtype=np.float32),
         goal=np.asarray([12.0, 0.0, 0.0], dtype=np.float32),
@@ -39,6 +39,7 @@ def _input(
     ego: AgentState | None = None,
     neighbors: list[NeighborObs] | None = None,
     obstacles: list[AABBObs] | None = None,
+    agent_context: AgentContext | None = None,
     planar: bool = True,
 ) -> PlannerInput:
     return PlannerInput(
@@ -46,6 +47,7 @@ def _input(
         goal_dir=np.asarray([1.0, 0.0, 0.0], dtype=np.float32),
         neighbors=list(neighbors or []),
         obstacles=list(obstacles or []),
+        agent_context=agent_context,
         dt=0.02,
         t=0.0,
         planar=planar,
@@ -121,3 +123,44 @@ def test_velocity_obstacle_preserves_3d_command_shape() -> None:
     assert float(np.linalg.norm(out.v_cmd)) <= ego.v_max + 1e-6
     assert out.debug_info["vo_planar"] is False
     assert out.debug_info["vo_candidates"] > 0
+
+
+def test_reciprocal_velocity_obstacle_reports_hrvo_responsibility() -> None:
+    planner = ReciprocalVelocityObstaclePlanner()
+    planner.reset(0)
+    ego = _ego(idx=2, vel=(2.0, 0.0, 0.0))
+
+    out = planner.compute_cmd(_input(ego=ego, neighbors=[_neighbor()]))
+
+    assert out.v_cmd.shape == (3,)
+    assert out.debug_info["vo_algorithm"] == "hybrid_reciprocal_velocity_obstacle"
+    assert out.debug_info["vo_reciprocal_mode"] == "hrvo"
+    assert out.debug_info["vo_responsibility_mean"] > 0.5
+    assert out.debug_info["vo_min_ttc_s"] is not None
+
+
+def test_reciprocal_velocity_obstacle_priority_changes_responsibility() -> None:
+    planner = ReciprocalVelocityObstaclePlanner()
+    ego = _ego(idx=2, vel=(2.0, 0.0, 0.0))
+    low_priority = AgentContext(agent_id=2, method="reciprocal_velocity_obstacle", seed=0, priority=10)
+    high_priority = AgentContext(agent_id=2, method="reciprocal_velocity_obstacle", seed=0, priority=0)
+
+    low = planner.compute_cmd(_input(ego=ego, neighbors=[_neighbor()], agent_context=low_priority))
+    high = planner.compute_cmd(_input(ego=ego, neighbors=[_neighbor()], agent_context=high_priority))
+
+    assert low.debug_info["vo_responsibility_mean"] > high.debug_info["vo_responsibility_mean"]
+
+
+def test_reciprocal_velocity_obstacle_preserves_3d_command_shape() -> None:
+    planner = ReciprocalVelocityObstaclePlanner()
+    planner.reset(0)
+    ego = _ego(idx=3, vel=(1.5, 0.0, 0.0))
+    neighbor = _neighbor(pos=(4.0, 0.2, 0.0), vel=(-1.5, 0.0, 0.0))
+
+    out = planner.compute_cmd(_input(ego=ego, neighbors=[neighbor], planar=False))
+
+    assert out.v_cmd.shape == (3,)
+    assert np.all(np.isfinite(out.v_cmd))
+    assert float(np.linalg.norm(out.v_cmd)) <= ego.v_max + 1e-6
+    assert out.debug_info["vo_planar"] is False
+    assert out.debug_info["vo_reciprocal_mode"] == "hrvo"

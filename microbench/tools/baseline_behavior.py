@@ -23,6 +23,7 @@ BASELINE_BEHAVIOR_METHODS = (
     "cbf_qp",
     "mpc_local",
     "velocity_obstacle",
+    "reciprocal_velocity_obstacle",
     "learned_tiny",
     "intent_dummy",
     "priority_yield",
@@ -193,6 +194,32 @@ def _planner_output_contracts(methods: list[str]) -> list[dict[str, Any]]:
             )
         except Exception as exc:
             checks.append(_check("velocity_obstacle_debug_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
+
+    if "reciprocal_velocity_obstacle" in methods:
+        try:
+            planner = make_planner("reciprocal_velocity_obstacle")
+            planner.reset(0)
+            out = planner.compute_cmd(_planner_input(neighbors=[_neighbor()], planar=False))
+            info = getattr(out, "debug_info", {})
+            checks.append(
+                _check(
+                    "reciprocal_velocity_obstacle_debug_contract",
+                    int(info.get("vo_candidates", 0)) > 0
+                    and int(info.get("vo_conflict_count", 0)) >= 1
+                    and info.get("vo_min_pred_clearance_m") is not None
+                    and info.get("vo_reciprocal_mode") == "hrvo"
+                    and info.get("vo_responsibility_mean") is not None,
+                    {
+                        "vo_candidates": info.get("vo_candidates"),
+                        "vo_conflict_count": info.get("vo_conflict_count"),
+                        "vo_min_pred_clearance_m": info.get("vo_min_pred_clearance_m"),
+                        "vo_reciprocal_mode": info.get("vo_reciprocal_mode"),
+                        "vo_responsibility_mean": info.get("vo_responsibility_mean"),
+                    },
+                )
+            )
+        except Exception as exc:
+            checks.append(_check("reciprocal_velocity_obstacle_debug_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
 
     if "intent_dummy" in methods:
         try:

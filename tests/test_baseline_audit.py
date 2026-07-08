@@ -43,6 +43,9 @@ def test_baseline_audit_public_alpha_contract() -> None:
     assert by_method["velocity_obstacle"]["readiness"] == "experimental_runnable"
     assert by_method["velocity_obstacle"]["checks"]["docs_mentioned"] is True
     assert by_method["velocity_obstacle"]["checks"]["tests_mentioned"] is True
+    assert by_method["reciprocal_velocity_obstacle"]["readiness"] == "experimental_runnable"
+    assert by_method["reciprocal_velocity_obstacle"]["checks"]["docs_mentioned"] is True
+    assert by_method["reciprocal_velocity_obstacle"]["checks"]["tests_mentioned"] is True
     assert by_method["learned_tiny"]["readiness"] == "experimental_runnable"
     assert by_method["learned_tiny"]["checks"]["docs_mentioned"] is True
     assert by_method["learned_tiny"]["checks"]["tests_mentioned"] is True

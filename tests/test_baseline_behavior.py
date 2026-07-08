@@ -50,14 +50,15 @@ def test_baseline_behavior_smoke_agentic_message_contract(tmp_path: Path) -> Non
 def test_baseline_behavior_smoke_output_contracts(tmp_path: Path) -> None:
     report = run_baseline_behavior_smoke(
         out_dir=tmp_path / "baseline_smoke",
-        methods=("cbf_qp", "mpc_local", "velocity_obstacle", "learned_tiny", "intent_dummy"),
+        methods=("cbf_qp", "mpc_local", "velocity_obstacle", "reciprocal_velocity_obstacle", "learned_tiny", "intent_dummy"),
     )
 
     assert report["ok"] is True
-    assert report["run_count"] == 10
+    assert report["run_count"] == 12
     assert _check(report, "cbf_qp_debug_contract")["ok"] is True
     assert _check(report, "mpc_local_debug_contract")["ok"] is True
     assert _check(report, "velocity_obstacle_debug_contract")["ok"] is True
+    assert _check(report, "reciprocal_velocity_obstacle_debug_contract")["ok"] is True
     assert _check(report, "learned_tiny_model_contract")["ok"] is True
     assert _check(report, "intent_dummy_intent_contract")["ok"] is True
 

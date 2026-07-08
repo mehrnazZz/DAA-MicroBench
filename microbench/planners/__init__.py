@@ -15,7 +15,7 @@ from microbench.planners.negotiation_yield import NegotiationYieldPlanner
 from microbench.planners.orca_expert import OrcaExpertPlanner
 from microbench.planners.priority_yield import PriorityYieldPlanner
 from microbench.planners.template_planner import TemplatePlanner
-from microbench.planners.velocity_obstacle import VelocityObstaclePlanner
+from microbench.planners.velocity_obstacle import ReciprocalVelocityObstaclePlanner, VelocityObstaclePlanner
 
 
 @dataclass(frozen=True)
@@ -77,6 +77,11 @@ def _make_velocity_obstacle() -> ILocalPlanner:
     return VelocityObstaclePlanner(cfg=defaults.get("velocity_obstacle", {}))
 
 
+def _make_reciprocal_velocity_obstacle() -> ILocalPlanner:
+    defaults = load_defaults()
+    return ReciprocalVelocityObstaclePlanner(cfg=defaults.get("reciprocal_velocity_obstacle", {}))
+
+
 _FACTORIES: dict[str, Callable[[], ILocalPlanner]] = {
     "baseline_goal": BaselineGoalPlanner,
     "orca_heuristic": _make_orca_heuristic,
@@ -84,6 +89,7 @@ _FACTORIES: dict[str, Callable[[], ILocalPlanner]] = {
     "cbf_qp": _make_cbf_qp,
     "mpc_local": _make_mpc_local,
     "velocity_obstacle": _make_velocity_obstacle,
+    "reciprocal_velocity_obstacle": _make_reciprocal_velocity_obstacle,
     "template": TemplatePlanner,
     "intent_dummy": IntentDummyPlanner,
     "learned_tiny": LearnedTinyPlanner,
@@ -216,6 +222,27 @@ _METADATA: dict[str, PlannerMetadata] = {
             "Experimental; not a formally validated VO/RVO/HRVO implementation.",
             "Uses constant-velocity local track predictions from PlannerInput.",
             "Not a stable-v1 leaderboard anchor until calibrated on official stress suites.",
+        ),
+    ),
+    "reciprocal_velocity_obstacle": PlannerMetadata(
+        method="reciprocal_velocity_obstacle",
+        display_name="Hybrid reciprocal velocity-obstacle baseline",
+        planner_type="reciprocal_velocity_obstacle_sampling",
+        role="experimental_baseline",
+        status="experimental",
+        dimensions=("2d", "3d"),
+        observation_sources=("local_neighbors", "v2v", "sensor", "fused"),
+        uses_v2v=True,
+        uses_local_sensing=True,
+        uses_obstacles=True,
+        description=(
+            "Hybrid reciprocal velocity-obstacle sampler with deterministic responsibility "
+            "sharing, stale-track responsibility inflation, and tangent-boundary candidate commands."
+        ),
+        limitations=(
+            "Experimental; not a certified HRVO implementation.",
+            "Assumes neighbors share avoidance responsibility according to deterministic priority/id heuristics.",
+            "Uses constant-velocity local track predictions from PlannerInput.",
         ),
     ),
     "template": PlannerMetadata(

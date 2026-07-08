@@ -21,6 +21,7 @@ EXPERIMENTAL_METHODS = (
     "cbf_qp",
     "mpc_local",
     "velocity_obstacle",
+    "reciprocal_velocity_obstacle",
     "learned_tiny",
 )
 

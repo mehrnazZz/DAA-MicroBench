@@ -4,7 +4,7 @@ Status date: 2026-07-06
 
 DAA Microbench is ready for public-alpha evaluation: the repository has a documented planner contract, generated 2D/3D/agentic scenario suites, baseline metadata, result-schema manifests, issue templates, package smoke checks, and GitHub Actions CI.
 
-This is not yet a stable v1 release. The public contract is intended to be reviewable and usable, but official suite membership, acceptance bands, experimental baselines, RL observation/reward wrappers, and leaderboard scoring may still change before v1. In particular, `cbf_qp`, `mpc_local`, and `velocity_obstacle` are runnable experimental baselines, and `negotiation_yield` is a pre-v1 agentic reference rather than a stable-v1 leaderboard anchor.
+This is not yet a stable v1 release. The public contract is intended to be reviewable and usable, but official suite membership, acceptance bands, experimental baselines, RL observation/reward wrappers, and leaderboard scoring may still change before v1. In particular, `cbf_qp`, `mpc_local`, `velocity_obstacle`, and `reciprocal_velocity_obstacle` are runnable experimental baselines, and `negotiation_yield` is a pre-v1 agentic reference rather than a stable-v1 leaderboard anchor.
 
 ## Supported Environment
 
@@ -68,11 +68,11 @@ python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --re
 ## Known Public Alpha Limitations
 
 - `orca_heuristic` and `orca_with_staleness` are geometric reference heuristics, not expert or certified DAA controllers.
-- `cbf_qp`, `mpc_local`, `velocity_obstacle`, and `negotiation_yield` are part of the growing advanced baseline library, but still have stable-v1 promotion blockers; do not treat them as stable-v1 leaderboard anchors yet.
+- `cbf_qp`, `mpc_local`, `velocity_obstacle`, `reciprocal_velocity_obstacle`, and `negotiation_yield` are part of the growing advanced baseline library, but still have stable-v1 promotion blockers; do not treat them as stable-v1 leaderboard anchors yet.
 - Serious baseline claims should use `baseline-leaderboard --suites all` and publish the per-suite reports, not only smoke or promotion-calibration rows.
 - `learned_tiny` is a frozen tiny learned-model fixture for adapter, disclosure, and CSV-plumbing tests; it is not a competitive learned DAA baseline.
 - `cbf_qp` and `mpc_local` also pass the longer stable-metadata prep lanes in `baseline-review`, but they remain experimental until the reference-role decision, CBF validation, and MPC compute/stress characterization are stronger.
-- `velocity_obstacle` is a deterministic VO-cone sampling baseline for 2D/3D local deconfliction; it still needs official stress-suite calibration before promotion.
+- `velocity_obstacle` and `reciprocal_velocity_obstacle` are deterministic VO-family baselines for 2D/3D local deconfliction; both still need official stress-suite calibration before promotion.
 - `baseline-evidence` adds targeted CBF fallback/solver-status checks and dense-3D MPC profiling; it is evidence for review, not a stable-v1 promotion by itself.
 - The PettingZoo/Gymnasium-style RL interface is available for public-alpha experimentation, but observation vectors and reward defaults are not stable-v1 contracts yet.
 - `rl-smoke` checks wrapper API health and 2D/3D coverage, not policy quality or leaderboard safety.
