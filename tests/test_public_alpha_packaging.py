@@ -47,6 +47,7 @@ def test_public_docs_index_and_templates_exist() -> None:
         "docs/LEADERBOARD.md",
         "docs/RESULT_SUBMISSION.md",
         "docs/LEARNED_POLICY_ADOPTION.md",
+        "docs/LEARNED_SUBMISSION_SCHEMAS.md",
         "docs/RL_STABLE_V1_FREEZE.md",
     ]
     for rel in required_docs:
@@ -60,12 +61,17 @@ def test_public_docs_index_and_templates_exist() -> None:
     model_spec = ROOT / "examples/external_policy_model_predict_spec.json"
     callable_spec = ROOT / "examples/external_policy_callable_spec.json"
     manifest_template = ROOT / "examples/learned_submission_manifest_template.json"
+    schema_dir = ROOT / "microbench" / "bundled_config" / "schemas"
     assert model_spec.exists()
     assert callable_spec.exists()
     assert manifest_template.exists()
+    assert (schema_dir / "learned_submission_manifest.schema.json").exists()
+    assert (schema_dir / "learned_submission_bundle.schema.json").exists()
+    assert (schema_dir / "learned_bundle_review.schema.json").exists()
     assert "model_predict" in model_spec.read_text(encoding="utf-8")
     assert "callable" in callable_spec.read_text(encoding="utf-8")
     assert "inference_packages" in manifest_template.read_text(encoding="utf-8")
+    assert "bundled_config/schemas/*.json" in (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
     required_templates = [
         ".github/ISSUE_TEMPLATE/benchmark_result.md",

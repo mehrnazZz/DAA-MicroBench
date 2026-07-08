@@ -118,7 +118,7 @@ For real submissions, pass a JSON disclosure overlay to populate the generated `
 }
 ```
 
-The fuller reviewer-ready shape is available at `examples/learned_submission_manifest_template.json`. Validate a draft before running the heavier bundle command:
+The fuller reviewer-ready shape is available at `examples/learned_submission_manifest_template.json`, and the packaged schema reference is in [LEARNED_SUBMISSION_SCHEMAS.md](LEARNED_SUBMISSION_SCHEMAS.md). Validate a full draft before running the heavier bundle command:
 
 ```bash
 python -m microbench.cli validate-learned-manifest \
@@ -126,7 +126,7 @@ python -m microbench.cli validate-learned-manifest \
   --require-pass
 ```
 
-Use `--allow-undisclosed` only while drafting. A reviewer-ready manifest should declare inference package names and versions/specifiers, deterministic/runtime behavior, training suites or scenarios, seeds, reward configuration, observation normalization, external data, pretrained models, and any privileged-information caveats.
+Use `--allow-undisclosed` only while drafting. A reviewer-ready manifest should declare inference package names and versions/specifiers, deterministic/runtime behavior, training suites or scenarios, seeds, reward configuration, observation normalization, external data, pretrained models, and any privileged-information caveats. `--submission-manifest` accepts an overlay that is merged into the generated manifest; `validate-learned-manifest` expects the full manifest shape.
 
 ```bash
 python -m microbench.cli learned-submission-bundle \

@@ -14,6 +14,7 @@ Start here when navigating the public docs.
 - [LEADERBOARD.md](LEADERBOARD.md): ranking policy, primary metrics, result categories, reproducibility rules, and review policy.
 - [RL_INTERFACE.md](RL_INTERFACE.md): PettingZoo/Gymnasium-style wrappers for learning researchers.
 - [LEARNED_POLICY_ADOPTION.md](LEARNED_POLICY_ADOPTION.md): exported-policy specs, model adapters, planner CSV generation, and learned bundle review.
+- [LEARNED_SUBMISSION_SCHEMAS.md](LEARNED_SUBMISSION_SCHEMAS.md): learned-submission JSON Schemas, compatibility policy, and full-manifest vs overlay guidance.
 - [RL_STABLE_V1_FREEZE.md](RL_STABLE_V1_FREEZE.md): stable-v1 RL interface freeze criteria, compatibility policy, and learned-policy artifact expectations.
 - [RESULT_SUBMISSION.md](RESULT_SUBMISSION.md): result submission template, required artifacts, validation commands, and disclosure checklist.
 - [PUBLIC_ALPHA_NOTES.md](PUBLIC_ALPHA_NOTES.md): current public-alpha status, known limitations, and reproducibility commands.

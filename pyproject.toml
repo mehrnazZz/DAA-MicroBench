@@ -60,6 +60,7 @@ microbench = [
   "bundled_config/*.yaml",
   "bundled_config/scenarios/*.yaml",
   "bundled_config/learned_baselines/*.json",
+  "bundled_config/schemas/*.json",
 ]
 
 [tool.setuptools.packages.find]

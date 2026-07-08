@@ -1,0 +1,187 @@
+{
+  "$id": "https://github.com/mehrnazZz/DAA-MicroBench/schemas/learned_bundle_review.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Reviewer summary emitted by review-learned-bundle.",
+  "properties": {
+    "bundle_json": {
+      "type": "string"
+    },
+    "bundle_root": {
+      "type": "string"
+    },
+    "checks": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "details": {
+            "type": "object"
+          },
+          "name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "ok",
+          "details"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "dimensions": {
+      "additionalProperties": true,
+      "properties": {
+        "communication": {
+          "type": "object"
+        },
+        "compute": {
+          "type": "object"
+        },
+        "mission": {
+          "type": "object"
+        },
+        "observation": {
+          "type": "object"
+        },
+        "safety": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "safety",
+        "mission",
+        "compute",
+        "communication",
+        "observation"
+      ],
+      "type": "object"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "max_runs": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "method": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "planned_run_count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "policy": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "recommendation": {
+      "enum": [
+        "leaderboard_candidate",
+        "manual_review_required",
+        "manual_review_limited_sweep",
+        "fix_artifacts"
+      ]
+    },
+    "result_row_count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "run_count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": "0.1"
+    },
+    "score_v0": {
+      "additionalProperties": true,
+      "properties": {
+        "best": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "mean": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "rows": {
+          "type": "array"
+        },
+        "worst": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "mean",
+        "worst",
+        "best",
+        "rows"
+      ],
+      "type": "object"
+    },
+    "submission_manifest": {
+      "type": "object"
+    },
+    "suite": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "summary_row_count": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "validation": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "ok",
+    "recommendation",
+    "limitations",
+    "method",
+    "policy",
+    "suite",
+    "bundle_json",
+    "bundle_root",
+    "run_count",
+    "planned_run_count",
+    "summary_row_count",
+    "result_row_count",
+    "score_v0",
+    "submission_manifest",
+    "dimensions",
+    "validation",
+    "checks"
+  ],
+  "title": "DAA Microbench learned bundle review",
+  "type": "object"
+}

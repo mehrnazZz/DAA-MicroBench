@@ -76,7 +76,7 @@ python -m microbench.cli learned-submission-bundle \
   --require-pass
 ```
 
-Use `--method learned_policy_spec --policy-spec ...` when your learned policy should be evaluated through the standard planner-sweep CSV path. The same spec is also used for RL wrapper smoke/calibration artifacts in the bundle. Use `--submission-manifest` to fill in training/inference disclosures; otherwise the generated manifest marks unknown fields as `undisclosed` for reviewer follow-up. Start from `examples/learned_submission_manifest_template.json` when possible. See [LEARNED_POLICY_ADOPTION.md](LEARNED_POLICY_ADOPTION.md) for a concrete exported-policy example using `model_predict`, `callable`, copied policy artifacts, validation, and reviewer summaries.
+Use `--method learned_policy_spec --policy-spec ...` when your learned policy should be evaluated through the standard planner-sweep CSV path. The same spec is also used for RL wrapper smoke/calibration artifacts in the bundle. Use `--submission-manifest` to fill in training/inference disclosures; otherwise the generated manifest marks unknown fields as `undisclosed` for reviewer follow-up. Start from `examples/learned_submission_manifest_template.json` when possible. See [LEARNED_POLICY_ADOPTION.md](LEARNED_POLICY_ADOPTION.md) for a concrete exported-policy example using `model_predict`, `callable`, copied policy artifacts, validation, and reviewer summaries. See [LEARNED_SUBMISSION_SCHEMAS.md](LEARNED_SUBMISSION_SCHEMAS.md) for schema files and full-manifest vs overlay guidance.
 
 Then validate the saved bundle before attaching it:
 

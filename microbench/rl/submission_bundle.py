@@ -17,6 +17,13 @@ from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import run_rl_freeze_check
 from microbench.rl.policy_spec import portable_policy_spec_payload, resolve_policy_artifact_path
 from microbench.rl.schema import interface_contract
+from microbench.rl.submission_schemas import (
+    LEARNED_BUNDLE_REVIEW_SCHEMA_FILE,
+    LEARNED_SUBMISSION_BUNDLE_SCHEMA_FILE,
+    LEARNED_SUBMISSION_MANIFEST_SCHEMA_FILE,
+    load_submission_schema,
+    validate_with_schema_subset,
+)
 from microbench.runner import run_episode
 from microbench.scenarios import materialize_official_suite, suite_defaults
 from microbench.types import RunSpec
@@ -49,6 +56,10 @@ OPTIONAL_BUNDLE_ARTIFACTS = {
 }
 _DEPENDENCY_VERSION_OPERATORS = ("==", ">=", "<=", "~=", "!=", ">", "<")
 _DEPENDENCY_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*(\[[A-Za-z0-9_,.-]+\])?$")
+
+
+def _schema_errors(payload: Any, schema_file: str) -> list[str]:
+    return validate_with_schema_subset(payload, load_submission_schema(schema_file))
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> Path:
@@ -438,6 +449,7 @@ def validate_learned_submission_manifest(
 
     dependency_report = _manifest_dependency_report(manifest_payload)
     unknown_fields = _manifest_unknown_fields(manifest_payload) if isinstance(manifest_payload, dict) else []
+    manifest_schema_errors = _schema_errors(manifest_payload, LEARNED_SUBMISSION_MANIFEST_SCHEMA_FILE)
     seeds = benchmark.get("seeds")
     checks = [
         _check("manifest_json_loads", manifest_load_error is None, {"error": manifest_load_error}),
@@ -445,6 +457,11 @@ def validate_learned_submission_manifest(
             "manifest_schema_supported",
             manifest_payload.get("schema_version") == LEARNED_SUBMISSION_MANIFEST_SCHEMA_VERSION,
             {"schema_version": manifest_payload.get("schema_version")},
+        ),
+        _check(
+            "manifest_json_schema_valid",
+            not manifest_schema_errors,
+            {"schema_file": LEARNED_SUBMISSION_MANIFEST_SCHEMA_FILE, "errors": manifest_schema_errors[:20]},
         ),
         _check(
             "manifest_sections_present",
@@ -976,12 +993,18 @@ def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str
 
     bundle_checks = report.get("checks", []) if isinstance(report.get("checks"), list) else []
     failed_bundle_checks = [check.get("name") for check in bundle_checks if not check.get("ok")]
+    bundle_schema_errors = _schema_errors(report, LEARNED_SUBMISSION_BUNDLE_SCHEMA_FILE)
     checks = [
         _check("bundle_json_loads", bundle_load_error is None, {"error": bundle_load_error}),
         _check(
             "bundle_schema_supported",
             report.get("schema_version") == LEARNED_SUBMISSION_BUNDLE_SCHEMA_VERSION,
             {"schema_version": report.get("schema_version")},
+        ),
+        _check(
+            "bundle_json_schema_valid",
+            not bundle_schema_errors,
+            {"schema_file": LEARNED_SUBMISSION_BUNDLE_SCHEMA_FILE, "errors": bundle_schema_errors[:20]},
         ),
         _check("bundle_report_ok", bool(report.get("ok")), {"failed_checks": failed_bundle_checks}),
         _check(
@@ -1267,7 +1290,7 @@ def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, 
         "empty_fraction_mean": _round_or_none(_mean(_values(summary_rows, "obs_empty_fraction_mean"))),
     }
 
-    return {
+    review_report = {
         "schema_version": LEARNED_SUBMISSION_BUNDLE_REVIEW_SCHEMA_VERSION,
         "ok": ok,
         "recommendation": recommendation,
@@ -1310,3 +1333,18 @@ def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, 
         "checks": checks,
         "csv_errors": csv_errors,
     }
+    review_schema_errors = _schema_errors(review_report, LEARNED_BUNDLE_REVIEW_SCHEMA_FILE)
+    schema_check = _check(
+        "learned_bundle_review_schema_valid",
+        not review_schema_errors,
+        {"schema_file": LEARNED_BUNDLE_REVIEW_SCHEMA_FILE, "errors": review_schema_errors[:20]},
+    )
+    checks.append(schema_check)
+    if not schema_check["ok"] and "review_schema_invalid" not in limitations:
+        limitations.append("review_schema_invalid")
+    review_report["checks"] = checks
+    review_report["limitations"] = limitations
+    review_report["ok"] = all(check["ok"] for check in checks)
+    if not review_report["ok"]:
+        review_report["recommendation"] = "fix_artifacts"
+    return review_report

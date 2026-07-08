@@ -13,6 +13,13 @@ from microbench.rl.submission_bundle import (
     validate_learned_policy_submission_bundle,
     validate_learned_submission_manifest,
 )
+from microbench.rl.submission_schemas import (
+    LEARNED_BUNDLE_REVIEW_SCHEMA_FILE,
+    LEARNED_SUBMISSION_BUNDLE_SCHEMA_FILE,
+    LEARNED_SUBMISSION_MANIFEST_SCHEMA_FILE,
+    load_submission_schema,
+    validate_with_schema_subset,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -73,6 +80,7 @@ def test_learned_policy_submission_bundle_helper_writes_expected_artifacts(tmp_p
     assert validation["ok"] is True
     assert _check(validation, "required_artifacts_present")["ok"] is True
     assert _check(validation, "csv_artifacts_nonempty")["ok"] is True
+    assert _check(validation, "bundle_json_schema_valid")["ok"] is True
     assert _check(validation, "learned_submission_manifest_schema_supported")["ok"] is True
     assert _check(validation, "learned_submission_manifest_hashes_match")["ok"] is True
     assert validation["submission_manifest"]["schema_version"] == "0.1"
@@ -89,6 +97,7 @@ def test_learned_policy_submission_bundle_helper_writes_expected_artifacts(tmp_p
     assert "limited_planner_sweep" in review["limitations"]
     assert "submission_disclosure_incomplete" in review["limitations"]
     assert review["submission_manifest"]["schema_version"] == "0.1"
+    assert _check(review, "learned_bundle_review_schema_valid")["ok"] is True
     assert review["score_v0"]["mean"] is not None
     assert review["dimensions"]["safety"]["collision_episode_count"] == 0
 
@@ -185,6 +194,7 @@ def test_learned_submission_manifest_template_validates_and_cli_gates() -> None:
     assert report["ok"] is True
     assert report["schema_version"] == "0.1"
     assert report["policy"]["method"] == "learned_policy_spec"
+    assert _check(report, "manifest_json_schema_valid")["ok"] is True
     assert report["unknown_fields"] == []
     assert report["dependencies"]["normalized"]["inference_packages"][1]["name"] == "numpy"
     assert report["dependencies"]["normalized"]["inference_packages"][1]["version"] == ">=1.24"
@@ -210,6 +220,27 @@ def test_learned_submission_manifest_template_validates_and_cli_gates() -> None:
     assert cli_report["policy"]["name"] == "external_model_predict_fixture"
 
 
+def test_learned_submission_json_schemas_are_packaged_and_detect_shape_errors() -> None:
+    manifest_schema = load_submission_schema(LEARNED_SUBMISSION_MANIFEST_SCHEMA_FILE)
+    bundle_schema = load_submission_schema(LEARNED_SUBMISSION_BUNDLE_SCHEMA_FILE)
+    review_schema = load_submission_schema(LEARNED_BUNDLE_REVIEW_SCHEMA_FILE)
+
+    assert manifest_schema["title"] == "DAA Microbench learned submission manifest"
+    assert bundle_schema["title"] == "DAA Microbench learned submission bundle report"
+    assert review_schema["title"] == "DAA Microbench learned bundle review"
+
+    template = json.loads((ROOT / "examples" / "learned_submission_manifest_template.json").read_text(encoding="utf-8"))
+    assert validate_with_schema_subset(template, manifest_schema) == []
+
+    broken = dict(template)
+    broken["schema_version"] = "99"
+    broken["benchmark"] = dict(template["benchmark"])
+    broken["benchmark"]["n_agents"] = 0
+    errors = validate_with_schema_subset(broken, manifest_schema)
+    assert any("schema_version" in error for error in errors)
+    assert any("benchmark.n_agents" in error for error in errors)
+
+
 def test_learned_submission_manifest_validation_catches_bad_dependencies_and_disclosure(tmp_path: Path) -> None:
     template = json.loads((ROOT / "examples" / "learned_submission_manifest_template.json").read_text(encoding="utf-8"))
     template["training_disclosure"]["reward_configuration"] = "undisclosed"
@@ -223,6 +254,7 @@ def test_learned_submission_manifest_validation_catches_bad_dependencies_and_dis
     report = validate_learned_submission_manifest(manifest=manifest_path)
 
     assert report["ok"] is False
+    assert _check(report, "manifest_json_schema_valid")["ok"] is False
     assert _check(report, "manifest_dependencies_normalized")["ok"] is False
     assert _check(report, "manifest_disclosures_complete")["ok"] is False
     assert "training_disclosure.reward_configuration" in report["unknown_fields"]

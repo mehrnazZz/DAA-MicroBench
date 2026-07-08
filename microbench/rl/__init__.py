@@ -57,6 +57,13 @@ from microbench.rl.submission_bundle import (
     validate_learned_policy_submission_bundle,
     validate_learned_submission_manifest,
 )
+from microbench.rl.submission_schemas import (
+    LEARNED_BUNDLE_REVIEW_SCHEMA_FILE,
+    LEARNED_SUBMISSION_BUNDLE_SCHEMA_FILE,
+    LEARNED_SUBMISSION_MANIFEST_SCHEMA_FILE,
+    load_submission_schema,
+    validate_with_schema_subset,
+)
 
 __all__ = [
     "CallablePolicyAdapter",
@@ -66,8 +73,11 @@ __all__ = [
     "LEARNED_BASELINE_SCHEMA_VERSION",
     "LEARNED_SUBMISSION_BUNDLE_REVIEW_SCHEMA_VERSION",
     "LEARNED_SUBMISSION_BUNDLE_SCHEMA_VERSION",
+    "LEARNED_SUBMISSION_BUNDLE_SCHEMA_FILE",
     "LEARNED_SUBMISSION_BUNDLE_VALIDATION_SCHEMA_VERSION",
+    "LEARNED_BUNDLE_REVIEW_SCHEMA_FILE",
     "LEARNED_SUBMISSION_MANIFEST_SCHEMA_VERSION",
+    "LEARNED_SUBMISSION_MANIFEST_SCHEMA_FILE",
     "LEARNED_SUBMISSION_MANIFEST_VALIDATION_SCHEMA_VERSION",
     "ModelPredictPolicyAdapter",
     "OBSERVATION_LAYOUT",
@@ -95,6 +105,7 @@ __all__ = [
     "check_parallel_env_api",
     "interface_contract",
     "load_tiny_learned_spec",
+    "load_submission_schema",
     "load_policy_from_spec",
     "load_policy_spec",
     "make_policy",
@@ -116,6 +127,7 @@ __all__ = [
     "run_rl_policy_smoke",
     "validate_learned_policy_submission_bundle",
     "validate_learned_submission_manifest",
+    "validate_with_schema_subset",
     "single_agent_env",
     "tiny_learned_model_path",
 ]

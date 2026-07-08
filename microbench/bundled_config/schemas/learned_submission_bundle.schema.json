@@ -1,0 +1,149 @@
+{
+  "$id": "https://github.com/mehrnazZz/DAA-MicroBench/schemas/learned_submission_bundle.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Top-level report written by learned-submission-bundle.",
+  "properties": {
+    "acceptance": {
+      "type": "object"
+    },
+    "artifacts": {
+      "additionalProperties": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "checks": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "details": {
+            "type": "object"
+          },
+          "name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "ok",
+          "details"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "max_runs": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "max_steps": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "method": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "method_metadata": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "n_agents": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "planner_sweep": {
+      "additionalProperties": true,
+      "properties": {
+        "method": {
+          "type": "string"
+        },
+        "planned_run_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "run_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rows": {
+          "type": "array"
+        },
+        "suite": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "suite",
+        "method",
+        "planned_run_count",
+        "run_count",
+        "rows"
+      ],
+      "type": "object"
+    },
+    "policy": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "policy_spec": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "root": {
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "0.1"
+    },
+    "seeds": {
+      "items": {
+        "type": "integer"
+      },
+      "type": "array"
+    },
+    "submission_manifest": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "suite": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "ok",
+    "method",
+    "policy",
+    "suite",
+    "root",
+    "n_agents",
+    "seeds",
+    "artifacts",
+    "checks",
+    "planner_sweep",
+    "acceptance"
+  ],
+  "title": "DAA Microbench learned submission bundle report",
+  "type": "object"
+}

@@ -1,0 +1,319 @@
+{
+  "$id": "https://github.com/mehrnazZz/DAA-MicroBench/schemas/learned_submission_manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Reviewer-facing manifest for learned/RL policy submissions.",
+  "properties": {
+    "artifacts": {
+      "items": {
+        "additionalProperties": true,
+        "properties": {
+          "kind": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "path": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "present": {
+            "type": "boolean"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "size_bytes": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "path",
+          "required",
+          "kind",
+          "present"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "benchmark": {
+      "additionalProperties": true,
+      "properties": {
+        "max_runs": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_steps": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "n_agents": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "planner_sweep_planned_run_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "planner_sweep_run_count": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "root": {
+          "type": "string"
+        },
+        "seeds": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "suite": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "suite",
+        "root",
+        "n_agents",
+        "seeds",
+        "planner_sweep_run_count",
+        "planner_sweep_planned_run_count"
+      ],
+      "type": "object"
+    },
+    "bundle_schema_version": {
+      "const": "0.1"
+    },
+    "dependencies": {
+      "additionalProperties": true,
+      "properties": {
+        "inference_packages": {
+          "items": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "additionalProperties": true,
+                "properties": {
+                  "name": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "optional": {
+                    "type": "boolean"
+                  },
+                  "purpose": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "specifier": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "python_executable": {
+          "type": "string"
+        },
+        "python_version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "inference_packages"
+      ],
+      "type": "object"
+    },
+    "inference_disclosure": {
+      "additionalProperties": true,
+      "properties": {
+        "deterministic": {
+          "type": "boolean"
+        },
+        "external_services": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "runtime_notes": {
+          "type": "string"
+        },
+        "uses_external_services": {
+          "type": [
+            "boolean",
+            "string"
+          ]
+        }
+      },
+      "required": [
+        "deterministic",
+        "uses_external_services",
+        "external_services",
+        "runtime_notes"
+      ],
+      "type": "object"
+    },
+    "policy": {
+      "additionalProperties": true,
+      "properties": {
+        "method": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "method_metadata": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "policy_spec": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "method"
+      ],
+      "type": "object"
+    },
+    "review_notes": {
+      "additionalProperties": true,
+      "properties": {
+        "intended_category": {
+          "type": "string"
+        },
+        "privileged_information": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "privileged_information",
+        "intended_category"
+      ],
+      "type": "object"
+    },
+    "schema_version": {
+      "const": "0.1"
+    },
+    "training_disclosure": {
+      "additionalProperties": true,
+      "properties": {
+        "action_post_processing": {
+          "type": "string"
+        },
+        "environment_steps": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "external_data": {
+          "type": "string"
+        },
+        "hardware": {
+          "type": "string"
+        },
+        "observation_normalization": {
+          "type": "string"
+        },
+        "pretrained_models": {
+          "type": "string"
+        },
+        "random_seeds": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "reward_configuration": {
+          "type": [
+            "string",
+            "object"
+          ]
+        },
+        "training_scenarios": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "training_suites": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "training_scenarios",
+        "training_suites",
+        "environment_steps",
+        "random_seeds",
+        "observation_normalization",
+        "action_post_processing",
+        "reward_configuration",
+        "external_data",
+        "pretrained_models",
+        "hardware"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "bundle_schema_version",
+    "policy",
+    "benchmark",
+    "artifacts",
+    "dependencies",
+    "training_disclosure",
+    "inference_disclosure",
+    "review_notes"
+  ],
+  "title": "DAA Microbench learned submission manifest",
+  "type": "object"
+}
