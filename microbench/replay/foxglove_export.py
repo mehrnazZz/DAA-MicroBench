@@ -23,24 +23,248 @@ COLORS = (
     (0.302, 0.486, 0.059, 0.92),
 )
 
-SCENE_UPDATE_SCHEMA = {
-    "title": "foxglove.SceneUpdate",
-    "type": "object",
-    "properties": {
-        "deletions": {"type": "array"},
-        "entities": {"type": "array"},
+
+def _schema_object(title: str, properties: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:
+    return {
+        "title": title,
+        "type": "object",
+        "properties": properties,
+        "required": required if required is not None else list(properties),
+    }
+
+
+def _schema_array(items: dict[str, Any]) -> dict[str, Any]:
+    return {"type": "array", "items": items}
+
+
+TIME_SCHEMA = _schema_object(
+    "time",
+    {
+        "sec": {"type": "integer", "minimum": 0},
+        "nsec": {"type": "integer", "minimum": 0, "maximum": 999999999},
     },
-    "required": ["deletions", "entities"],
-    "additionalProperties": True,
+)
+
+DURATION_SCHEMA = _schema_object(
+    "duration",
+    {
+        "sec": {"type": "integer"},
+        "nsec": {"type": "integer", "minimum": 0, "maximum": 999999999},
+    },
+)
+
+VECTOR3_SCHEMA = _schema_object(
+    "foxglove.Vector3",
+    {
+        "x": {"type": "number"},
+        "y": {"type": "number"},
+        "z": {"type": "number"},
+    },
+)
+
+QUATERNION_SCHEMA = _schema_object(
+    "foxglove.Quaternion",
+    {
+        "x": {"type": "number"},
+        "y": {"type": "number"},
+        "z": {"type": "number"},
+        "w": {"type": "number"},
+    },
+)
+
+POSE_SCHEMA = _schema_object(
+    "foxglove.Pose",
+    {
+        "position": VECTOR3_SCHEMA,
+        "orientation": QUATERNION_SCHEMA,
+    },
+)
+
+COLOR_SCHEMA = _schema_object(
+    "foxglove.Color",
+    {
+        "r": {"type": "number"},
+        "g": {"type": "number"},
+        "b": {"type": "number"},
+        "a": {"type": "number"},
+    },
+)
+
+POINT3_SCHEMA = _schema_object(
+    "foxglove.Point3",
+    {
+        "x": {"type": "number"},
+        "y": {"type": "number"},
+        "z": {"type": "number"},
+    },
+)
+
+KEY_VALUE_SCHEMA = _schema_object(
+    "foxglove.KeyValuePair",
+    {
+        "key": {"type": "string"},
+        "value": {"type": "string"},
+    },
+)
+
+ARROW_PRIMITIVE_SCHEMA = _schema_object(
+    "foxglove.ArrowPrimitive",
+    {
+        "pose": POSE_SCHEMA,
+        "shaft_length": {"type": "number"},
+        "shaft_diameter": {"type": "number"},
+        "head_length": {"type": "number"},
+        "head_diameter": {"type": "number"},
+        "color": COLOR_SCHEMA,
+    },
+)
+
+CUBE_PRIMITIVE_SCHEMA = _schema_object(
+    "foxglove.CubePrimitive",
+    {
+        "pose": POSE_SCHEMA,
+        "size": VECTOR3_SCHEMA,
+        "color": COLOR_SCHEMA,
+    },
+)
+
+SPHERE_PRIMITIVE_SCHEMA = _schema_object(
+    "foxglove.SpherePrimitive",
+    {
+        "pose": POSE_SCHEMA,
+        "size": VECTOR3_SCHEMA,
+        "color": COLOR_SCHEMA,
+    },
+)
+
+CYLINDER_PRIMITIVE_SCHEMA = _schema_object(
+    "foxglove.CylinderPrimitive",
+    {
+        "pose": POSE_SCHEMA,
+        "size": VECTOR3_SCHEMA,
+        "bottom_scale": {"type": "number"},
+        "top_scale": {"type": "number"},
+        "color": COLOR_SCHEMA,
+    },
+)
+
+LINE_TYPE_SCHEMA = {
+    "title": "foxglove.LineType",
+    "oneOf": [
+        {"title": "LINE_STRIP", "const": 0},
+        {"title": "LINE_LOOP", "const": 1},
+        {"title": "LINE_LIST", "const": 2},
+    ],
 }
 
-FRAME_TRANSFORMS_SCHEMA = {
-    "title": "foxglove.FrameTransforms",
-    "type": "object",
-    "properties": {"transforms": {"type": "array"}},
-    "required": ["transforms"],
-    "additionalProperties": True,
-}
+LINE_PRIMITIVE_SCHEMA = _schema_object(
+    "foxglove.LinePrimitive",
+    {
+        "type": LINE_TYPE_SCHEMA,
+        "pose": POSE_SCHEMA,
+        "thickness": {"type": "number"},
+        "scale_invariant": {"type": "boolean"},
+        "points": _schema_array(POINT3_SCHEMA),
+        "color": COLOR_SCHEMA,
+        "colors": _schema_array(COLOR_SCHEMA),
+        "indices": _schema_array({"type": "integer", "minimum": 0}),
+    },
+)
+
+TRIANGLE_LIST_PRIMITIVE_SCHEMA = _schema_object(
+    "foxglove.TriangleListPrimitive",
+    {
+        "pose": POSE_SCHEMA,
+        "points": _schema_array(POINT3_SCHEMA),
+        "color": COLOR_SCHEMA,
+        "colors": _schema_array(COLOR_SCHEMA),
+        "indices": _schema_array({"type": "integer", "minimum": 0}),
+    },
+)
+
+TEXT_PRIMITIVE_SCHEMA = _schema_object(
+    "foxglove.TextPrimitive",
+    {
+        "pose": POSE_SCHEMA,
+        "billboard": {"type": "boolean"},
+        "font_size": {"type": "number"},
+        "scale_invariant": {"type": "boolean"},
+        "color": COLOR_SCHEMA,
+        "text": {"type": "string"},
+    },
+)
+
+MODEL_PRIMITIVE_SCHEMA = _schema_object(
+    "foxglove.ModelPrimitive",
+    {
+        "pose": POSE_SCHEMA,
+        "scale": VECTOR3_SCHEMA,
+        "color": COLOR_SCHEMA,
+        "override_color": {"type": "boolean"},
+        "url": {"type": "string"},
+        "media_type": {"type": "string"},
+        "data": {"type": "string", "contentEncoding": "base64"},
+    },
+)
+
+SCENE_ENTITY_DELETION_SCHEMA = _schema_object(
+    "foxglove.SceneEntityDeletion",
+    {
+        "timestamp": TIME_SCHEMA,
+        "type": {
+            "title": "foxglove.SceneEntityDeletionType",
+            "oneOf": [
+                {"title": "MATCHING_ID", "const": 0},
+                {"title": "ALL", "const": 1},
+            ],
+        },
+        "id": {"type": "string"},
+    },
+)
+
+SCENE_ENTITY_SCHEMA = _schema_object(
+    "foxglove.SceneEntity",
+    {
+        "timestamp": TIME_SCHEMA,
+        "frame_id": {"type": "string"},
+        "id": {"type": "string"},
+        "lifetime": DURATION_SCHEMA,
+        "frame_locked": {"type": "boolean"},
+        "metadata": _schema_array(KEY_VALUE_SCHEMA),
+        "arrows": _schema_array(ARROW_PRIMITIVE_SCHEMA),
+        "cubes": _schema_array(CUBE_PRIMITIVE_SCHEMA),
+        "spheres": _schema_array(SPHERE_PRIMITIVE_SCHEMA),
+        "cylinders": _schema_array(CYLINDER_PRIMITIVE_SCHEMA),
+        "lines": _schema_array(LINE_PRIMITIVE_SCHEMA),
+        "triangles": _schema_array(TRIANGLE_LIST_PRIMITIVE_SCHEMA),
+        "texts": _schema_array(TEXT_PRIMITIVE_SCHEMA),
+        "models": _schema_array(MODEL_PRIMITIVE_SCHEMA),
+    },
+)
+
+SCENE_UPDATE_SCHEMA = _schema_object(
+    "foxglove.SceneUpdate",
+    {
+        "deletions": _schema_array(SCENE_ENTITY_DELETION_SCHEMA),
+        "entities": _schema_array(SCENE_ENTITY_SCHEMA),
+    },
+)
+
+FRAME_TRANSFORM_SCHEMA = _schema_object(
+    "foxglove.FrameTransform",
+    {
+        "timestamp": TIME_SCHEMA,
+        "parent_frame_id": {"type": "string"},
+        "child_frame_id": {"type": "string"},
+        "translation": VECTOR3_SCHEMA,
+        "rotation": QUATERNION_SCHEMA,
+    },
+)
+
+FRAME_TRANSFORMS_SCHEMA = _schema_object(
+    "foxglove.FrameTransforms",
+    {"transforms": _schema_array(FRAME_TRANSFORM_SCHEMA)},
+)
 
 FRAME_DIAGNOSTICS_SCHEMA = {
     "title": "daa.FrameDiagnostics",

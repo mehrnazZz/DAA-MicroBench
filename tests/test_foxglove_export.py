@@ -8,6 +8,8 @@ import subprocess
 import sys
 
 from microbench.replay.foxglove_export import (
+    FRAME_TRANSFORMS_SCHEMA,
+    SCENE_UPDATE_SCHEMA,
     WORLD_FRAME,
     _json_bytes,
     build_foxglove_frame_messages,
@@ -136,6 +138,23 @@ def test_frame_messages_cover_golden_collision_trace() -> None:
 def test_json_bytes_sanitizes_nonfinite_event_values() -> None:
     payload = json.loads(_json_bytes({"ttc_s": math.inf, "nested": {"bad": math.nan}}).decode("utf-8"))
     assert payload == {"ttc_s": "Infinity", "nested": {"bad": "NaN"}}
+
+
+def test_foxglove_schemas_define_nested_visual_primitive_types() -> None:
+    scene_entity_schema = SCENE_UPDATE_SCHEMA["properties"]["entities"]["items"]
+    line_schema = scene_entity_schema["properties"]["lines"]["items"]
+    sphere_schema = scene_entity_schema["properties"]["spheres"]["items"]
+    text_schema = scene_entity_schema["properties"]["texts"]["items"]
+
+    assert line_schema["properties"]["type"]["oneOf"][0]["const"] == 0
+    assert line_schema["properties"]["points"]["items"]["properties"]["z"]["type"] == "number"
+    assert line_schema["properties"]["colors"]["items"]["properties"]["a"]["type"] == "number"
+    assert sphere_schema["properties"]["size"]["properties"]["x"]["type"] == "number"
+    assert text_schema["properties"]["font_size"]["type"] == "number"
+
+    transform_schema = FRAME_TRANSFORMS_SCHEMA["properties"]["transforms"]["items"]
+    assert transform_schema["properties"]["translation"]["properties"]["z"]["type"] == "number"
+    assert transform_schema["properties"]["rotation"]["properties"]["w"]["type"] == "number"
 
 
 def test_foxglove_cli_reports_missing_optional_dependency_or_writes_mcap(tmp_path: Path) -> None:
