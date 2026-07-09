@@ -249,6 +249,7 @@ logging:
             "config/scenarios/layered_intersection_3d.yaml",
             "config/scenarios/weather_vertical_event_3d.yaml",
             "config/scenarios/vertical_crossing_obstacles_3d.yaml",
+            "config/scenarios/urban_airspace_3d.yaml",
         ]
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

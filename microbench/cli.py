@@ -68,6 +68,7 @@ CANONICAL_3D_SCENARIOS = [
     "config/scenarios/layered_intersection_3d.yaml",
     "config/scenarios/weather_vertical_event_3d.yaml",
     "config/scenarios/vertical_crossing_obstacles_3d.yaml",
+    "config/scenarios/urban_airspace_3d.yaml",
 ]
 
 CANONICAL_PERCEPTION_SCENARIOS = [
@@ -314,7 +315,7 @@ def _run_canonical_sweep(args) -> None:
     elif suite == "three_d":
         scenarios = _resolve_scenario_list(CANONICAL_3D_SCENARIOS)
         methods = _parse_str_list(args.methods) if args.methods else ["orca_heuristic"]
-        n_agents = [6, 10] + ([20] if stretch else [])
+        n_agents = [4, 8] + ([16] if stretch else [])
         seeds = list(range(0, 20 if stretch else 10))
         comm_profiles = ["ideal_50hz"]
     elif suite == "perception_stress":

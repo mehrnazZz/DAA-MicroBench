@@ -100,7 +100,7 @@ class TestScenarioValidation(unittest.TestCase):
         )
 
         self.assertIn("validation: PASS", proc.stdout)
-        self.assertIn("scenarios=19", proc.stdout)
+        self.assertIn("scenarios=20", proc.stdout)
         self.assertIn("suite_manifests=1", proc.stdout)
 
     def test_validate_scenarios_cli_checks_all_generated_suites(self):

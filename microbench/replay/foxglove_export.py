@@ -498,6 +498,26 @@ def _message_age_stats(frame: dict[str, Any], agent_ids: list[int]) -> tuple[int
     return count, max(ages) if ages else None
 
 
+def _sensor_range_m(meta: dict[str, Any]) -> float | None:
+    perception = meta.get("perception", {}) or {}
+    if isinstance(perception, dict):
+        sensor = perception.get("sensor", {}) or {}
+        if isinstance(sensor, dict) and "range_m" in sensor:
+            return float(sensor["range_m"])
+    neighbors = meta.get("neighbors", {}) or {}
+    if isinstance(neighbors, dict) and "range_m" in neighbors:
+        return float(neighbors["range_m"])
+    return None
+
+
+def _show_sensor_ranges(meta: dict[str, Any]) -> bool:
+    visual = meta.get("visual", {}) or {}
+    if isinstance(visual, dict) and "show_sensor_ranges" in visual:
+        return bool(visual["show_sensor_ranges"])
+    perception = meta.get("perception", {}) or {}
+    return isinstance(perception, dict) and str(perception.get("mode", "v2v")).lower() in {"sensor", "fused"}
+
+
 def _aabb_edge_points(lo: list[float], hi: list[float]) -> list[dict[str, float]]:
     corners = [
         [lo[0], lo[1], lo[2]],
@@ -540,6 +560,41 @@ def _layer_loop_points(bounds: dict[str, Any], altitude_y: float) -> list[dict[s
     return [_vec3_native_to_foxglove(p) for p in corners]
 
 
+def _box_wire_points(center: list[float], half: list[float]) -> list[dict[str, float]]:
+    lo = [center[0] - half[0], center[1] - half[1], center[2] - half[2]]
+    hi = [center[0] + half[0], center[1] + half[1], center[2] + half[2]]
+    return _aabb_edge_points(lo, hi)
+
+
+def _facade_line_points(center: list[float], half: list[float], *, max_lines: int = 9) -> list[dict[str, float]]:
+    x0, x1 = center[0] - half[0], center[0] + half[0]
+    y0, y1 = center[1] - half[1], center[1] + half[1]
+    z0, z1 = center[2] - half[2], center[2] + half[2]
+    points: list[dict[str, float]] = []
+
+    z_count = max(2, min(max_lines, int(round((2.0 * half[2]) / 3.0)) + 1))
+    x_count = max(2, min(max_lines, int(round((2.0 * half[0]) / 3.0)) + 1))
+    y_count = max(2, min(max_lines, int(round((2.0 * half[1]) / 4.0)) + 1))
+
+    for face_x in (x0, x1):
+        for k in range(1, z_count):
+            z = z0 + (z1 - z0) * k / z_count
+            points.extend([_vec3_native_to_foxglove([face_x, y0, z]), _vec3_native_to_foxglove([face_x, y1, z])])
+        for k in range(1, y_count):
+            y = y0 + (y1 - y0) * k / y_count
+            points.extend([_vec3_native_to_foxglove([face_x, y, z0]), _vec3_native_to_foxglove([face_x, y, z1])])
+
+    for face_z in (z0, z1):
+        for k in range(1, x_count):
+            x = x0 + (x1 - x0) * k / x_count
+            points.extend([_vec3_native_to_foxglove([x, y0, face_z]), _vec3_native_to_foxglove([x, y1, face_z])])
+        for k in range(1, y_count):
+            y = y0 + (y1 - y0) * k / y_count
+            points.extend([_vec3_native_to_foxglove([x0, y, face_z]), _vec3_native_to_foxglove([x1, y, face_z])])
+
+    return points
+
+
 def _distinct_altitude_layers(meta: dict[str, Any]) -> list[float]:
     values: list[float] = []
     for key in ("spawns", "goals"):
@@ -565,11 +620,163 @@ def _profile_by_agent_id(meta: dict[str, Any]) -> dict[int, dict[str, Any]]:
     return out
 
 
+def _bounds_center_half(bounds: dict[str, Any]) -> tuple[list[float], list[float]]:
+    center = [
+        0.5 * (float(bounds.get("xmin", 0.0)) + float(bounds.get("xmax", 0.0))),
+        0.5 * (float(bounds.get("ymin", 0.0)) + float(bounds.get("ymax", 0.0))),
+        0.5 * (float(bounds.get("zmin", 0.0)) + float(bounds.get("zmax", 0.0))),
+    ]
+    half = [
+        0.5 * (float(bounds.get("xmax", 0.0)) - float(bounds.get("xmin", 0.0))),
+        0.5 * (float(bounds.get("ymax", 0.0)) - float(bounds.get("ymin", 0.0))),
+        0.5 * (float(bounds.get("zmax", 0.0)) - float(bounds.get("zmin", 0.0))),
+    ]
+    return center, half
+
+
+def _visual_color(cfg: dict[str, Any], default: tuple[float, float, float, float]) -> dict[str, float]:
+    raw = cfg.get("color")
+    if isinstance(raw, list) and len(raw) == 4:
+        return _color((float(raw[0]), float(raw[1]), float(raw[2]), float(raw[3])))
+    return _color(default)
+
+
+def _environment_entities(meta: dict[str, Any], timestamp: dict[str, int]) -> list[dict[str, Any]]:
+    visual = meta.get("visual", {}) or {}
+    bounds = meta.get("world_bounds", {}) or {}
+    if not bounds:
+        return []
+    center, half = _bounds_center_half(bounds)
+    ground_y = float(visual.get("ground_y_m", bounds.get("ymin", meta.get("fixed_y_m", 0.0))))
+    entities: list[dict[str, Any]] = []
+
+    ground = _empty_entity(
+        timestamp=timestamp,
+        frame_id=WORLD_FRAME,
+        entity_id="environment_ground",
+        metadata=[{"key": "kind", "value": str(visual.get("environment", "airspace"))}],
+    )
+    ground["cubes"].append(
+        {
+            "pose": _pose(_vec3_native_to_foxglove([center[0], ground_y - 0.025, center[2]])),
+            "size": _vec3_native_to_foxglove([2.0 * half[0], 0.05, 2.0 * half[2]]),
+            "color": _visual_color(visual.get("ground", {}) if isinstance(visual.get("ground"), dict) else {}, (0.08, 0.11, 0.13, 0.28)),
+        }
+    )
+    entities.append(ground)
+
+    if str(visual.get("environment", "")).lower() in {"urban_airspace", "urban", "city"}:
+        road_color = _color((0.02, 0.025, 0.030, 0.62))
+        lane_color = _color((0.92, 0.86, 0.52, 0.70))
+        road_width = float(visual.get("road_width_m", 7.0))
+        for axis in ("x", "z"):
+            road = _empty_entity(timestamp=timestamp, frame_id=WORLD_FRAME, entity_id=f"environment_road_{axis}")
+            size_native = [2.0 * half[0], 0.07, road_width] if axis == "x" else [road_width, 0.07, 2.0 * half[2]]
+            road["cubes"].append(
+                {
+                    "pose": _pose(_vec3_native_to_foxglove([center[0], ground_y + 0.01, center[2]])),
+                    "size": _vec3_native_to_foxglove(size_native),
+                    "color": road_color,
+                }
+            )
+            if axis == "x":
+                lane_points = [
+                    _vec3_native_to_foxglove([center[0] - half[0], ground_y + 0.08, center[2]]),
+                    _vec3_native_to_foxglove([center[0] + half[0], ground_y + 0.08, center[2]]),
+                ]
+            else:
+                lane_points = [
+                    _vec3_native_to_foxglove([center[0], ground_y + 0.08, center[2] - half[2]]),
+                    _vec3_native_to_foxglove([center[0], ground_y + 0.08, center[2] + half[2]]),
+                ]
+            road["lines"].append(_line_primitive(lane_points, color=lane_color, line_type=0, thickness=0.06))
+            entities.append(road)
+
+    corridors = visual.get("corridors", []) if isinstance(visual.get("corridors", []), list) else []
+    for idx, corridor in enumerate(corridors):
+        if not isinstance(corridor, dict):
+            continue
+        c = corridor.get("center")
+        h = corridor.get("half")
+        if not isinstance(c, list) or not isinstance(h, list) or len(c) != 3 or len(h) != 3:
+            continue
+        center_c = [float(v) for v in c]
+        half_c = [float(v) for v in h]
+        label = str(corridor.get("label", f"corridor_{idx}"))
+        entity = _empty_entity(
+            timestamp=timestamp,
+            frame_id=WORLD_FRAME,
+            entity_id=f"corridor_{idx}",
+            metadata=[{"key": "label", "value": label}],
+        )
+        entity["cubes"].append(
+            {
+                "pose": _pose(_vec3_native_to_foxglove(center_c)),
+                "size": _vec3_native_to_foxglove([2.0 * half_c[0], 2.0 * half_c[1], 2.0 * half_c[2]]),
+                "color": _visual_color(corridor, (0.12, 0.58, 0.95, 0.10)),
+            }
+        )
+        entity["lines"].append(
+            _line_primitive(
+                _box_wire_points(center_c, half_c),
+                color=_visual_color({"color": corridor.get("edge_color", [0.20, 0.78, 1.0, 0.55])}, (0.20, 0.78, 1.0, 0.55)),
+                line_type=2,
+                thickness=0.05,
+            )
+        )
+        entity["texts"].append(
+            {
+                "pose": _pose(_vec3_native_to_foxglove([center_c[0], center_c[1] + half_c[1] + 0.5, center_c[2]])),
+                "billboard": True,
+                "font_size": 12.0,
+                "scale_invariant": True,
+                "color": _color((0.70, 0.92, 1.0, 0.90)),
+                "text": label,
+            }
+        )
+        entities.append(entity)
+
+    gates = visual.get("gates", []) if isinstance(visual.get("gates", []), list) else []
+    for idx, gate in enumerate(gates):
+        if not isinstance(gate, dict):
+            continue
+        c = gate.get("center")
+        h = gate.get("half")
+        if not isinstance(c, list) or not isinstance(h, list) or len(c) != 3 or len(h) != 3:
+            continue
+        center_g = [float(v) for v in c]
+        half_g = [float(v) for v in h]
+        label = str(gate.get("label", f"gate_{idx}"))
+        entity = _empty_entity(timestamp=timestamp, frame_id=WORLD_FRAME, entity_id=f"gate_{idx}")
+        entity["lines"].append(
+            _line_primitive(
+                _box_wire_points(center_g, half_g),
+                color=_visual_color(gate, (0.70, 1.0, 0.35, 0.85)),
+                line_type=2,
+                thickness=0.10,
+            )
+        )
+        entity["texts"].append(
+            {
+                "pose": _pose(_vec3_native_to_foxglove([center_g[0], center_g[1] + half_g[1] + 0.4, center_g[2]])),
+                "billboard": True,
+                "font_size": 12.0,
+                "scale_invariant": True,
+                "color": _color((0.78, 1.0, 0.55, 0.95)),
+                "text": label,
+            }
+        )
+        entities.append(entity)
+
+    return entities
+
+
 def build_foxglove_static_scene(meta: dict[str, Any], timestamp_ns: int = 0) -> dict[str, Any]:
     timestamp = _timestamp_from_ns(timestamp_ns)
     entities: list[dict[str, Any]] = []
     bounds = meta.get("world_bounds", {}) or {}
     if bounds:
+        entities.extend(_environment_entities(meta, timestamp))
         lo = [float(bounds.get("xmin", 0.0)), float(bounds.get("ymin", 0.0)), float(bounds.get("zmin", 0.0))]
         hi = [float(bounds.get("xmax", 0.0)), float(bounds.get("ymax", 0.0)), float(bounds.get("zmax", 0.0))]
         entity = _empty_entity(timestamp=timestamp, frame_id=WORLD_FRAME, entity_id="world_bounds")
@@ -682,35 +889,47 @@ def build_foxglove_static_scene(meta: dict[str, Any], timestamp_ns: int = 0) -> 
         half = [float(v) for v in aabb.get("half", [0.0, 0.0, 0.0])]
         lo = [center[0] - half[0], center[1] - half[1], center[2] - half[2]]
         hi = [center[0] + half[0], center[1] + half[1], center[2] + half[2]]
+        kind = str(obstacle.get("kind", obstacle.get("type", "obstacle")))
+        label = str(obstacle.get("label", f"{kind} {idx}"))
+        is_building = kind.lower() in {"building", "tower", "structure"}
         entity = _empty_entity(
             timestamp=timestamp,
             frame_id=WORLD_FRAME,
             entity_id=f"obstacle_{idx}",
-            metadata=[{"key": "kind", "value": "obstacle"}],
+            metadata=[{"key": "kind", "value": kind}, {"key": "label", "value": label}],
         )
         entity["cubes"].append(
             {
                 "pose": _pose(_vec3_native_to_foxglove(center)),
                 "size": _vec3_native_to_foxglove([2.0 * half[0], 2.0 * half[1], 2.0 * half[2]]),
-                "color": _color((0.88, 0.38, 0.12, 0.38)),
+                "color": _color((0.16, 0.25, 0.32, 0.72)) if is_building else _color((0.88, 0.38, 0.12, 0.38)),
             }
         )
         entity["lines"].append(
             _line_primitive(
                 _aabb_edge_points(lo, hi),
-                color=_color((1.0, 0.80, 0.35, 0.75)),
+                color=_color((0.44, 0.70, 0.90, 0.82)) if is_building else _color((1.0, 0.80, 0.35, 0.75)),
                 line_type=2,
                 thickness=0.055,
             )
         )
+        if is_building:
+            entity["lines"].append(
+                _line_primitive(
+                    _facade_line_points(center, half),
+                    color=_color((0.62, 0.82, 0.95, 0.32)),
+                    line_type=2,
+                    thickness=0.025,
+                )
+            )
         entity["texts"].append(
             {
                 "pose": _pose(_vec3_native_to_foxglove([center[0], center[1] + half[1] + 0.8, center[2]])),
                 "billboard": True,
                 "font_size": 12.0,
                 "scale_invariant": True,
-                "color": _color((1.0, 0.90, 0.68, 0.95)),
-                "text": f"obstacle {idx}",
+                "color": _color((0.78, 0.92, 1.0, 0.95)) if is_building else _color((1.0, 0.90, 0.68, 0.95)),
+                "text": label,
             }
         )
         entities.append(entity)
@@ -742,7 +961,10 @@ def build_foxglove_frame_messages(
     transforms: list[dict[str, Any]] = []
     agent_entities: list[dict[str, Any]] = []
     trail_entities: list[dict[str, Any]] = []
+    perception_entities: list[dict[str, Any]] = []
     intent_by_sender: dict[int, dict[str, Any]] = {}
+    sensor_range = _sensor_range_m(meta)
+    show_sensor_ranges = _show_sensor_ranges(meta) and sensor_range is not None and sensor_range > 0.0
 
     for local_idx, agent_id in enumerate(agent_ids):
         pos = positions[local_idx]
@@ -831,6 +1053,30 @@ def build_foxglove_frame_messages(
             )
         )
         trail_entities.append(trail)
+
+        if show_sensor_ranges and sensor_range is not None:
+            sensor_entity = _empty_entity(
+                timestamp=timestamp,
+                frame_id=f"drone_{agent_id}",
+                entity_id=f"sensor_range_{agent_id}",
+                frame_locked=True,
+                metadata=[
+                    {"key": "agent_id", "value": str(agent_id)},
+                    {"key": "range_m", "value": f"{float(sensor_range):.3f}"},
+                ],
+            )
+            sensor_entity["spheres"].append(
+                {
+                    "pose": _pose(),
+                    "size": {
+                        "x": 2.0 * float(sensor_range),
+                        "y": 2.0 * float(sensor_range),
+                        "z": 2.0 * float(sensor_range),
+                    },
+                    "color": _color((0.28, 0.68, 1.0, 0.035)),
+                }
+            )
+            perception_entities.append(sensor_entity)
 
         for intent in _frame_intent_list(frame, int(agent_id), local_idx):
             points = intent.get("points", [])
@@ -949,6 +1195,7 @@ def build_foxglove_frame_messages(
         "trails": {"deletions": [], "entities": trail_entities},
         "sensing_links": {"deletions": [], "entities": [link_entity]},
         "intents": {"deletions": [], "entities": intent_entities},
+        "perception": {"deletions": [], "entities": perception_entities},
         "diagnostics": diagnostics,
     }
 
@@ -1014,6 +1261,7 @@ def export_foxglove_mcap(
         trails_ch = writer.register_channel("/daa/trails", MESSAGE_ENCODING, scene_schema)
         sensing_ch = writer.register_channel("/daa/sensing_links", MESSAGE_ENCODING, scene_schema)
         intents_ch = writer.register_channel("/daa/intents", MESSAGE_ENCODING, scene_schema)
+        perception_ch = writer.register_channel("/daa/perception", MESSAGE_ENCODING, scene_schema)
         tf_ch = writer.register_channel("/tf", MESSAGE_ENCODING, tf_schema)
         diagnostics_ch = writer.register_channel("/daa/diagnostics", MESSAGE_ENCODING, diagnostics_schema)
         events_ch = writer.register_channel("/daa/events", MESSAGE_ENCODING, event_schema)
@@ -1047,6 +1295,7 @@ def export_foxglove_mcap(
             writer.add_message(trails_ch, t_ns, _json_bytes(messages["trails"]), t_ns)
             writer.add_message(sensing_ch, t_ns, _json_bytes(messages["sensing_links"]), t_ns)
             writer.add_message(intents_ch, t_ns, _json_bytes(messages["intents"]), t_ns)
+            writer.add_message(perception_ch, t_ns, _json_bytes(messages["perception"]), t_ns)
             writer.add_message(diagnostics_ch, t_ns, _json_bytes(messages["diagnostics"]), t_ns)
 
         for event in _event_rows(trace_path, meta):

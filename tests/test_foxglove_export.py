@@ -35,6 +35,8 @@ def test_static_scene_builds_world_bounds_and_obstacles() -> None:
             },
             "obstacles": [
                 {
+                    "kind": "building",
+                    "label": "tower test",
                     "aabb": {
                         "center": [1.0, 2.0, 3.0],
                         "half": [1.0, 2.0, 3.0],
@@ -45,13 +47,37 @@ def test_static_scene_builds_world_bounds_and_obstacles() -> None:
             "goals": [[8.0, 2.0, 0.0], [8.0, -1.0, -1.0]],
             "goal_tolerance_m": 0.75,
             "agent_profiles": [{"agent_id": 0, "role": "ego", "priority": 5}],
+            "visual": {
+                "environment": "urban_airspace",
+                "ground_y_m": -2.0,
+                "corridors": [
+                    {"label": "test lane", "center": [0.0, 2.0, 0.0], "half": [4.0, 1.0, 2.0]}
+                ],
+                "gates": [
+                    {"label": "test gate", "center": [5.0, 2.0, 0.0], "half": [0.5, 2.0, 3.0]}
+                ],
+            },
         }
     )
 
     assert scene["deletions"] == []
     entities = {entity["id"]: entity for entity in scene["entities"]}
-    assert {"world_bounds", "altitude_layer_-1", "altitude_layer_2", "mission_0", "mission_1", "obstacle_0"} <= set(entities)
+    assert {
+        "environment_ground",
+        "environment_road_x",
+        "environment_road_z",
+        "corridor_0",
+        "gate_0",
+        "world_bounds",
+        "altitude_layer_-1",
+        "altitude_layer_2",
+        "mission_0",
+        "mission_1",
+        "obstacle_0",
+    } <= set(entities)
     assert len(entities["world_bounds"]["lines"][0]["points"]) == 24
+    assert entities["corridor_0"]["metadata"] == [{"key": "label", "value": "test lane"}]
+    assert entities["gate_0"]["texts"][0]["text"] == "test gate"
     assert entities["mission_0"]["lines"][0]["points"] == [
         {"x": -8.0, "y": 0.0, "z": -1.0},
         {"x": 8.0, "y": 0.0, "z": 2.0},
@@ -60,7 +86,9 @@ def test_static_scene_builds_world_bounds_and_obstacles() -> None:
     obstacle = entities["obstacle_0"]["cubes"][0]
     assert obstacle["pose"]["position"] == {"x": 1.0, "y": 3.0, "z": 2.0}
     assert obstacle["size"] == {"x": 2.0, "y": 6.0, "z": 4.0}
+    assert entities["obstacle_0"]["texts"][0]["text"] == "tower test"
     assert len(entities["obstacle_0"]["lines"][0]["points"]) == 24
+    assert len(entities["obstacle_0"]["lines"][1]["points"]) > 0
 
 
 def test_static_scene_summarizes_continuous_altitude_samples() -> None:
@@ -83,7 +111,12 @@ def test_static_scene_summarizes_continuous_altitude_samples() -> None:
 
 
 def test_frame_messages_map_native_altitude_to_foxglove_z_up() -> None:
-    meta = {"agent_ids": [7], "agent_params": {"radius_m": 0.4}}
+    meta = {
+        "agent_ids": [7],
+        "agent_params": {"radius_m": 0.4},
+        "perception": {"mode": "fused", "sensor": {"range_m": 12.5}},
+        "visual": {"show_sensor_ranges": True},
+    }
     frames = [
         {
             "kind": "frame",
@@ -152,6 +185,9 @@ def test_frame_messages_map_native_altitude_to_foxglove_z_up() -> None:
         {"x": 2.0, "y": 4.0, "z": 3.0},
         {"x": 3.0, "y": 5.0, "z": 4.0},
     ]
+    sensor_entity = messages["perception"]["entities"][0]
+    assert sensor_entity["id"] == "sensor_range_7"
+    assert sensor_entity["spheres"][0]["size"] == {"x": 25.0, "y": 25.0, "z": 25.0}
 
 
 def test_frame_messages_cover_golden_collision_trace() -> None:
@@ -164,7 +200,7 @@ def test_frame_messages_cover_golden_collision_trace() -> None:
         max_sensing_links=4,
     )
 
-    assert set(messages) == {"transforms", "agents", "trails", "sensing_links", "intents", "diagnostics"}
+    assert set(messages) == {"transforms", "agents", "trails", "sensing_links", "intents", "perception", "diagnostics"}
     transforms = messages["transforms"]["transforms"]
     assert len(transforms) == 10
     native_pos = frames[0]["positions"][0]
@@ -185,6 +221,7 @@ def test_frame_messages_cover_golden_collision_trace() -> None:
     assert len(link_line["points"]) <= 8
     assert len(link_line["points"]) == len(link_line["colors"])
     assert messages["intents"]["entities"] == []
+    assert messages["perception"]["entities"] == []
     assert messages["diagnostics"]["min_center_distance_m"] is not None
     assert messages["diagnostics"]["selected_obs_count"] > 0
 
@@ -247,4 +284,6 @@ def test_foxglove_cli_reports_missing_optional_dependency_or_writes_mcap(tmp_pat
         with out_path.open("rb") as stream:
             summary = make_reader(stream).get_summary()
         assert summary is not None
-        assert "/daa/intents" in {channel.topic for channel in summary.channels.values()}
+        topics = {channel.topic for channel in summary.channels.values()}
+        assert "/daa/intents" in topics
+        assert "/daa/perception" in topics

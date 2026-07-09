@@ -1,0 +1,121 @@
+scenario:
+  name: "urban_airspace_3d"
+  description: "Environment-rich 3D urban DAA scenario with buildings, corridors, gates, occlusion, and layered goals."
+  duration_s: 24.0
+
+world:
+  planar: false
+  bounds:
+    xmin: -55.0
+    xmax: 55.0
+    ymin: -8.0
+    ymax: 26.0
+    zmin: -32.0
+    zmax: 32.0
+
+agent_params:
+  radius_m: 0.5
+  v_max_mps: 3.0
+  a_max_mps2: 2.0
+  goal_tolerance_m: 1.0
+
+goals:
+  min_goal_distance_m: 55.0
+
+spawn:
+  type: "rect_to_rect"
+  start_region:
+    center: [-42.0, 6.0, -18.0]
+    half: [3.0, 10.0, 6.0]
+  goal_region:
+    center: [42.0, 8.0, 18.0]
+    half: [3.0, 10.0, 6.0]
+  start_layers_m: [-2.0, 4.0, 10.0, 16.0]
+  goal_layers_m: [16.0, 10.0, 4.0, -2.0]
+
+obstacles:
+  - kind: "building"
+    label: "tower A"
+    aabb:
+      center: [-12.0, 2.0, -12.0]
+      half: [4.0, 10.0, 5.0]
+  - kind: "building"
+    label: "tower B"
+    aabb:
+      center: [4.0, 4.0, 8.0]
+      half: [5.0, 12.0, 4.0]
+  - kind: "building"
+    label: "tower C"
+    aabb:
+      center: [18.0, 1.0, -8.0]
+      half: [4.0, 9.0, 6.0]
+  - kind: "building"
+    label: "tower D"
+    aabb:
+      center: [-28.0, 3.0, 10.0]
+      half: [3.0, 11.0, 4.0]
+  - kind: "building"
+    label: "tower E"
+    aabb:
+      center: [30.0, 4.0, 14.0]
+      half: [5.0, 12.0, 5.0]
+  - kind: "no_fly_volume"
+    label: "restricted mast"
+    aabb:
+      center: [0.0, 8.0, -22.0]
+      half: [3.0, 16.0, 3.0]
+
+perception:
+  mode: "fused"
+  sensor:
+    range_m: 34.0
+    fov_deg: 170.0
+    occlusion: true
+    occlusion_margin_m: 0.3
+    false_negative_p: 0.02
+    noise_sigma_pos_m: 0.05
+    noise_sigma_vel_mps: 0.05
+    track_ttl_s: 0.30
+
+intent:
+  enabled: true
+  tx_rate_hz: 10.0
+  max_points: 10
+  age_cap_s: 0.75
+
+visual:
+  environment: "urban_airspace"
+  ground_y_m: -8.0
+  road_width_m: 9.0
+  show_sensor_ranges: true
+  corridors:
+    - label: "low eastbound lane"
+      center: [0.0, 4.0, -18.0]
+      half: [50.0, 3.0, 4.0]
+      color: [0.12, 0.58, 0.95, 0.10]
+      edge_color: [0.20, 0.78, 1.00, 0.55]
+    - label: "high return lane"
+      center: [0.0, 14.0, 18.0]
+      half: [50.0, 3.0, 4.0]
+      color: [0.55, 0.28, 0.95, 0.09]
+      edge_color: [0.72, 0.48, 1.00, 0.50]
+  gates:
+    - label: "merge gate"
+      center: [0.0, 9.0, 0.0]
+      half: [2.0, 12.0, 16.0]
+      color: [0.70, 1.00, 0.35, 0.85]
+    - label: "exit gate"
+      center: [42.0, 7.0, 18.0]
+      half: [2.0, 12.0, 7.0]
+      color: [0.20, 1.00, 0.75, 0.80]
+
+benchmark:
+  family: "urban_airspace"
+  dimension: "3d"
+  difficulty: "hard"
+  purpose: "Stress local DAA planners with buildings, occlusion, layered corridors, and constrained gate transitions."
+  expected_failure_modes:
+    - "occluded_intruder"
+    - "building_shadow_late_detection"
+    - "altitude_layer_conflict"
+    - "gate_merge_deadlock"
