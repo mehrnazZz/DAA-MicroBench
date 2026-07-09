@@ -8,8 +8,8 @@ import numpy as np
 
 from microbench.config import load_yaml
 from microbench.planners.orca_expert import OrcaExpertPlanner
-from microbench.replay import render_interactive_trace
-from microbench.replay.replay_matplotlib import render_trace
+from microbench.replay.foxglove_export import build_foxglove_frame_messages
+from microbench.replay.trace_io import _load_trace
 from microbench.scenarios import EventEngine, generate_spawns_goals
 from microbench.runner import run_episode
 from microbench.types import AgentState, NeighborObs, PlannerInput, RunSpec
@@ -94,7 +94,7 @@ class Test3DSupport(unittest.TestCase):
         cmd = planner.compute_cmd(p_in)
         self.assertLess(float(cmd[1]), 0.0)
 
-    def test_nonplanar_episode_trace_and_replay(self):
+    def test_nonplanar_episode_trace_and_foxglove_messages(self):
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             scenario = tmp / "scenario_3d.yaml"
@@ -148,21 +148,17 @@ logging:
             ys = [float(f["positions"][0][1]) for f in frames]
             self.assertGreater(max(ys) - min(ys), 1e-3)
 
-            gif_path = tmp / "episode_3d.gif"
-            try:
-                render_trace(str(trace_path), str(gif_path), fps=10, tail=10, show_sensed=False)
-            except RuntimeError as exc:
-                self.skipTest(f"matplotlib unavailable in test env: {exc}")
-            self.assertTrue(gif_path.exists())
-
-            html_path = tmp / "episode_3d.html"
-            render_interactive_trace(str(trace_path), str(html_path), tail=10, show_sensed=False)
-            self.assertTrue(html_path.exists())
-            html = html_path.read_text(encoding="utf-8")
-            self.assertIn("Plotly.newPlot", html)
-            self.assertIn("const replay =", html)
-            self.assertIn("Neighbor Distances", html)
-            self.assertIn("support_3d", html)
+            meta, loaded_frames = _load_trace(str(trace_path))
+            messages = build_foxglove_frame_messages(
+                meta=meta,
+                frames=loaded_frames,
+                frame_idx=len(loaded_frames) - 1,
+                trail_frames=10,
+            )
+            self.assertIn("transforms", messages)
+            self.assertIn("agents", messages)
+            self.assertIn("trails", messages)
+            self.assertEqual(messages["transforms"]["transforms"][0]["parent_frame_id"], "daa_world")
 
     def test_builtin_3d_scenario_runs_with_orca(self):
         with tempfile.TemporaryDirectory() as td:

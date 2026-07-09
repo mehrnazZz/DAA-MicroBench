@@ -16,7 +16,7 @@ from microbench.replay.foxglove_export import (
     build_foxglove_static_scene,
     export_foxglove_mcap,
 )
-from microbench.replay.replay_interactive import _load_trace
+from microbench.replay.trace_io import _load_trace
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,12 +51,6 @@ def test_static_scene_builds_world_bounds_and_obstacles() -> None:
             "visual": {
                 "environment": "urban_airspace",
                 "ground_y_m": -2.0,
-                "corridors": [
-                    {"label": "test lane", "center": [0.0, 2.0, 0.0], "half": [4.0, 1.0, 2.0]}
-                ],
-                "gates": [
-                    {"label": "test gate", "center": [5.0, 2.0, 0.0], "half": [0.5, 2.0, 3.0]}
-                ],
             },
         }
     )
@@ -67,8 +61,6 @@ def test_static_scene_builds_world_bounds_and_obstacles() -> None:
         "environment_ground",
         "environment_road_x",
         "environment_road_z",
-        "corridor_0",
-        "gate_0",
         "world_bounds",
         "altitude_layer_-1",
         "altitude_layer_2",
@@ -77,8 +69,6 @@ def test_static_scene_builds_world_bounds_and_obstacles() -> None:
         "obstacle_0",
     } <= set(entities)
     assert len(entities["world_bounds"]["lines"][0]["points"]) == 24
-    assert entities["corridor_0"]["metadata"] == [{"key": "label", "value": "test lane"}]
-    assert entities["gate_0"]["texts"][0]["text"] == "test gate"
     assert entities["mission_0"]["lines"][0]["points"] == [
         {"x": -8.0, "y": 0.0, "z": -1.0},
         {"x": 8.0, "y": 0.0, "z": 2.0},

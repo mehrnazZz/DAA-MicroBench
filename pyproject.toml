@@ -25,7 +25,6 @@ dependencies = [
   "numpy==1.26.4",
   "PyYAML==6.0.1",
   "tqdm==4.66.4",
-  "matplotlib==3.8.4",
 ]
 
 [project.optional-dependencies]
@@ -37,6 +36,7 @@ rl = [
   "pettingzoo>=1.24,<1.26",
 ]
 viz = [
+  "matplotlib==3.8.4",
   "plotly>=5.24,<6",
 ]
 foxglove = [

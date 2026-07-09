@@ -19,6 +19,7 @@ Start here when navigating the public docs.
 - [RESULT_SUBMISSION.md](RESULT_SUBMISSION.md): result submission template, required artifacts, validation commands, and disclosure checklist.
 - [PUBLIC_ALPHA_NOTES.md](PUBLIC_ALPHA_NOTES.md): current public-alpha status, known limitations, and reproducibility commands.
 - [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md): public-alpha release checks, packaging smoke, CI expectations, and release-note requirements.
+- [FOXGLOVE_DEMO.md](FOXGLOVE_DEMO.md): reproducible urban-conflict MCAP generation and README recording workflow.
 
 ## Contributing
 

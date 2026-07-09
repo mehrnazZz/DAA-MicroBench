@@ -5,6 +5,29 @@
 
 DAA Microbench is a deterministic Python harness for evaluating local multi-drone detect-and-avoid planners at 50 Hz under configurable V2V communication impairment (rate, delay/jitter, loss, staleness). It models the local planning contract (velocity commands into a clamped dynamics step) without a full high-fidelity Sim/ROS/PX4 stack. Use it for fast, fair planner implementation and comparisons, agentic multi-drone DAA experiments, and diffusion-training dataset generation from baseline planners.
 
+## Featured Demo: Urban 3D DAA
+
+`urban_conflict_3d` is a packaged 3D scenario with near-coplanar crossing traffic, occluding buildings, a static hazard, fused sensing, intent sharing, and a conflict that straight-line goal seeking does not solve. In the reference seed, `baseline_goal` collides while `reciprocal_velocity_obstacle` completes collision-free.
+
+```bash
+python -m microbench.cli run \
+  --scenario config/scenarios/urban_conflict_3d.yaml \
+  --method reciprocal_velocity_obstacle \
+  --n 4 \
+  --seed 2 \
+  --comm realistic_v2v_50hz \
+  --out-dir runs_urban_conflict_demo
+
+python -m microbench.cli foxglove-export \
+  --trace runs_urban_conflict_demo/episodes/urban_conflict_3d_reciprocal_velocity_obstacle_n4_seed2_comm_realistic_v2v_50hz/trace_episode.jsonl \
+  --out runs_urban_conflict_demo/urban_conflict_3d_rvo_avoidance.mcap \
+  --trail-frames 2600 \
+  --max-sensing-links 24 \
+  --compression zstd
+```
+
+Open the MCAP in Foxglove Studio for the robotics-grade 3D view. To add the recording at the top of this README, follow [docs/FOXGLOVE_DEMO.md](docs/FOXGLOVE_DEMO.md) and save the optimized asset under `docs/assets/`.
+
 ## 1) What This Is (and Is Not)
 
 - This repo is a fast local-planning benchmark for multi-agent collision avoidance.
@@ -266,7 +289,7 @@ microbench/
   scenarios/            # scenario loading, spawn/goal generation, timed events
   planners/             # planner plugins (baseline, ORCA, template)
   metrics/              # episode metrics, CSV writer, failure recorder, ring buffer
-  replay/               # matplotlib replay renderer for trace files
+  replay/               # Foxglove MCAP export and episode analysis reports
   dataset/              # diffusion dataset generation + shard sanity checks
   tools/                # utilities (hard-case miner, reports, golden checks)
 config/
@@ -510,7 +533,7 @@ Quick navigation:
 |---|---|
 | run one 3D episode | Section `7.2 Quick 3D Run` |
 | benchmark a planner in generated 3D stress cases | Section `7.3 Official 3D Stress Suite` |
-| inspect a 3D replay/trace | Section `7.4 Episode Reports, 3D Replay, and Traces` |
+| inspect a 3D trace | Section `7.4 Foxglove and Episode Reports` |
 | profile 3D planner runtime | Section `7.5 3D Profiling Notes` |
 | generate 3D diffusion data | Section `7.6 3D Diffusion Data` |
 
@@ -611,13 +634,10 @@ Stretch mode:
 
 If `--methods` is omitted for `three_d`, it defaults to `orca_heuristic`.
 
-### 7.4 Episode Reports, 3D Replay, and Traces
+### 7.4 Foxglove and Episode Reports
 
-- full-episode replay works the same way as planar replay
-- for non-planar episodes, replay automatically switches to a 3D view
 - for lab-grade robotics visualization, export traces to Foxglove MCAP and open them in Foxglove Studio
 - for deeper debugging, start with the multi-panel episode report: it shows top-down, side/altitude, 3D context, separation, speed, saturation, and sensing freshness in one synchronized HTML artifact
-- use the interactive HTML replay when you mainly need orbit/zoom/scrub playback with obstacle wireframes visible
 
 Foxglove MCAP export:
 
@@ -639,33 +659,6 @@ python -m microbench.cli episode-report \
 ```
 
 Install `daa-microbench[viz]` and pass `--plotly-source inline` when you want a fully self-contained HTML artifact with Plotly embedded in the file. The default `auto` mode embeds Plotly when it is installed and otherwise falls back to the Plotly CDN.
-
-Example:
-
-```bash
-python -m microbench.cli replay \
-  --trace runs/<run_id>/episodes/<episode_dir>/trace_episode.jsonl \
-  --out runs/<run_id>/episode.gif
-```
-
-Interactive HTML replay:
-
-```bash
-python -m microbench.cli replay-interactive \
-  --trace runs/<run_id>/episodes/<episode_dir>/trace_episode.jsonl \
-  --out runs/<run_id>/episode.html
-```
-
-What the interactive replay shows:
-- full 3D camera orbit / zoom / pan
-- time scrubber and play/pause controls
-- collision-pair focus mode
-- agent trails
-- world bounds wireframe
-- obstacle wireframes from scenario AABBs
-- received intent tubes
-- side plots for neighbor distance and obstacle clearance
-- hover tooltips with per-agent position, speed, command speed, and neighbor staleness summary
 
 What the episode report adds:
 - synchronized top-down x-z and side x-y projections
@@ -883,27 +876,6 @@ Render a full-episode analysis report:
 python -m microbench.cli episode-report \
   --trace runs/<run_id>/episodes/<episode_dir>/trace_episode.jsonl \
   --out runs/<run_id>/episode_report.html
-```
-
-Render a lightweight full-episode replay:
-
-```bash
-python -m microbench.cli replay \
-  --trace runs/<run_id>/episodes/<episode_dir>/trace_episode.jsonl \
-  --out runs/<run_id>/episode.gif
-```
-
-For non-planar episodes, replay automatically switches to a 3D view. For interpretation, prefer `episode-report`; for a compact shareable animation, use `replay`.
-
-Render a replay from a trace:
-
-```bash
-python -m microbench.cli replay \
-  --trace runs_trace2/episodes/funnel_baseline_goal_n8_seed1/trace_collision_3_7_t16.16.jsonl \
-  --out runs_readme_replay.gif \
-  --fps 20 \
-  --tail 20 \
-  --show-sensed
 ```
 
 Mine hard cases from `results.csv`:

@@ -5,7 +5,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-from microbench.replay.replay_interactive import _load_trace
+from microbench.replay.trace_io import _load_trace
 
 
 WORLD_FRAME = "daa_world"
@@ -560,12 +560,6 @@ def _layer_loop_points(bounds: dict[str, Any], altitude_y: float) -> list[dict[s
     return [_vec3_native_to_foxglove(p) for p in corners]
 
 
-def _box_wire_points(center: list[float], half: list[float]) -> list[dict[str, float]]:
-    lo = [center[0] - half[0], center[1] - half[1], center[2] - half[2]]
-    hi = [center[0] + half[0], center[1] + half[1], center[2] + half[2]]
-    return _aabb_edge_points(lo, hi)
-
-
 def _facade_line_points(center: list[float], half: list[float], *, max_lines: int = 9) -> list[dict[str, float]]:
     x0, x1 = center[0] - half[0], center[0] + half[0]
     y0, y1 = center[1] - half[1], center[1] + half[1]
@@ -691,82 +685,6 @@ def _environment_entities(meta: dict[str, Any], timestamp: dict[str, int]) -> li
                 ]
             road["lines"].append(_line_primitive(lane_points, color=lane_color, line_type=0, thickness=0.06))
             entities.append(road)
-
-    corridors = visual.get("corridors", []) if isinstance(visual.get("corridors", []), list) else []
-    for idx, corridor in enumerate(corridors):
-        if not isinstance(corridor, dict):
-            continue
-        c = corridor.get("center")
-        h = corridor.get("half")
-        if not isinstance(c, list) or not isinstance(h, list) or len(c) != 3 or len(h) != 3:
-            continue
-        center_c = [float(v) for v in c]
-        half_c = [float(v) for v in h]
-        label = str(corridor.get("label", f"corridor_{idx}"))
-        entity = _empty_entity(
-            timestamp=timestamp,
-            frame_id=WORLD_FRAME,
-            entity_id=f"corridor_{idx}",
-            metadata=[{"key": "label", "value": label}],
-        )
-        entity["cubes"].append(
-            {
-                "pose": _pose(_vec3_native_to_foxglove(center_c)),
-                "size": _vec3_native_to_foxglove([2.0 * half_c[0], 2.0 * half_c[1], 2.0 * half_c[2]]),
-                "color": _visual_color(corridor, (0.12, 0.58, 0.95, 0.10)),
-            }
-        )
-        entity["lines"].append(
-            _line_primitive(
-                _box_wire_points(center_c, half_c),
-                color=_visual_color({"color": corridor.get("edge_color", [0.20, 0.78, 1.0, 0.55])}, (0.20, 0.78, 1.0, 0.55)),
-                line_type=2,
-                thickness=0.05,
-            )
-        )
-        entity["texts"].append(
-            {
-                "pose": _pose(_vec3_native_to_foxglove([center_c[0], center_c[1] + half_c[1] + 0.5, center_c[2]])),
-                "billboard": True,
-                "font_size": 12.0,
-                "scale_invariant": True,
-                "color": _color((0.70, 0.92, 1.0, 0.90)),
-                "text": label,
-            }
-        )
-        entities.append(entity)
-
-    gates = visual.get("gates", []) if isinstance(visual.get("gates", []), list) else []
-    for idx, gate in enumerate(gates):
-        if not isinstance(gate, dict):
-            continue
-        c = gate.get("center")
-        h = gate.get("half")
-        if not isinstance(c, list) or not isinstance(h, list) or len(c) != 3 or len(h) != 3:
-            continue
-        center_g = [float(v) for v in c]
-        half_g = [float(v) for v in h]
-        label = str(gate.get("label", f"gate_{idx}"))
-        entity = _empty_entity(timestamp=timestamp, frame_id=WORLD_FRAME, entity_id=f"gate_{idx}")
-        entity["lines"].append(
-            _line_primitive(
-                _box_wire_points(center_g, half_g),
-                color=_visual_color(gate, (0.70, 1.0, 0.35, 0.85)),
-                line_type=2,
-                thickness=0.10,
-            )
-        )
-        entity["texts"].append(
-            {
-                "pose": _pose(_vec3_native_to_foxglove([center_g[0], center_g[1] + half_g[1] + 0.4, center_g[2]])),
-                "billboard": True,
-                "font_size": 12.0,
-                "scale_invariant": True,
-                "color": _color((0.78, 1.0, 0.55, 0.95)),
-                "text": label,
-            }
-        )
-        entities.append(entity)
 
     return entities
 

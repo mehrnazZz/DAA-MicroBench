@@ -6,10 +6,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-from microbench.replay.replay_interactive import (
-    _load_trace,
-    _trace_segments,
-)
+from microbench.replay.trace_io import _load_trace, _trace_segments
 
 
 COLORS = (
@@ -422,7 +419,7 @@ def render_episode_report(
       <div class="panel"><div id="events" class="plot"></div></div>
     </div>
     <div class="note">
-      Top-down uses x-z, side view uses x-altitude. The focus pair defaults to the collision pair when available, otherwise the globally closest pair. Use this report for diagnosis and papers; use `replay-interactive` when you only need orbitable playback.
+      Top-down uses x-z, side view uses x-altitude. The focus pair defaults to the collision pair when available, otherwise the globally closest pair. Use this report for diagnostics and papers; use Foxglove MCAP export for robotics-grade 3D playback.
     </div>
   </div>
   <script>

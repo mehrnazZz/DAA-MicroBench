@@ -15,7 +15,7 @@ from microbench.metrics.io import (
     result_schema_manifest,
     write_summary,
 )
-from microbench.replay import render_episode_report, render_interactive_trace
+from microbench.replay import render_episode_report
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -68,20 +68,6 @@ def test_current_schema_golden_headers_and_manifest_match_declared_schema() -> N
     assert _header(golden_dir / "results.csv") == RESULT_FIELDS
     assert _header(golden_dir / "summary.csv") == SUMMARY_FIELDS
     assert json.loads((golden_dir / RESULT_SCHEMA_FILENAME).read_text(encoding="utf-8")) == result_schema_manifest()
-
-
-def test_golden_collision_trace_renders_interactive_html(tmp_path: Path) -> None:
-    trace = ROOT / "golden" / "traces" / "trace_collision_0_9_t15.18.jsonl"
-    out = tmp_path / "trace_collision_replay.html"
-
-    render_interactive_trace(trace, out, tail=4, max_sensed_per_agent=2)
-
-    html = out.read_text(encoding="utf-8")
-    assert out.exists()
-    assert "Plotly.newPlot" in html
-    assert "const replay =" in html
-    assert "trace_collision_0_9_t15.18" in html
-    assert "collision_pair" in html
 
 
 def test_golden_collision_trace_renders_episode_report_html(tmp_path: Path) -> None:

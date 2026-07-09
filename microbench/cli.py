@@ -16,7 +16,7 @@ from microbench.planners import list_methods, planner_metadata
 from microbench.types import RunSpec
 from microbench.runner import run_episode
 from microbench.metrics import append_result, write_summary
-from microbench.replay import export_foxglove_mcap, render_episode_report, render_interactive_trace, render_trace
+from microbench.replay import export_foxglove_mcap, render_episode_report
 from microbench.dataset import generate_dataset, expand_scenarios, expand_list, sanity_check_shard
 from microbench.logging import wandb_logger
 from microbench.rl.calibration import run_rl_policy_calibration
@@ -1077,31 +1077,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_sweep.add_argument("--policy-spec", default=None, help="JSON/YAML external policy spec for learned_policy_spec runs")
     _add_wandb_flags(p_sweep)
 
-    p_replay = sub.add_parser("replay", help="Render a saved episode or collision trace")
-    p_replay.add_argument("--trace", required=True, help="Path to trace_episode.jsonl or trace_collision_*.jsonl")
-    p_replay.add_argument("--out", required=True, help="Output media path (.gif/.mp4)")
-    p_replay.add_argument("--fps", type=int, default=25)
-    p_replay.add_argument("--tail", type=int, default=25, help="Trail length in frames")
-    p_replay.add_argument("--max-sensed", type=int, default=8, help="Max sensed-neighbor links per focus agent")
-    p_replay.add_argument(
-        "--show-sensed",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Show sensed-neighbor links and msgAge labels",
-    )
-
-    p_replay_html = sub.add_parser("replay-interactive", help="Render an interactive HTML replay")
-    p_replay_html.add_argument("--trace", required=True, help="Path to trace_episode.jsonl or trace_collision_*.jsonl")
-    p_replay_html.add_argument("--out", required=True, help="Output HTML path")
-    p_replay_html.add_argument("--tail", type=int, default=40, help="Trail length in frames")
-    p_replay_html.add_argument("--max-sensed", type=int, default=8, help="Max sensed-neighbor links per focus agent")
-    p_replay_html.add_argument(
-        "--show-sensed",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Show sensed-neighbor links",
-    )
-
     p_episode_report = sub.add_parser("episode-report", help="Render a multi-panel HTML episode analysis report")
     p_episode_report.add_argument("--trace", required=True, help="Path to trace_episode.jsonl or trace_collision_*.jsonl")
     p_episode_report.add_argument("--out", required=True, help="Output HTML path")
@@ -1448,27 +1423,6 @@ def main() -> None:
     if args.cmd == "sweep":
         _run_sweep(args)
         print("done: sweep complete")
-        return
-    if args.cmd == "replay":
-        out = render_trace(
-            args.trace,
-            args.out,
-            fps=args.fps,
-            tail=args.tail,
-            show_sensed=args.show_sensed,
-            max_sensed_per_agent=args.max_sensed,
-        )
-        print(f"done: replay saved to {out}")
-        return
-    if args.cmd == "replay-interactive":
-        out = render_interactive_trace(
-            args.trace,
-            args.out,
-            tail=args.tail,
-            show_sensed=args.show_sensed,
-            max_sensed_per_agent=args.max_sensed,
-        )
-        print(f"done: interactive replay saved to {out}")
         return
     if args.cmd == "episode-report":
         out = render_episode_report(
