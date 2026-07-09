@@ -548,6 +548,30 @@ def _baseline_leaderboard(args) -> None:
         max_wall_time_s=args.max_wall_time_s,
         run_timeout_s=args.run_timeout_s,
     )
+    run_cfg = {
+        "run_id": Path(args.out_dir).name,
+        "suite": "baseline_leaderboard",
+        "method_name": "baseline_leaderboard",
+        "method_version": _git_commit(),
+        "suites": [suite["suite"] for suite in report.get("suites", [])],
+        "methods": report.get("methods", []),
+        "schema_version": report.get("schema_version"),
+        "complete": bool(report.get("complete", False)),
+        "selected_complete": bool(report.get("selected_complete", False)),
+        "timeout_run_count": int(report.get("timeout_run_count") or 0),
+        "python_version": sys.version.split()[0],
+        "platform": platform.platform(),
+        "git_commit": _git_commit(),
+    }
+    wb_run = wandb_logger.init_run(args, run_cfg)
+    try:
+        wandb_logger.log_baseline_leaderboard(
+            wb_run,
+            report,
+            upload_results=bool(args.wandb_upload_results),
+        )
+    finally:
+        wandb_logger.finish(wb_run)
 
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
@@ -1219,6 +1243,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional hard per-episode wall-clock timeout for leaderboard jobs",
     )
     p_bl.add_argument("--stretch", action="store_true", help="Use stretch suite defaults")
+    _add_wandb_flags(p_bl)
     p_bl.add_argument("--json", action="store_true", help="Emit machine-readable leaderboard summary")
     p_bl.add_argument("--require-pass", action="store_true", help="Fail if generated-suite acceptance fails")
     p_bl.add_argument("--require-complete", action="store_true", help="Fail if the selected leaderboard matrix is incomplete")

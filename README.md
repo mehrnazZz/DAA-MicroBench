@@ -757,6 +757,20 @@ Supported flags (`sweep` and `canonical-sweep`):
 - `--wandb-upload-replays/--no-wandb-upload-replays`
 - `--wandb-upload-dataset/--no-wandb-upload-dataset`
 
+`baseline-leaderboard` also supports the same W&B flags:
+
+```bash
+python -m microbench.cli baseline-leaderboard \
+  --out-dir runs_baseline_leaderboard \
+  --suites all \
+  --require-pass \
+  --require-complete \
+  --wandb \
+  --wandb-project daa-microbench
+```
+
+For leaderboard runs, W&B receives dashboard-friendly Tables for aggregate ranking, suite status, suite-method summaries, and component rows. The local JSON/CSV artifacts remain the canonical benchmark record; W&B is an optional comparison and sharing layer.
+
 What gets logged:
 - run config (methods/scenarios/N/seeds/comm, sim params, platform/python, git hash if available)
 - overall summary scalars from `summary.csv`

@@ -154,6 +154,20 @@ python -m microbench.cli baseline-leaderboard \
 
 This writes one per-suite `baseline_report.json` plus an aggregate `baseline_leaderboard.json`. The aggregate is a navigation and smoke-comparison artifact; official comparisons should still be read per suite because suite difficulty and purpose differ.
 
+Optionally publish the same run to W&B as dashboard tables:
+
+```bash
+python -m microbench.cli baseline-leaderboard \
+  --out-dir runs_baseline_leaderboard \
+  --suites all \
+  --require-pass \
+  --require-complete \
+  --wandb \
+  --wandb-project daa-microbench
+```
+
+W&B is a visualization and sharing layer, not the canonical record. The command logs aggregate ranking, suite status, per-suite method summaries, and component rows as W&B Tables, and uploads the local leaderboard JSON/CSV artifacts when `--wandb-upload-results` is enabled. Official submissions should still include the local `baseline_leaderboard.json`, per-suite `baseline_report.json`, `results.csv`, `summary.csv`, `result_schema.json`, and suite manifests.
+
 For long baseline development jobs, `baseline-leaderboard` can checkpoint progress:
 
 ```bash

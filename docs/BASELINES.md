@@ -210,6 +210,8 @@ python -m microbench.cli baseline-leaderboard \
 
 This materializes every generated official suite, runs the serious built-in baselines over each suite's default scenario, N, seed, and communication matrix, writes per-suite `results.csv`, `summary.csv`, `baseline_report.json`, `acceptance.json`, and writes an aggregate `baseline_leaderboard.json`. Use this for serious baseline claims. For quick local plumbing checks, cap each suite:
 
+Add `--wandb --wandb-project daa-microbench` to mirror the generated leaderboard as W&B Tables and a versioned artifact. Treat W&B as a public dashboard/export layer; the generated local JSON/CSV files remain the official benchmark evidence.
+
 ```bash
 python -m microbench.cli baseline-leaderboard \
   --out-dir runs_baseline_leaderboard_smoke \
