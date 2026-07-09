@@ -1,6 +1,6 @@
 scenario:
   name: "urban_airspace_3d"
-  description: "Environment-rich 3D urban DAA scenario with buildings, corridors, gates, occlusion, and layered goals."
+  description: "Environment-rich 3D urban DAA scenario with buildings, occlusion, and layered goals."
   duration_s: 24.0
 
 world:
@@ -87,35 +87,15 @@ visual:
   environment: "urban_airspace"
   ground_y_m: -8.0
   road_width_m: 9.0
-  show_sensor_ranges: true
-  corridors:
-    - label: "low eastbound lane"
-      center: [0.0, 4.0, -18.0]
-      half: [50.0, 3.0, 4.0]
-      color: [0.12, 0.58, 0.95, 0.10]
-      edge_color: [0.20, 0.78, 1.00, 0.55]
-    - label: "high return lane"
-      center: [0.0, 14.0, 18.0]
-      half: [50.0, 3.0, 4.0]
-      color: [0.55, 0.28, 0.95, 0.09]
-      edge_color: [0.72, 0.48, 1.00, 0.50]
-  gates:
-    - label: "merge gate"
-      center: [0.0, 9.0, 0.0]
-      half: [2.0, 12.0, 16.0]
-      color: [0.70, 1.00, 0.35, 0.85]
-    - label: "exit gate"
-      center: [42.0, 7.0, 18.0]
-      half: [2.0, 12.0, 7.0]
-      color: [0.20, 1.00, 0.75, 0.80]
+  show_sensor_ranges: false
 
 benchmark:
   family: "urban_airspace"
   dimension: "3d"
   difficulty: "hard"
-  purpose: "Stress local DAA planners with buildings, occlusion, layered corridors, and constrained gate transitions."
+  purpose: "Stress local DAA planners with buildings, occlusion, layered goals, and static obstacle proximity."
   expected_failure_modes:
     - "occluded_intruder"
     - "building_shadow_late_detection"
     - "altitude_layer_conflict"
-    - "gate_merge_deadlock"
+    - "static_obstacle_cut_corner"

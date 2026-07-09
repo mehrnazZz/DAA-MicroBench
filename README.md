@@ -523,6 +523,7 @@ Built-in 3D scenarios:
 - `config/scenarios/weather_vertical_event_3d.yaml`
 - `config/scenarios/vertical_crossing_obstacles_3d.yaml`
 - `config/scenarios/urban_airspace_3d.yaml`
+- `config/scenarios/urban_conflict_3d.yaml`
 
 Generated 3D family scenarios:
 - `sphere_swap_3d_medium`: true volumetric antipodal swap through shared airspace
@@ -539,7 +540,8 @@ What they are for:
 - `layered_intersection_3d`: crossing flows with layered targets
 - `weather_vertical_event_3d`: forced climb/descent event
 - `vertical_crossing_obstacles_3d`: crossing traffic plus center obstacle
-- `urban_airspace_3d`: environment-rich urban airspace with buildings, corridors, gates, occlusion, and layered goals
+- `urban_airspace_3d`: environment-rich urban airspace with buildings, occlusion, static obstacle proximity, and layered goals
+- `urban_conflict_3d`: near-coplanar urban crossing where straight-line goal seeking collides and avoidance baselines must actively deconflict
 
 ### 7.2 Quick 3D Run
 
@@ -557,12 +559,12 @@ Environment-rich visualization run:
 
 ```bash
 python -m microbench.cli run \
-  --scenario config/scenarios/urban_airspace_3d.yaml \
-  --method intent_dummy \
+  --scenario config/scenarios/urban_conflict_3d.yaml \
+  --method reciprocal_velocity_obstacle \
   --n 4 \
-  --seed 3 \
+  --seed 2 \
   --comm realistic_v2v_50hz \
-  --out-dir runs_urban_airspace
+  --out-dir runs_urban_conflict
 ```
 
 ### 7.3 Official 3D Stress Suite
@@ -626,7 +628,7 @@ python -m microbench.cli foxglove-export \
   --compression zstd
 ```
 
-Install `daa-microbench[foxglove]` to enable MCAP writing. The default `--compression zstd` keeps longer episode logs practical; pass `--compression none` only when debugging raw MCAP bytes. The export writes Foxglove-recognized channels for `/tf`, `/daa/static`, `/daa/agents`, `/daa/trails`, `/daa/sensing_links`, `/daa/intents`, `/daa/perception`, `/daa/diagnostics`, and `/daa/events`. `/daa/static` includes the operational volume, obstacles/buildings, roads/ground, altitude-layer guides, start/goal markers, goal tolerance zones, gates, and mission corridors when that metadata is available. `/daa/perception` shows sensor/range volumes for sensor or fused-perception scenarios. `/daa/trails` shows recent executed history; `/daa/intents` shows future advertised trajectories when the trace contains intent messages. Sensing-link colors encode freshness: green is fresh, orange/yellow is moderately stale, red is stale/expired, and gray means no age was available. DAA Microbench stores altitude on the native `y` axis; the Foxglove export maps coordinates to `x, y=lateral, z=altitude` so the 3D panel is z-up.
+Install `daa-microbench[foxglove]` to enable MCAP writing. The default `--compression zstd` keeps longer episode logs practical; pass `--compression none` only when debugging raw MCAP bytes. The export writes Foxglove-recognized channels for `/tf`, `/daa/static`, `/daa/agents`, `/daa/trails`, `/daa/sensing_links`, `/daa/intents`, `/daa/perception`, `/daa/diagnostics`, and `/daa/events`. `/daa/static` includes the operational volume, obstacles/buildings, roads/ground, altitude-layer guides, start/goal markers, and goal tolerance zones when that metadata is available. `/daa/perception` shows optional sensor/range volumes for sensor or fused-perception scenarios. `/daa/trails` shows recent executed history; `/daa/intents` shows future advertised trajectories when the trace contains intent messages. Sensing-link colors encode freshness: green is fresh, orange/yellow is moderately stale, red is stale/expired, and gray means no age was available. DAA Microbench stores altitude on the native `y` axis; the Foxglove export maps coordinates to `x, y=lateral, z=altitude` so the 3D panel is z-up.
 
 Episode analysis report:
 

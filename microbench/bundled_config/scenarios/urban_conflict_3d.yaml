@@ -1,0 +1,94 @@
+scenario:
+  name: "urban_conflict_3d"
+  description: "3D urban crossing with near-coplanar converging traffic, occluding buildings, and a near-center static hazard."
+  duration_s: 46.0
+
+world:
+  planar: false
+  bounds:
+    xmin: -55.0
+    xmax: 55.0
+    ymin: -8.0
+    ymax: 24.0
+    zmin: -55.0
+    zmax: 55.0
+
+agent_params:
+  radius_m: 0.6
+  v_max_mps: 3.2
+  a_max_mps2: 2.2
+  goal_tolerance_m: 1.2
+
+goals:
+  min_goal_distance_m: 70.0
+
+spawn:
+  type: "four_way"
+  extent_m: 46.0
+  lane_half_width_m: 2.2
+  y_m: 6.0
+  min_start_separation_m: 6.0
+  start_layers_m: [6.0, 6.0, 6.5, 5.5]
+  goal_layers_m: [6.0, 6.0, 5.5, 6.5]
+
+obstacles:
+  - kind: "building"
+    label: "tower A"
+    aabb:
+      center: [-14.0, 5.0, -12.0]
+      half: [4.0, 10.0, 5.0]
+  - kind: "building"
+    label: "tower B"
+    aabb:
+      center: [14.0, 5.0, 12.0]
+      half: [5.0, 11.0, 4.0]
+  - kind: "building"
+    label: "tower C"
+    aabb:
+      center: [-14.0, 5.0, 14.0]
+      half: [4.0, 9.0, 5.0]
+  - kind: "building"
+    label: "tower D"
+    aabb:
+      center: [15.0, 5.0, -14.0]
+      half: [4.0, 10.0, 5.0]
+  - kind: "no_fly_volume"
+    label: "offset crane"
+    aabb:
+      center: [4.5, 6.0, -4.5]
+      half: [1.8, 12.0, 1.8]
+
+perception:
+  mode: "fused"
+  sensor:
+    range_m: 30.0
+    fov_deg: 150.0
+    occlusion: true
+    occlusion_margin_m: 0.4
+    false_negative_p: 0.01
+    noise_sigma_pos_m: 0.04
+    noise_sigma_vel_mps: 0.04
+    track_ttl_s: 0.35
+
+intent:
+  enabled: true
+  tx_rate_hz: 10.0
+  max_points: 10
+  age_cap_s: 0.75
+
+visual:
+  environment: "urban_airspace"
+  ground_y_m: -4.0
+  road_width_m: 8.0
+  show_sensor_ranges: false
+
+benchmark:
+  family: "urban_airspace"
+  dimension: "3d"
+  difficulty: "hard"
+  purpose: "Show near-coplanar DAA deconfliction with nearby urban static obstacles and occluded/fused perception."
+  expected_failure_modes:
+    - "crossing_conflict"
+    - "obstacle_cut_corner"
+    - "occluded_intruder"
+    - "late_yield"
