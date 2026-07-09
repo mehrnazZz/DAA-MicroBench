@@ -76,6 +76,19 @@ def test_frame_messages_map_native_altitude_to_foxglove_z_up() -> None:
                     }
                 ]
             },
+            "selected_intents": {
+                "7": [
+                    {
+                        "idx": 8,
+                        "valid": True,
+                        "intent_age_s": 0.08,
+                        "kind": "PROPOSED",
+                        "expiry_s": 2.25,
+                        "tube_radius_m": 0.6,
+                        "points": [[1.0, 2.0, 3.0], [2.0, 3.0, 4.0], [3.0, 4.0, 5.0]],
+                    }
+                ]
+            },
         }
     ]
 
@@ -100,6 +113,15 @@ def test_frame_messages_map_native_altitude_to_foxglove_z_up() -> None:
     assert diagnostics["max_msg_age_sec"] == 0.12
     assert diagnostics["accel_saturated_count"] == 1
 
+    intent_entity = messages["intents"]["entities"][0]
+    assert intent_entity["id"] == "intent_8"
+    assert intent_entity["metadata"][1] == {"key": "kind", "value": "PROPOSED"}
+    assert intent_entity["lines"][0]["points"] == [
+        {"x": 1.0, "y": 3.0, "z": 2.0},
+        {"x": 2.0, "y": 4.0, "z": 3.0},
+        {"x": 3.0, "y": 5.0, "z": 4.0},
+    ]
+
 
 def test_frame_messages_cover_golden_collision_trace() -> None:
     meta, frames = _load_trace(str(GOLDEN_TRACE))
@@ -111,7 +133,7 @@ def test_frame_messages_cover_golden_collision_trace() -> None:
         max_sensing_links=4,
     )
 
-    assert set(messages) == {"transforms", "agents", "trails", "sensing_links", "diagnostics"}
+    assert set(messages) == {"transforms", "agents", "trails", "sensing_links", "intents", "diagnostics"}
     transforms = messages["transforms"]["transforms"]
     assert len(transforms) == 10
     native_pos = frames[0]["positions"][0]
@@ -131,6 +153,7 @@ def test_frame_messages_cover_golden_collision_trace() -> None:
     link_line = messages["sensing_links"]["entities"][0]["lines"][0]
     assert len(link_line["points"]) <= 8
     assert len(link_line["points"]) == len(link_line["colors"])
+    assert messages["intents"]["entities"] == []
     assert messages["diagnostics"]["min_center_distance_m"] is not None
     assert messages["diagnostics"]["selected_obs_count"] > 0
 
@@ -188,3 +211,9 @@ def test_foxglove_cli_reports_missing_optional_dependency_or_writes_mcap(tmp_pat
         assert proc.returncode == 0, proc.stderr
         assert out_path.exists()
         assert out_path.stat().st_size > 16
+        from mcap.reader import make_reader
+
+        with out_path.open("rb") as stream:
+            summary = make_reader(stream).get_summary()
+        assert summary is not None
+        assert "/daa/intents" in {channel.topic for channel in summary.channels.values()}

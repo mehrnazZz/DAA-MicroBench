@@ -611,7 +611,7 @@ python -m microbench.cli foxglove-export \
   --out runs/<run_id>/episode.mcap
 ```
 
-Install `daa-microbench[foxglove]` to enable MCAP writing. The export writes Foxglove-recognized channels for `/tf`, `/daa/static`, `/daa/agents`, `/daa/trails`, `/daa/sensing_links`, `/daa/diagnostics`, and `/daa/events`. DAA Microbench stores altitude on the native `y` axis; the Foxglove export maps coordinates to `x, y=lateral, z=altitude` so the 3D panel is z-up.
+Install `daa-microbench[foxglove]` to enable MCAP writing. The export writes Foxglove-recognized channels for `/tf`, `/daa/static`, `/daa/agents`, `/daa/trails`, `/daa/sensing_links`, `/daa/intents`, `/daa/diagnostics`, and `/daa/events`. `/daa/trails` shows recent executed history; `/daa/intents` shows future advertised trajectories when the trace contains intent messages. Sensing-link colors encode freshness: green is fresh, orange/yellow is moderately stale, red is stale/expired, and gray means no age was available. DAA Microbench stores altitude on the native `y` axis; the Foxglove export maps coordinates to `x, y=lateral, z=altitude` so the 3D panel is z-up.
 
 Episode analysis report:
 

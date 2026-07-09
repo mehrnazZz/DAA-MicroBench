@@ -96,7 +96,7 @@ python -m microbench.cli foxglove-export \
   --out runs/<run_id>/episode.mcap
 ```
 
-Install `daa-microbench[foxglove]` first. The MCAP contains `/tf`, agent scene entities, trails, sensing links, frame diagnostics, and events for Foxglove Studio.
+Install `daa-microbench[foxglove]` first. The MCAP contains `/tf`, agent scene entities, executed trails, sensing links, future intent trajectories when present, frame diagnostics, and events for Foxglove Studio.
 
 Render a multi-panel episode report from a saved trace:
 

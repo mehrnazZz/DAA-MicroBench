@@ -337,6 +337,18 @@ def _age_color(age_sec: float | None) -> dict[str, float]:
     return _color((0.86, 0.15, 0.15, 0.80))
 
 
+def _intent_color(age_sec: float | None, valid: bool) -> dict[str, float]:
+    if not valid:
+        return _color((0.86, 0.15, 0.15, 0.55))
+    if age_sec is None:
+        return _color((0.12, 0.47, 0.71, 0.50))
+    if age_sec < 0.10:
+        return _color((0.12, 0.47, 0.95, 0.72))
+    if age_sec < 0.50:
+        return _color((0.58, 0.30, 0.92, 0.68))
+    return _color((0.86, 0.15, 0.15, 0.58))
+
+
 def _vec3_native_to_foxglove(values: list[float] | tuple[float, float, float]) -> dict[str, float]:
     # DAA Microbench stores altitude on y. Foxglove's 3D panel convention is z-up.
     return {"x": float(values[0]), "y": float(values[2]), "z": float(values[1])}
@@ -440,6 +452,15 @@ def _frame_obs_list(frame: dict[str, Any], ego_id: int, ego_local_idx: int) -> l
         return selected_obs.get(str(ego_id), [])
     if isinstance(selected_obs, list) and ego_local_idx < len(selected_obs):
         return selected_obs[ego_local_idx]
+    return []
+
+
+def _frame_intent_list(frame: dict[str, Any], ego_id: int, ego_local_idx: int) -> list[dict[str, Any]]:
+    selected_intents = frame.get("selected_intents", {})
+    if isinstance(selected_intents, dict):
+        return selected_intents.get(str(ego_id), [])
+    if isinstance(selected_intents, list) and ego_local_idx < len(selected_intents):
+        return selected_intents[ego_local_idx]
     return []
 
 
@@ -571,6 +592,7 @@ def build_foxglove_frame_messages(
     transforms: list[dict[str, Any]] = []
     agent_entities: list[dict[str, Any]] = []
     trail_entities: list[dict[str, Any]] = []
+    intent_by_sender: dict[int, dict[str, Any]] = {}
 
     for local_idx, agent_id in enumerate(agent_ids):
         pos = positions[local_idx]
@@ -644,6 +666,37 @@ def build_foxglove_frame_messages(
         )
         trail_entities.append(trail)
 
+        for intent in _frame_intent_list(frame, int(agent_id), local_idx):
+            points = intent.get("points", [])
+            if not isinstance(points, list) or len(points) < 2:
+                continue
+            sender_id = int(intent.get("idx", intent.get("sender_id", -1)))
+            if sender_id < 0:
+                continue
+            valid = bool(intent.get("valid", False))
+            age = float(intent["intent_age_s"]) if "intent_age_s" in intent else None
+            existing = intent_by_sender.get(sender_id)
+            existing_valid = bool(existing.get("valid", False)) if existing else False
+            existing_age = float(existing.get("intent_age_s", float("inf"))) if existing else float("inf")
+            should_replace = existing is None or (valid and not existing_valid) or (
+                valid == existing_valid and age is not None and age < existing_age
+            )
+            if should_replace:
+                receiver_ids = list(existing.get("receiver_ids", [])) if existing else []
+                receiver_ids.append(int(agent_id))
+                intent_by_sender[sender_id] = {
+                    "sender_id": sender_id,
+                    "receiver_ids": receiver_ids,
+                    "valid": valid,
+                    "intent_age_s": age,
+                    "kind": str(intent.get("kind", "")),
+                    "expiry_s": float(intent.get("expiry_s", frame.get("t", 0.0))),
+                    "tube_radius_m": float(intent.get("tube_radius_m", 0.0)),
+                    "points": points,
+                }
+            elif existing is not None:
+                existing.setdefault("receiver_ids", []).append(int(agent_id))
+
     link_points: list[dict[str, float]] = []
     link_colors: list[dict[str, float]] = []
     for local_idx, agent_id in enumerate(agent_ids):
@@ -675,6 +728,38 @@ def build_foxglove_frame_messages(
         )
     )
 
+    intent_entities: list[dict[str, Any]] = []
+    for sender_id, intent in sorted(intent_by_sender.items()):
+        points = [_vec3_native_to_foxglove([float(v[0]), float(v[1]), float(v[2])]) for v in intent["points"]]
+        if len(points) < 2:
+            continue
+        tube_radius = float(intent.get("tube_radius_m", 0.0))
+        age = intent.get("intent_age_s")
+        valid = bool(intent.get("valid", False))
+        entity = _empty_entity(
+            timestamp=timestamp,
+            frame_id=WORLD_FRAME,
+            entity_id=f"intent_{sender_id}",
+            metadata=[
+                {"key": "sender_id", "value": str(sender_id)},
+                {"key": "kind", "value": str(intent.get("kind", ""))},
+                {"key": "valid", "value": str(valid).lower()},
+                {"key": "intent_age_s", "value": "" if age is None else f"{float(age):.3f}"},
+                {"key": "expiry_s", "value": f"{float(intent.get('expiry_s', 0.0)):.3f}"},
+                {"key": "tube_radius_m", "value": f"{tube_radius:.3f}"},
+                {"key": "receiver_count", "value": str(len(set(intent.get("receiver_ids", []))))},
+            ],
+        )
+        entity["lines"].append(
+            _line_primitive(
+                points,
+                color=_intent_color(float(age) if age is not None else None, valid),
+                line_type=0,
+                thickness=max(0.06, min(0.28, tube_radius * 0.20 if tube_radius > 0.0 else 0.10)),
+            )
+        )
+        intent_entities.append(entity)
+
     obs_count, max_msg_age = _message_age_stats(frame, agent_ids)
     speeds = [_speed(v) for v in velocities]
     cmd_speeds = [_speed(v) for v in commands]
@@ -697,6 +782,7 @@ def build_foxglove_frame_messages(
         "agents": {"deletions": [], "entities": agent_entities},
         "trails": {"deletions": [], "entities": trail_entities},
         "sensing_links": {"deletions": [], "entities": [link_entity]},
+        "intents": {"deletions": [], "entities": intent_entities},
         "diagnostics": diagnostics,
     }
 
@@ -761,6 +847,7 @@ def export_foxglove_mcap(
         agents_ch = writer.register_channel("/daa/agents", MESSAGE_ENCODING, scene_schema)
         trails_ch = writer.register_channel("/daa/trails", MESSAGE_ENCODING, scene_schema)
         sensing_ch = writer.register_channel("/daa/sensing_links", MESSAGE_ENCODING, scene_schema)
+        intents_ch = writer.register_channel("/daa/intents", MESSAGE_ENCODING, scene_schema)
         tf_ch = writer.register_channel("/tf", MESSAGE_ENCODING, tf_schema)
         diagnostics_ch = writer.register_channel("/daa/diagnostics", MESSAGE_ENCODING, diagnostics_schema)
         events_ch = writer.register_channel("/daa/events", MESSAGE_ENCODING, event_schema)
@@ -793,6 +880,7 @@ def export_foxglove_mcap(
             writer.add_message(agents_ch, t_ns, _json_bytes(messages["agents"]), t_ns)
             writer.add_message(trails_ch, t_ns, _json_bytes(messages["trails"]), t_ns)
             writer.add_message(sensing_ch, t_ns, _json_bytes(messages["sensing_links"]), t_ns)
+            writer.add_message(intents_ch, t_ns, _json_bytes(messages["intents"]), t_ns)
             writer.add_message(diagnostics_ch, t_ns, _json_bytes(messages["diagnostics"]), t_ns)
 
         for event in _event_rows(trace_path, meta):
