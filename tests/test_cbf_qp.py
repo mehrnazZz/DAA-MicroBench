@@ -59,7 +59,9 @@ def test_cbf_qp_head_on_uses_bounded_avoidance_fallback() -> None:
     assert np.linalg.norm(out.v_cmd) <= ego.v_max + 1e-6
     assert out.debug_info["cbf_constraints"] == 1
     assert "cbf_fallback" in out.debug_info
-    assert out.debug_info["cbf_solver"] in {"scipy_slsqp", "projection_skeleton"}
+    assert out.debug_info["cbf_neighbor_constraints"] == 1
+    assert out.debug_info["cbf_obstacle_constraints"] == 0
+    assert out.debug_info["cbf_solver"] in {"scipy_slsqp", "deterministic_projection"}
 
 
 def test_cbf_qp_obstacle_in_path_slows_or_redirects() -> None:
@@ -74,6 +76,9 @@ def test_cbf_qp_obstacle_in_path_slows_or_redirects() -> None:
     assert out.v_cmd[0] < 2.0
     assert np.linalg.norm(out.v_cmd) <= ego.v_max + 1e-6
     assert out.debug_info["cbf_constraints"] == 1
+    assert out.debug_info["cbf_neighbor_constraints"] == 0
+    assert out.debug_info["cbf_obstacle_constraints"] == 1
+    assert out.debug_info["cbf_min_clearance_m"] is not None
 
 
 def test_cbf_qp_preserves_3d_command_shape() -> None:
@@ -101,6 +106,45 @@ def test_cbf_qp_projection_solver_mode_is_explicit() -> None:
 
     out = CbfQpPlanner(cfg={"solver": "projection"}).compute_cmd(_planner_input(ego=ego, neighbors=[neighbor]))
 
-    assert out.debug_info["cbf_solver"] == "projection_skeleton"
+    assert out.debug_info["cbf_solver"] == "deterministic_projection"
     assert out.debug_info["cbf_solver_requested"] == "projection"
-    assert out.debug_info["cbf_solver_status"] == "projection"
+    assert out.debug_info["cbf_solver_status"] in {"projection_converged", "projection_residual_violation"}
+
+
+def test_cbf_qp_stale_tracks_inflate_barrier_and_slow_more() -> None:
+    ego = _agent((0.0, 0.0, 0.0), vel=(1.0, 0.0, 0.0))
+    fresh = NeighborObs(
+        idx=1,
+        pos=np.asarray([2.4, 0.0, 0.0], dtype=np.float32),
+        vel=np.asarray([0.0, 0.0, 0.0], dtype=np.float32),
+        radius=0.5,
+        msg_age_sec=0.0,
+        track_age_sec=0.0,
+        valid=True,
+    )
+    stale = NeighborObs(
+        idx=1,
+        pos=np.asarray([2.4, 0.0, 0.0], dtype=np.float32),
+        vel=np.asarray([0.0, 0.0, 0.0], dtype=np.float32),
+        radius=0.5,
+        msg_age_sec=1.0,
+        track_age_sec=1.0,
+        valid=True,
+        stale=True,
+    )
+    planner = CbfQpPlanner(
+        cfg={
+            "solver": "projection",
+            "stale_inflation_gain": 1.0,
+            "track_uncertainty_speed_gain": 0.0,
+            "stale_age_cap_s": 2.0,
+        }
+    )
+
+    fresh_out = planner.compute_cmd(_planner_input(ego=ego, neighbors=[fresh]))
+    stale_out = planner.compute_cmd(_planner_input(ego=ego, neighbors=[stale]))
+
+    assert stale_out.v_cmd[0] < fresh_out.v_cmd[0]
+    assert fresh_out.debug_info["cbf_uncertainty_inflation_max_m"] == 0.0
+    assert stale_out.debug_info["cbf_uncertainty_inflation_max_m"] > 0.9
+    assert stale_out.debug_info["cbf_min_clearance_m"] < fresh_out.debug_info["cbf_min_clearance_m"]

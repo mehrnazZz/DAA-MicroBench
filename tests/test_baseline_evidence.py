@@ -21,6 +21,7 @@ def test_baseline_evidence_cbf_mpc_checks_pass_with_promotion_blockers() -> None
     names = {(check["method"], check["name"]) for check in report["checks"]}
     assert ("cbf_qp", "cbf_projection_feasible_constraint") in names
     assert ("cbf_qp", "cbf_forced_fallback_is_bounded_and_reported") in names
+    assert ("cbf_qp", "cbf_stale_track_inflates_barrier") in names
     assert ("cbf_qp", "cbf_auto_solver_path_reports_status") in names
     assert ("mpc_local", "mpc_dense_3d_candidate_cap_and_signals") in names
     assert ("mpc_local", "mpc_dense_3d_profile_p95_bounded") in names

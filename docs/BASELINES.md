@@ -29,7 +29,7 @@ Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pas
 | `baseline_goal` | illustrative baseline | ego state, goal | 2D, 3D | Lower bound that shows how hard a scenario is without avoidance. |
 | `orca_heuristic` | reference baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Main ORCA-like geometric comparison baseline. |
 | `orca_with_staleness` | reference baseline | same as `orca_heuristic`, with stronger stale-track inflation | 2D, 3D | Degraded communication or stale sensor-track comparison baseline. |
-| `cbf_qp` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Dependency-free CBF projection baseline with optional SciPy solver mode. |
+| `cbf_qp` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | CBF safety-filter baseline with deterministic projection, optional SciPy solver mode, obstacle barriers, and stale-track inflation. |
 | `mpc_local` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Deterministic short-horizon predictive sampling baseline. |
 | `velocity_obstacle` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Deterministic finite-horizon velocity-obstacle cone sampling baseline. |
 | `reciprocal_velocity_obstacle` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Hybrid reciprocal/HRVO-style cone sampling baseline with responsibility sharing. |
@@ -118,7 +118,7 @@ python -m microbench.cli canonical-sweep \
   --out-dir runs_agentic_baselines
 ```
 
-CBF skeleton smoke:
+CBF safety-filter smoke:
 
 ```bash
 python -m microbench.cli run \
@@ -268,9 +268,9 @@ Useful diagnostics:
 - `comm_agent_msg_delivery_fraction_mean`
 - `avoidance_active` / `avoidance_weight` in planner debug traces
 
-## CBF-QP Skeleton
+## CBF-QP Safety Filter
 
-`cbf_qp` is currently an experimental CBF-style baseline. The default `solver: projection` mode is quiet and dependency-free. Optional `solver: auto` or `solver: scipy` modes use SciPy SLSQP when available, then fall back to deterministic halfspace projection. It constructs pairwise and obstacle barrier halfspaces, clamps speed, and uses a deterministic away-from-risk fallback if constraints remain violated.
+`cbf_qp` is currently an experimental CBF-style safety-filter baseline. The default `solver: projection` mode is quiet and dependency-free. Optional `solver: auto` or `solver: scipy` modes use SciPy SLSQP when available, then fall back to deterministic halfspace projection. It constructs pairwise and obstacle barrier halfspaces, inflates stale tracks to reflect observation uncertainty, clamps speed, and uses a deterministic away-from-risk fallback if constraints remain violated.
 
 Use it for development and API comparison, not as a mature CBF baseline. It is useful because it establishes:
 
@@ -280,6 +280,8 @@ Use it for development and API comparison, not as a mature CBF baseline. It is u
 - bounded fallback behavior
 - debug fields in `PlannerOutput.debug_info`
 - solver status reporting via `cbf_solver`, `cbf_solver_requested`, and `cbf_solver_status`
+- stale-track barrier inflation via `cbf_uncertainty_inflation_max_m`
+- constraint accounting via `cbf_neighbor_constraints`, `cbf_obstacle_constraints`, and `cbf_active_constraints`
 
 Requirements before promoting it to a reference baseline:
 
@@ -288,7 +290,7 @@ Requirements before promoting it to a reference baseline:
 - broad but explicit compute p95 bands on smoke and 3D stress rows
 - zero planner timeout/error/fallback counts in smoke and experimental baseline runs
 - stronger solver-backed validation, with documented deterministic projection fallback
-- tests for infeasible constraints, solver failure, stale/noisy observations, and 2D/3D obstacle barriers
+- broader tests for infeasible constraints, solver failure, noisy observations, and 2D/3D obstacle barriers
 
 Targeted evidence gate:
 
@@ -298,7 +300,7 @@ python -m microbench.cli baseline-evidence \
   --require-pass
 ```
 
-For `cbf_qp`, this records feasible projection behavior, forced fallback behavior with residual violation reporting, and optional solver-path status. Passing it supports continued public-alpha use, but the report intentionally recommends keeping CBF experimental until solver backends and infeasible-constraint behavior are validated beyond these skeleton cases.
+For `cbf_qp`, this records feasible projection behavior, forced fallback behavior with residual violation reporting, stale-track barrier inflation, and optional solver-path status. Passing it supports continued public-alpha use, but the report intentionally recommends keeping CBF experimental until solver backends and infeasible-constraint behavior are validated beyond these targeted cases.
 
 ## MPC-Local Skeleton
 

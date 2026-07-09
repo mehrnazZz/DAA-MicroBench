@@ -163,8 +163,8 @@ _METADATA: dict[str, PlannerMetadata] = {
     ),
     "cbf_qp": PlannerMetadata(
         method="cbf_qp",
-        display_name="CBF-QP projection skeleton",
-        planner_type="optimization_skeleton",
+        display_name="CBF-QP safety-filter baseline",
+        planner_type="cbf_qp_safety_filter",
         role="experimental_baseline",
         status="experimental",
         dimensions=("2d", "3d"),
@@ -173,8 +173,8 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_local_sensing=True,
         uses_obstacles=True,
         description=(
-            "Control-barrier-function baseline skeleton with quiet projection by default "
-            "and an optional SciPy SLSQP solver path."
+            "Control-barrier-function safety-filter baseline with deterministic projection, "
+            "optional SciPy SLSQP solve, obstacle barriers, and stale-track inflation."
         ),
         limitations=(
             "Experimental; not recommended as a leaderboard anchor until calibrated.",

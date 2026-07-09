@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+from dataclasses import dataclass
 import io
 import warnings
 import numpy as np
@@ -33,6 +34,16 @@ def _closest_point_on_aabb(point: np.ndarray, obs: AABBObs) -> np.ndarray:
     return np.minimum(np.maximum(point, center - half), center + half)
 
 
+@dataclass(frozen=True)
+class _CbfConstraint:
+    kind: str
+    a: np.ndarray
+    b: float
+    h: float
+    clearance_m: float
+    uncertainty_inflation_m: float = 0.0
+
+
 class CbfQpPlanner(ILocalPlanner):
     """Deterministic CBF-QP baseline with an optional solver path.
 
@@ -53,6 +64,9 @@ class CbfQpPlanner(ILocalPlanner):
         self.max_solver_iters = int(cfg.get("max_solver_iters", 40))
         self.violation_tol = float(cfg.get("violation_tol", 1e-5))
         self.fallback_speed_scale = float(cfg.get("fallback_speed_scale", 0.5))
+        self.stale_age_cap_s = float(cfg.get("stale_age_cap_s", 1.5))
+        self.stale_inflation_gain = float(cfg.get("stale_inflation_gain", 0.7))
+        self.track_uncertainty_speed_gain = float(cfg.get("track_uncertainty_speed_gain", 0.15))
 
     def reset(self, seed: int) -> None:
         _ = seed
@@ -71,17 +85,32 @@ class CbfQpPlanner(ILocalPlanner):
             bool(planner_input.planar),
         )
         max_violation = self._max_violation(v_cmd, constraints)
+        pre_fallback_max_violation = max_violation
         fallback = bool(max_violation > self.violation_tol)
         if fallback:
             v_cmd = self._fallback(planner_input, v_pref)
             max_violation = self._max_violation(v_cmd, constraints)
 
+        neighbor_constraints = sum(1 for c in constraints if c.kind == "neighbor")
+        obstacle_constraints = sum(1 for c in constraints if c.kind == "obstacle")
+        active_constraints = sum(1 for c in constraints if self._constraint_violation(v_cmd, c) > self.violation_tol)
+        min_h = min((float(c.h) for c in constraints), default=None)
+        min_clearance = min((float(c.clearance_m) for c in constraints), default=None)
+        max_uncertainty = max((float(c.uncertainty_inflation_m) for c in constraints), default=0.0)
+
         return PlannerOutput(
             v_cmd=v_cmd.astype(float),
             debug_info={
                 "cbf_constraints": len(constraints),
+                "cbf_neighbor_constraints": int(neighbor_constraints),
+                "cbf_obstacle_constraints": int(obstacle_constraints),
+                "cbf_active_constraints": int(active_constraints),
                 "cbf_projection_iters": int(iterations),
                 "cbf_max_violation": float(max_violation),
+                "cbf_pre_fallback_max_violation": float(pre_fallback_max_violation),
+                "cbf_min_h": None if min_h is None else float(min_h),
+                "cbf_min_clearance_m": None if min_clearance is None else float(min_clearance),
+                "cbf_uncertainty_inflation_max_m": float(max_uncertainty),
                 "cbf_fallback": fallback,
                 "cbf_solver": solver_used,
                 "cbf_solver_requested": self.solver,
@@ -89,25 +118,47 @@ class CbfQpPlanner(ILocalPlanner):
             },
         )
 
-    def _constraints(self, planner_input: PlannerInput) -> list[tuple[np.ndarray, float]]:
-        constraints: list[tuple[np.ndarray, float]] = []
+    def _constraints(self, planner_input: PlannerInput) -> list[_CbfConstraint]:
+        constraints: list[_CbfConstraint] = []
         ego = planner_input.ego
         p_i = np.asarray(ego.pos, dtype=np.float32)
         for nobs in planner_input.neighbors[: self.max_neighbors]:
+            if not bool(getattr(nobs, "valid", True)):
+                continue
             constraints.append(self._neighbor_constraint(planner_input, nobs))
         for obs in planner_input.obstacles:
             constraints.append(self._obstacle_constraint(planner_input, obs, p_i))
         if planner_input.planar:
             cleaned = []
-            for a, b in constraints:
-                aa = np.asarray(a, dtype=np.float32)
+            for constraint in constraints:
+                aa = np.asarray(constraint.a, dtype=np.float32)
                 aa[1] = 0.0
                 if _norm(aa) > 1e-9:
-                    cleaned.append((aa, float(b)))
+                    cleaned.append(
+                        _CbfConstraint(
+                            kind=constraint.kind,
+                            a=aa,
+                            b=float(constraint.b),
+                            h=float(constraint.h),
+                            clearance_m=float(constraint.clearance_m),
+                            uncertainty_inflation_m=float(constraint.uncertainty_inflation_m),
+                        )
+                    )
             return cleaned
-        return [(np.asarray(a, dtype=np.float32), float(b)) for a, b in constraints if _norm(np.asarray(a)) > 1e-9]
+        return [
+            _CbfConstraint(
+                kind=c.kind,
+                a=np.asarray(c.a, dtype=np.float32),
+                b=float(c.b),
+                h=float(c.h),
+                clearance_m=float(c.clearance_m),
+                uncertainty_inflation_m=float(c.uncertainty_inflation_m),
+            )
+            for c in constraints
+            if _norm(np.asarray(c.a)) > 1e-9
+        ]
 
-    def _neighbor_constraint(self, planner_input: PlannerInput, nobs: NeighborObs) -> tuple[np.ndarray, float]:
+    def _neighbor_constraint(self, planner_input: PlannerInput, nobs: NeighborObs) -> _CbfConstraint:
         ego = planner_input.ego
         p_i = np.asarray(ego.pos, dtype=np.float32)
         p_j = np.asarray(nobs.pos, dtype=np.float32)
@@ -117,13 +168,23 @@ class CbfQpPlanner(ILocalPlanner):
             rel = _normalize(p_i - np.asarray(ego.goal, dtype=np.float32))
             if _norm(rel) < 1e-6:
                 rel = np.asarray([1.0, 0.0, 0.0], dtype=np.float32)
-        radius = float(ego.radius) + float(nobs.radius) + self.safety_margin_m
+        age_s = self._track_age_s(nobs)
+        uncertainty_inflation = self.stale_inflation_gain * age_s + self.track_uncertainty_speed_gain * age_s * _norm(v_j)
+        radius = float(ego.radius) + float(nobs.radius) + self.safety_margin_m + uncertainty_inflation
+        dist = _norm(rel)
         h = float(np.dot(rel, rel) - radius * radius)
         a = 2.0 * rel
         b = float(2.0 * np.dot(rel, v_j) - self.alpha * h)
-        return a.astype(np.float32), b
+        return _CbfConstraint(
+            kind="neighbor",
+            a=a.astype(np.float32),
+            b=b,
+            h=h,
+            clearance_m=float(dist - radius),
+            uncertainty_inflation_m=float(uncertainty_inflation),
+        )
 
-    def _obstacle_constraint(self, planner_input: PlannerInput, obs: AABBObs, p_i: np.ndarray) -> tuple[np.ndarray, float]:
+    def _obstacle_constraint(self, planner_input: PlannerInput, obs: AABBObs, p_i: np.ndarray) -> _CbfConstraint:
         ego = planner_input.ego
         closest = _closest_point_on_aabb(p_i, obs)
         rel = p_i - closest
@@ -136,28 +197,40 @@ class CbfQpPlanner(ILocalPlanner):
             rel = np.zeros(3, dtype=np.float32)
             rel[axis] = 1.0 if local[axis] >= 0.0 else -1.0
         radius = float(ego.radius) + self.obstacle_margin_m
+        dist = _norm(rel)
         h = float(np.dot(rel, rel) - radius * radius)
         a = 2.0 * rel
         b = float(-self.alpha * h)
-        return a.astype(np.float32), b
+        return _CbfConstraint(
+            kind="obstacle",
+            a=a.astype(np.float32),
+            b=b,
+            h=h,
+            clearance_m=float(dist - radius),
+        )
+
+    def _track_age_s(self, nobs: NeighborObs) -> float:
+        msg_age = max(0.0, float(getattr(nobs, "msg_age_sec", 0.0) or 0.0))
+        track_age = max(0.0, float(getattr(nobs, "track_age_sec", 0.0) or 0.0))
+        return min(max(msg_age, track_age), max(0.0, self.stale_age_cap_s))
 
     def _project(
         self,
         v_pref: np.ndarray,
-        constraints: list[tuple[np.ndarray, float]],
+        constraints: list[_CbfConstraint],
         v_max: float,
         planar: bool,
-    ) -> tuple[np.ndarray, int]:
+    ) -> tuple[np.ndarray, int, bool]:
         v = np.asarray(v_pref, dtype=np.float32).copy()
         iterations = 0
         for iteration in range(max(0, self.max_projection_iters)):
             changed = False
-            for a, b in constraints:
-                aa = np.asarray(a, dtype=np.float32)
+            for constraint in constraints:
+                aa = np.asarray(constraint.a, dtype=np.float32)
                 denom = float(np.dot(aa, aa))
                 if denom < 1e-12:
                     continue
-                violation = float(b - np.dot(aa, v))
+                violation = float(constraint.b - np.dot(aa, v))
                 if violation <= self.violation_tol:
                     continue
                 v = v + (violation / denom) * aa
@@ -168,12 +241,15 @@ class CbfQpPlanner(ILocalPlanner):
             iterations = iteration + 1
             if not changed:
                 break
-        return _clamp_speed(v, v_max), iterations
+        v = _clamp_speed(v, v_max)
+        if planar:
+            v[1] = 0.0
+        return v, iterations, self._max_violation(v, constraints) <= self.violation_tol
 
     def _solve(
         self,
         v_pref: np.ndarray,
-        constraints: list[tuple[np.ndarray, float]],
+        constraints: list[_CbfConstraint],
         v_max: float,
         planar: bool,
     ) -> tuple[np.ndarray, int, str, str]:
@@ -185,17 +261,21 @@ class CbfQpPlanner(ILocalPlanner):
             if solved is not None:
                 return solved[0], 0, "scipy_slsqp", solved[1]
             if self.solver in {"scipy", "scipy_slsqp"}:
-                v, iters = self._project(v_pref, constraints, v_max, planar)
-                return v, iters, "projection_skeleton", "scipy_unavailable_or_failed"
+                v, iters, converged = self._project(v_pref, constraints, v_max, planar)
+                status = "scipy_unavailable_projection_converged" if converged else "scipy_unavailable_projection_residual_violation"
+                return v, iters, "deterministic_projection", status
 
-        v, iters = self._project(v_pref, constraints, v_max, planar)
-        status = "projection_fallback" if self.solver == "auto" else "projection"
-        return v, iters, "projection_skeleton", status
+        v, iters, converged = self._project(v_pref, constraints, v_max, planar)
+        if self.solver == "auto":
+            status = "projection_fallback_converged" if converged else "projection_fallback_residual_violation"
+        else:
+            status = "projection_converged" if converged else "projection_residual_violation"
+        return v, iters, "deterministic_projection", status
 
     def _solve_scipy(
         self,
         v_pref: np.ndarray,
-        constraints: list[tuple[np.ndarray, float]],
+        constraints: list[_CbfConstraint],
         v_max: float,
         planar: bool,
     ) -> tuple[np.ndarray, str] | None:
@@ -211,9 +291,9 @@ class CbfQpPlanner(ILocalPlanner):
             x0[1] = 0.0
 
         cons = []
-        for a, b in constraints:
-            aa = np.asarray(a, dtype=float)
-            bb = float(b)
+        for constraint in constraints:
+            aa = np.asarray(constraint.a, dtype=float)
+            bb = float(constraint.b)
             cons.append(
                 {
                     "type": "ineq",
@@ -284,7 +364,10 @@ class CbfQpPlanner(ILocalPlanner):
             return _clamp_speed(v_pref * self.fallback_speed_scale, float(ego.v_max))
         return _clamp_speed(_normalize(away) * float(ego.v_max) * self.fallback_speed_scale, float(ego.v_max))
 
-    def _max_violation(self, v_cmd: np.ndarray, constraints: list[tuple[np.ndarray, float]]) -> float:
+    def _constraint_violation(self, v_cmd: np.ndarray, constraint: _CbfConstraint) -> float:
+        return max(0.0, float(constraint.b - np.dot(constraint.a, v_cmd)))
+
+    def _max_violation(self, v_cmd: np.ndarray, constraints: list[_CbfConstraint]) -> float:
         if not constraints:
             return 0.0
-        return max(0.0, max(float(b - np.dot(a, v_cmd)) for a, b in constraints))
+        return max(self._constraint_violation(v_cmd, constraint) for constraint in constraints)

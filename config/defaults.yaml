@@ -101,6 +101,9 @@ cbf_qp:
   max_solver_iters: 40
   violation_tol: 1.0e-5
   fallback_speed_scale: 0.5
+  stale_age_cap_s: 1.5
+  stale_inflation_gain: 0.7
+  track_uncertainty_speed_gain: 0.15
 
 mpc_local:
   horizon_s: 2.0

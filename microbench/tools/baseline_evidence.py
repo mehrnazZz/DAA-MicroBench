@@ -116,9 +116,11 @@ def _cbf_evidence_checks() -> list[dict[str, Any]]:
             method,
             "cbf_projection_feasible_constraint",
             bool(
-                feasible_out.debug_info.get("cbf_solver") == "projection_skeleton"
+                feasible_out.debug_info.get("cbf_solver") == "deterministic_projection"
                 and feasible_out.debug_info.get("cbf_fallback") is False
                 and float(feasible_out.debug_info.get("cbf_max_violation", 1.0)) <= 1e-4
+                and int(feasible_out.debug_info.get("cbf_neighbor_constraints", 0)) == 1
+                and int(feasible_out.debug_info.get("cbf_obstacle_constraints", -1)) == 0
                 and 0.0 < float(feasible_out.v_cmd[0]) < float(feasible_ego.v_max)
                 and abs(float(feasible_out.v_cmd[1])) <= 1e-9
                 and _finite_vec(feasible_out.v_cmd)
@@ -140,15 +142,50 @@ def _cbf_evidence_checks() -> list[dict[str, Any]]:
             method,
             "cbf_forced_fallback_is_bounded_and_reported",
             bool(
-                fallback_out.debug_info.get("cbf_solver") == "projection_skeleton"
+                fallback_out.debug_info.get("cbf_solver") == "deterministic_projection"
                 and fallback_out.debug_info.get("cbf_fallback") is True
                 and float(fallback_out.debug_info.get("cbf_max_violation", 0.0)) > 0.0
+                and float(fallback_out.debug_info.get("cbf_pre_fallback_max_violation", 0.0)) > 0.0
                 and float(np.linalg.norm(fallback_out.v_cmd)) <= float(fallback_ego.v_max) + 1e-6
                 and _finite_vec(fallback_out.v_cmd)
             ),
             {
                 "v_cmd": [float(x) for x in fallback_out.v_cmd],
                 "debug_info": fallback_out.debug_info,
+            },
+        )
+    )
+
+    stale_planner = CbfQpPlanner(
+        cfg={
+            "solver": "projection",
+            "stale_inflation_gain": 1.0,
+            "track_uncertainty_speed_gain": 0.0,
+            "stale_age_cap_s": 2.0,
+        }
+    )
+    stale_ego = _agent(pos=(0.0, 0.0, 0.0), vel=(1.0, 0.0, 0.0))
+    fresh_track = _neighbor(idx=1, pos=(2.4, 0.0, 0.0), msg_age_sec=0.0)
+    stale_track = _neighbor(idx=1, pos=(2.4, 0.0, 0.0), msg_age_sec=1.0)
+    fresh_out = stale_planner.compute_cmd(_planner_input(ego=stale_ego, neighbors=[fresh_track]))
+    stale_out = stale_planner.compute_cmd(_planner_input(ego=stale_ego, neighbors=[stale_track]))
+    checks.append(
+        _check(
+            method,
+            "cbf_stale_track_inflates_barrier",
+            bool(
+                float(stale_out.v_cmd[0]) < float(fresh_out.v_cmd[0])
+                and float(stale_out.debug_info.get("cbf_uncertainty_inflation_max_m", 0.0)) > 0.9
+                and float(fresh_out.debug_info.get("cbf_uncertainty_inflation_max_m", 1.0)) == 0.0
+                and stale_out.debug_info.get("cbf_min_clearance_m") is not None
+                and fresh_out.debug_info.get("cbf_min_clearance_m") is not None
+                and float(stale_out.debug_info["cbf_min_clearance_m"]) < float(fresh_out.debug_info["cbf_min_clearance_m"])
+            ),
+            {
+                "fresh_v_cmd": [float(x) for x in fresh_out.v_cmd],
+                "stale_v_cmd": [float(x) for x in stale_out.v_cmd],
+                "fresh_debug_info": fresh_out.debug_info,
+                "stale_debug_info": stale_out.debug_info,
             },
         )
     )
@@ -161,7 +198,7 @@ def _cbf_evidence_checks() -> list[dict[str, Any]]:
             method,
             "cbf_auto_solver_path_reports_status",
             bool(
-                auto_out.debug_info.get("cbf_solver") in {"scipy_slsqp", "projection_skeleton"}
+                auto_out.debug_info.get("cbf_solver") in {"scipy_slsqp", "deterministic_projection"}
                 and auto_out.debug_info.get("cbf_solver_requested") == "auto"
                 and str(auto_out.debug_info.get("cbf_solver_status", ""))
                 and _finite_vec(auto_out.v_cmd)
@@ -303,7 +340,7 @@ def run_baseline_reference_evidence(
         },
         "checks": checks,
         "promotion_recommendations": {
-            "cbf_qp": "keep_experimental_until_solver_backends_and_infeasible_constraint_behavior_are_validated_beyond_skeleton_cases",
+            "cbf_qp": "keep_experimental_until_solver_backends_and_infeasible_constraint_behavior_are_validated_beyond_targeted_cases",
             "mpc_local": "keep_experimental_until_dense_3d_compute_bands_and_stress_behavior_are_calibrated_on_official_suites",
         },
     }

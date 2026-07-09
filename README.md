@@ -506,7 +506,7 @@ Expected baseline sanity behavior:
 - `baseline_goal`: high collisions in dense scenarios.
 - `orca_heuristic`: substantially lower collisions, especially in ideal comm.
 - `orca_with_staleness`: more conservative behavior when observations are stale or degraded.
-- `cbf_qp`: experimental CBF projection baseline with optional SciPy solver mode, not a calibrated leaderboard anchor.
+- `cbf_qp`: experimental CBF safety-filter baseline with deterministic projection, optional SciPy solver mode, obstacle barriers, and stale-track inflation; not a calibrated leaderboard anchor.
 - `mpc_local`: experimental local predictive sampling baseline, useful for bounded lookahead and smoothness comparisons.
 
 Quick acceptance heuristic:
