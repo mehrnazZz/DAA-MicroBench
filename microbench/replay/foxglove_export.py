@@ -327,6 +327,10 @@ def _color(values: tuple[float, float, float, float]) -> dict[str, float]:
     return {"r": values[0], "g": values[1], "b": values[2], "a": values[3]}
 
 
+def _agent_color(agent_id: int) -> dict[str, float]:
+    return _color(COLORS[int(agent_id) % len(COLORS)])
+
+
 def _age_color(age_sec: float | None) -> dict[str, float]:
     if age_sec is None:
         return _color((0.35, 0.35, 0.35, 0.35))
@@ -526,6 +530,41 @@ def _aabb_edge_points(lo: list[float], hi: list[float]) -> list[dict[str, float]
     return out
 
 
+def _layer_loop_points(bounds: dict[str, Any], altitude_y: float) -> list[dict[str, float]]:
+    xmin = float(bounds.get("xmin", 0.0))
+    xmax = float(bounds.get("xmax", 0.0))
+    zmin = float(bounds.get("zmin", 0.0))
+    zmax = float(bounds.get("zmax", 0.0))
+    y = float(altitude_y)
+    corners = [[xmin, y, zmin], [xmax, y, zmin], [xmax, y, zmax], [xmin, y, zmax], [xmin, y, zmin]]
+    return [_vec3_native_to_foxglove(p) for p in corners]
+
+
+def _distinct_altitude_layers(meta: dict[str, Any]) -> list[float]:
+    values: list[float] = []
+    for key in ("spawns", "goals"):
+        for point in meta.get(key, []) or []:
+            if isinstance(point, list) and len(point) >= 2:
+                values.append(float(point[1]))
+    if not values and "fixed_y_m" in meta:
+        values.append(float(meta.get("fixed_y_m", 0.0)))
+    rounded = sorted({round(v, 2) for v in values})
+    if len(rounded) > 6:
+        lo = min(values)
+        hi = max(values)
+        mid = 0.5 * (lo + hi)
+        rounded = sorted({round(lo, 2), round(mid, 2), round(hi, 2)})
+    return rounded
+
+
+def _profile_by_agent_id(meta: dict[str, Any]) -> dict[int, dict[str, Any]]:
+    out: dict[int, dict[str, Any]] = {}
+    for profile in meta.get("agent_profiles", []) or []:
+        if isinstance(profile, dict) and "agent_id" in profile:
+            out[int(profile["agent_id"])] = profile
+    return out
+
+
 def build_foxglove_static_scene(meta: dict[str, Any], timestamp_ns: int = 0) -> dict[str, Any]:
     timestamp = _timestamp_from_ns(timestamp_ns)
     entities: list[dict[str, Any]] = []
@@ -544,12 +583,105 @@ def build_foxglove_static_scene(meta: dict[str, Any], timestamp_ns: int = 0) -> 
         )
         entities.append(entity)
 
+        for altitude_y in _distinct_altitude_layers(meta):
+            layer = _empty_entity(
+                timestamp=timestamp,
+                frame_id=WORLD_FRAME,
+                entity_id=f"altitude_layer_{altitude_y:g}",
+                metadata=[{"key": "altitude_y_m", "value": f"{altitude_y:.2f}"}],
+            )
+            layer["lines"].append(
+                _line_primitive(
+                    _layer_loop_points(bounds, altitude_y),
+                    color=_color((0.20, 0.62, 0.95, 0.22)),
+                    line_type=0,
+                    thickness=0.035,
+                )
+            )
+            layer["texts"].append(
+                {
+                    "pose": _pose(_vec3_native_to_foxglove([lo[0], altitude_y, hi[2]])),
+                    "billboard": True,
+                    "font_size": 11.0,
+                    "scale_invariant": True,
+                    "color": _color((0.60, 0.80, 1.0, 0.80)),
+                    "text": f"alt {altitude_y:g}m",
+                }
+            )
+            entities.append(layer)
+
+    spawns = meta.get("spawns", []) or []
+    goals = meta.get("goals", []) or []
+    profiles = _profile_by_agent_id(meta)
+    goal_tol = float(meta.get("goal_tolerance_m", 0.75))
+    for local_idx, (spawn, goal) in enumerate(zip(spawns, goals)):
+        if not isinstance(spawn, list) or not isinstance(goal, list) or len(spawn) < 3 or len(goal) < 3:
+            continue
+        agent_id = int(meta.get("agent_ids", list(range(len(spawns))))[local_idx]) if meta.get("agent_ids") else local_idx
+        color = _agent_color(agent_id)
+        profile = profiles.get(agent_id, {})
+        mission = _empty_entity(
+            timestamp=timestamp,
+            frame_id=WORLD_FRAME,
+            entity_id=f"mission_{agent_id}",
+            metadata=[
+                {"key": "agent_id", "value": str(agent_id)},
+                {"key": "role", "value": str(profile.get("role", ""))},
+                {"key": "priority", "value": str(profile.get("priority", ""))},
+            ],
+        )
+        mission["lines"].append(
+            _line_primitive(
+                [_vec3_native_to_foxglove(spawn), _vec3_native_to_foxglove(goal)],
+                color=_color((color["r"], color["g"], color["b"], 0.28)),
+                line_type=0,
+                thickness=0.055,
+            )
+        )
+        mission["spheres"].append(
+            {
+                "pose": _pose(_vec3_native_to_foxglove(spawn)),
+                "size": {"x": 0.7, "y": 0.7, "z": 0.7},
+                "color": _color((color["r"], color["g"], color["b"], 0.85)),
+            }
+        )
+        mission["spheres"].append(
+            {
+                "pose": _pose(_vec3_native_to_foxglove(goal)),
+                "size": {"x": max(0.8, 2.0 * goal_tol), "y": max(0.8, 2.0 * goal_tol), "z": max(0.8, 2.0 * goal_tol)},
+                "color": _color((color["r"], color["g"], color["b"], 0.18)),
+            }
+        )
+        mission["texts"].append(
+            {
+                "pose": _pose(_vec3_native_to_foxglove([float(spawn[0]), float(spawn[1]) + 0.45, float(spawn[2])])),
+                "billboard": True,
+                "font_size": 11.0,
+                "scale_invariant": True,
+                "color": _color((0.90, 0.95, 1.0, 0.92)),
+                "text": f"S{agent_id}",
+            }
+        )
+        mission["texts"].append(
+            {
+                "pose": _pose(_vec3_native_to_foxglove([float(goal[0]), float(goal[1]) + 0.45, float(goal[2])])),
+                "billboard": True,
+                "font_size": 11.0,
+                "scale_invariant": True,
+                "color": _color((0.90, 0.95, 1.0, 0.92)),
+                "text": f"G{agent_id}",
+            }
+        )
+        entities.append(mission)
+
     for idx, obstacle in enumerate(meta.get("obstacles", []) or []):
         aabb = obstacle.get("aabb")
         if not aabb:
             continue
         center = [float(v) for v in aabb.get("center", [0.0, 0.0, 0.0])]
         half = [float(v) for v in aabb.get("half", [0.0, 0.0, 0.0])]
+        lo = [center[0] - half[0], center[1] - half[1], center[2] - half[2]]
+        hi = [center[0] + half[0], center[1] + half[1], center[2] + half[2]]
         entity = _empty_entity(
             timestamp=timestamp,
             frame_id=WORLD_FRAME,
@@ -560,7 +692,25 @@ def build_foxglove_static_scene(meta: dict[str, Any], timestamp_ns: int = 0) -> 
             {
                 "pose": _pose(_vec3_native_to_foxglove(center)),
                 "size": _vec3_native_to_foxglove([2.0 * half[0], 2.0 * half[1], 2.0 * half[2]]),
-                "color": _color((0.42, 0.45, 0.50, 0.22)),
+                "color": _color((0.88, 0.38, 0.12, 0.38)),
+            }
+        )
+        entity["lines"].append(
+            _line_primitive(
+                _aabb_edge_points(lo, hi),
+                color=_color((1.0, 0.80, 0.35, 0.75)),
+                line_type=2,
+                thickness=0.055,
+            )
+        )
+        entity["texts"].append(
+            {
+                "pose": _pose(_vec3_native_to_foxglove([center[0], center[1] + half[1] + 0.8, center[2]])),
+                "billboard": True,
+                "font_size": 12.0,
+                "scale_invariant": True,
+                "color": _color((1.0, 0.90, 0.68, 0.95)),
+                "text": f"obstacle {idx}",
             }
         )
         entities.append(entity)
@@ -599,7 +749,7 @@ def build_foxglove_frame_messages(
         cmd = commands[local_idx] if local_idx < len(commands) else [0.0, 0.0, 0.0]
         vel = velocities[local_idx] if local_idx < len(velocities) else [0.0, 0.0, 0.0]
         radius = _agent_radius(meta, frame, local_idx)
-        color = _color(COLORS[local_idx % len(COLORS)])
+        color = _agent_color(agent_id)
         direction = cmd if _speed(cmd) > 1e-6 else vel
         transforms.append(
             {
@@ -626,7 +776,23 @@ def build_foxglove_frame_messages(
             {
                 "pose": _pose(),
                 "size": {"x": 2.0 * radius, "y": 2.0 * radius, "z": 2.0 * radius},
-                "color": color,
+                "color": _color((color["r"], color["g"], color["b"], 0.18)),
+            }
+        )
+        body_len = max(0.35, min(0.85, 1.15 * radius))
+        body_width = max(0.18, min(0.42, 0.45 * radius))
+        entity["cubes"].append(
+            {
+                "pose": _pose(),
+                "size": {"x": body_len, "y": body_width, "z": body_width},
+                "color": _color((color["r"], color["g"], color["b"], 0.94)),
+            }
+        )
+        entity["cubes"].append(
+            {
+                "pose": _pose(),
+                "size": {"x": body_width, "y": body_len, "z": body_width * 0.75},
+                "color": _color((color["r"], color["g"], color["b"], 0.82)),
             }
         )
         cmd_speed = _speed(cmd)

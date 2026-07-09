@@ -41,15 +41,45 @@ def test_static_scene_builds_world_bounds_and_obstacles() -> None:
                     }
                 }
             ],
+            "spawns": [[-8.0, -1.0, 0.0], [-8.0, 2.0, 1.0]],
+            "goals": [[8.0, 2.0, 0.0], [8.0, -1.0, -1.0]],
+            "goal_tolerance_m": 0.75,
+            "agent_profiles": [{"agent_id": 0, "role": "ego", "priority": 5}],
         }
     )
 
     assert scene["deletions"] == []
-    assert [entity["id"] for entity in scene["entities"]] == ["world_bounds", "obstacle_0"]
-    assert len(scene["entities"][0]["lines"][0]["points"]) == 24
-    obstacle = scene["entities"][1]["cubes"][0]
+    entities = {entity["id"]: entity for entity in scene["entities"]}
+    assert {"world_bounds", "altitude_layer_-1", "altitude_layer_2", "mission_0", "mission_1", "obstacle_0"} <= set(entities)
+    assert len(entities["world_bounds"]["lines"][0]["points"]) == 24
+    assert entities["mission_0"]["lines"][0]["points"] == [
+        {"x": -8.0, "y": 0.0, "z": -1.0},
+        {"x": 8.0, "y": 0.0, "z": 2.0},
+    ]
+    assert entities["mission_0"]["spheres"][1]["size"] == {"x": 1.5, "y": 1.5, "z": 1.5}
+    obstacle = entities["obstacle_0"]["cubes"][0]
     assert obstacle["pose"]["position"] == {"x": 1.0, "y": 3.0, "z": 2.0}
     assert obstacle["size"] == {"x": 2.0, "y": 6.0, "z": 4.0}
+    assert len(entities["obstacle_0"]["lines"][0]["points"]) == 24
+
+
+def test_static_scene_summarizes_continuous_altitude_samples() -> None:
+    scene = build_foxglove_static_scene(
+        {
+            "world_bounds": {
+                "xmin": -10.0,
+                "xmax": 10.0,
+                "ymin": -10.0,
+                "ymax": 10.0,
+                "zmin": -10.0,
+                "zmax": 10.0,
+            },
+            "spawns": [[0.0, float(i), 0.0] for i in range(8)],
+            "goals": [[1.0, float(i) + 0.25, 0.0] for i in range(8)],
+        }
+    )
+    layer_ids = [entity["id"] for entity in scene["entities"] if entity["id"].startswith("altitude_layer_")]
+    assert layer_ids == ["altitude_layer_0", "altitude_layer_3.62", "altitude_layer_7.25"]
 
 
 def test_frame_messages_map_native_altitude_to_foxglove_z_up() -> None:
@@ -101,6 +131,7 @@ def test_frame_messages_map_native_altitude_to_foxglove_z_up() -> None:
     agent_entity = messages["agents"]["entities"][0]
     assert agent_entity["frame_id"] == "drone_7"
     assert agent_entity["spheres"][0]["size"] == {"x": 0.8, "y": 0.8, "z": 0.8}
+    assert len(agent_entity["cubes"]) == 2
     assert agent_entity["texts"][0]["text"] == "agent 7"
 
     link_points = messages["sensing_links"]["entities"][0]["lines"][0]["points"]

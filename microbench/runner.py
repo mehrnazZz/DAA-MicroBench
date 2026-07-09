@@ -90,6 +90,11 @@ def run_episode(spec: RunSpec) -> dict:
             "fixed_y_m": float(engine.fixed_y),
             "world_bounds": engine.world_cfg.get("bounds", {}),
             "obstacles": engine.obstacles,
+            "spawns": engine.spawns.tolist(),
+            "goals": engine.goals.tolist(),
+            "goal_tolerance_m": float(engine.goal_tol),
+            "spawn_goal_dists": engine.spawn_goal_dists.tolist(),
+            "benchmark": dict(engine.cfg.get("benchmark", {})),
             "agent_profiles": [
                 {
                     "agent_id": int(ctx.agent_id),
