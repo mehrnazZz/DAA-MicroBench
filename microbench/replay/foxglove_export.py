@@ -1241,15 +1241,21 @@ def export_foxglove_mcap(
     *,
     trail_frames: int = 200,
     max_sensing_links: int = 200,
+    compression: str = "zstd",
 ) -> Path:
     Writer, CompressionType = _require_mcap()
     meta, frames = _load_trace(trace_path)
     opath = Path(out_path)
     opath.parent.mkdir(parents=True, exist_ok=True)
     start_t_sec = float(frames[0].get("t", 0.0))
+    compression_name = str(compression).upper()
+    try:
+        compression_type = getattr(CompressionType, compression_name)
+    except AttributeError as exc:
+        raise ValueError(f"Unsupported MCAP compression {compression!r}; choose none, lz4, or zstd") from exc
 
     with opath.open("wb") as stream:
-        writer = Writer(stream, compression=CompressionType.NONE)
+        writer = Writer(stream, compression=compression_type)
         writer.start(profile="foxglove", library="daa-microbench")
         scene_schema = writer.register_schema("foxglove.SceneUpdate", SCHEMA_ENCODING, _json_bytes(SCENE_UPDATE_SCHEMA))
         tf_schema = writer.register_schema("foxglove.FrameTransforms", SCHEMA_ENCODING, _json_bytes(FRAME_TRANSFORMS_SCHEMA))

@@ -1123,6 +1123,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_foxglove.add_argument("--out", required=True, help="Output MCAP path")
     p_foxglove.add_argument("--trail-frames", type=int, default=200, help="Number of history frames in trail entities")
     p_foxglove.add_argument("--max-sensing-links", type=int, default=200, help="Maximum sensing/V2V links per frame")
+    p_foxglove.add_argument("--compression", choices=("none", "lz4", "zstd"), default="zstd", help="MCAP chunk compression")
 
     p_ds = sub.add_parser("generate-dataset", help="Generate diffusion training dataset shards")
     p_ds.add_argument("--scenario", required=True, help="Scenario path(s) or globs (comma-separated)")
@@ -1485,6 +1486,7 @@ def main() -> None:
                 args.out,
                 trail_frames=args.trail_frames,
                 max_sensing_links=args.max_sensing_links,
+                compression=args.compression,
             )
         except RuntimeError as exc:
             raise SystemExit(str(exc))

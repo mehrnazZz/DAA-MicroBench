@@ -622,10 +622,11 @@ Foxglove MCAP export:
 ```bash
 python -m microbench.cli foxglove-export \
   --trace runs/<run_id>/episodes/<episode_dir>/trace_episode.jsonl \
-  --out runs/<run_id>/episode.mcap
+  --out runs/<run_id>/episode.mcap \
+  --compression zstd
 ```
 
-Install `daa-microbench[foxglove]` to enable MCAP writing. The export writes Foxglove-recognized channels for `/tf`, `/daa/static`, `/daa/agents`, `/daa/trails`, `/daa/sensing_links`, `/daa/intents`, `/daa/perception`, `/daa/diagnostics`, and `/daa/events`. `/daa/static` includes the operational volume, obstacles/buildings, roads/ground, altitude-layer guides, start/goal markers, goal tolerance zones, gates, and mission corridors when that metadata is available. `/daa/perception` shows sensor/range volumes for sensor or fused-perception scenarios. `/daa/trails` shows recent executed history; `/daa/intents` shows future advertised trajectories when the trace contains intent messages. Sensing-link colors encode freshness: green is fresh, orange/yellow is moderately stale, red is stale/expired, and gray means no age was available. DAA Microbench stores altitude on the native `y` axis; the Foxglove export maps coordinates to `x, y=lateral, z=altitude` so the 3D panel is z-up.
+Install `daa-microbench[foxglove]` to enable MCAP writing. The default `--compression zstd` keeps longer episode logs practical; pass `--compression none` only when debugging raw MCAP bytes. The export writes Foxglove-recognized channels for `/tf`, `/daa/static`, `/daa/agents`, `/daa/trails`, `/daa/sensing_links`, `/daa/intents`, `/daa/perception`, `/daa/diagnostics`, and `/daa/events`. `/daa/static` includes the operational volume, obstacles/buildings, roads/ground, altitude-layer guides, start/goal markers, goal tolerance zones, gates, and mission corridors when that metadata is available. `/daa/perception` shows sensor/range volumes for sensor or fused-perception scenarios. `/daa/trails` shows recent executed history; `/daa/intents` shows future advertised trajectories when the trace contains intent messages. Sensing-link colors encode freshness: green is fresh, orange/yellow is moderately stale, red is stale/expired, and gray means no age was available. DAA Microbench stores altitude on the native `y` axis; the Foxglove export maps coordinates to `x, y=lateral, z=altitude` so the 3D panel is z-up.
 
 Episode analysis report:
 

@@ -14,6 +14,7 @@ from microbench.replay.foxglove_export import (
     _json_bytes,
     build_foxglove_frame_messages,
     build_foxglove_static_scene,
+    export_foxglove_mcap,
 )
 from microbench.replay.replay_interactive import _load_trace
 
@@ -264,6 +265,8 @@ def test_foxglove_cli_reports_missing_optional_dependency_or_writes_mcap(tmp_pat
             "4",
             "--max-sensing-links",
             "4",
+            "--compression",
+            "zstd",
         ],
         cwd=ROOT,
         text=True,
@@ -287,3 +290,14 @@ def test_foxglove_cli_reports_missing_optional_dependency_or_writes_mcap(tmp_pat
         topics = {channel.topic for channel in summary.channels.values()}
         assert "/daa/intents" in topics
         assert "/daa/perception" in topics
+
+
+def test_foxglove_export_rejects_unknown_compression(tmp_path: Path) -> None:
+    if importlib.util.find_spec("mcap") is None:
+        return
+    try:
+        export_foxglove_mcap(str(GOLDEN_TRACE), str(tmp_path / "bad.mcap"), compression="brotli")
+    except ValueError as exc:
+        assert "Unsupported MCAP compression" in str(exc)
+    else:
+        raise AssertionError("expected ValueError for unsupported compression")
