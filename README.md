@@ -26,7 +26,7 @@ python -m microbench.cli foxglove-export \
   --compression zstd
 ```
 
-Open the MCAP in Foxglove Studio for the robotics-grade 3D view. To add the recording at the top of this README, follow [docs/FOXGLOVE_DEMO.md](docs/FOXGLOVE_DEMO.md) and save the optimized asset under `docs/assets/`.
+Open the MCAP in Foxglove Studio for the robotics-grade 3D view.
 
 ## 1) What This Is (and Is Not)
 
