@@ -186,7 +186,8 @@ def _run_once(args) -> dict:
     defaults = load_defaults()
     comm = args.comm or defaults.get("comm", {}).get("profile", "ideal_50hz")
     out_dir = args.out_dir or defaults.get("logging", {}).get("out_dir", "runs")
-    save_trace = bool(defaults.get("logging", {}).get("save_trace", False))
+    save_trace_default = bool(defaults.get("logging", {}).get("save_trace", False))
+    save_trace = save_trace_default if args.save_trace is None else bool(args.save_trace)
     spec = RunSpec(
         scenario_path=args.scenario,
         method=args.method,
@@ -1060,6 +1061,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--seed", required=True, type=int)
     p_run.add_argument("--comm", default=None)
     p_run.add_argument("--out-dir", default=None)
+    p_run.add_argument(
+        "--save-trace",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Save trace_episode.jsonl for Foxglove export and episode reports",
+    )
     p_run.add_argument("--policy-spec", default=None, help="JSON/YAML external policy spec for --method learned_policy_spec")
     p_run.add_argument(
         "--agent-methods",

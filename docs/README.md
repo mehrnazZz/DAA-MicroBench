@@ -91,6 +91,15 @@ python -m microbench.cli baseline-leaderboard --out-dir runs_baseline_leaderboar
 Export a saved trace to a Foxglove-compatible MCAP log:
 
 ```bash
+python -m microbench.cli run \
+  --scenario config/scenarios/stacked_swap_3d.yaml \
+  --method your_method \
+  --n 10 \
+  --seed 0 \
+  --comm ideal_50hz \
+  --save-trace \
+  --out-dir runs/<run_id>
+
 python -m microbench.cli foxglove-export \
   --trace runs/<run_id>/episodes/<episode_dir>/trace_episode.jsonl \
   --out runs/<run_id>/episode.mcap

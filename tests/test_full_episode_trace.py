@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -68,6 +70,70 @@ logging:
             frame = json.loads(lines[1])
             self.assertEqual(frame.get("kind"), "frame")
             self.assertIn("positions", frame)
+
+    def test_run_cli_save_trace_flag_writes_episode_trace(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            scenario = tmp / "scenario_trace_cli.yaml"
+            scenario.write_text(
+                """
+scenario:
+  name: "trace_cli_smoke"
+  duration_s: 0.2
+world:
+  planar: false
+agent_params:
+  radius_m: 0.4
+  v_max_mps: 2.0
+  a_max_mps2: 2.0
+  goal_tolerance_m: 0.2
+goals:
+  min_goal_distance_m: 0.5
+spawn:
+  type: "rect_to_rect"
+  start_region:
+    center: [0.0, 0.0, 0.0]
+    half: [0.0, 0.0, 0.0]
+  goal_region:
+    center: [1.0, 1.0, 0.0]
+    half: [0.0, 0.0, 0.0]
+logging:
+  save_trace: false
+  trace_save_failures_only: false
+  save_events: false
+  save_trace_on_collision: false
+""".strip(),
+                encoding="utf-8",
+            )
+            out_dir = tmp / "runs_cli_trace"
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "microbench.cli",
+                    "run",
+                    "--scenario",
+                    str(scenario),
+                    "--method",
+                    "template",
+                    "--n",
+                    "1",
+                    "--seed",
+                    "0",
+                    "--comm",
+                    "ideal_50hz",
+                    "--save-trace",
+                    "--out-dir",
+                    str(out_dir),
+                ],
+                cwd=Path(__file__).resolve().parents[1],
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+            trace_path = out_dir / "episodes" / "scenario_trace_cli_template_n1_seed0_comm_ideal_50hz" / "trace_episode.jsonl"
+            self.assertTrue(trace_path.exists())
 
 
 if __name__ == "__main__":
