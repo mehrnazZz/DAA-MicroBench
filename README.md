@@ -85,6 +85,8 @@ python -m microbench.cli list-methods --json --include-aliases
 python -m microbench.cli baseline-audit
 python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
 python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
+python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass
+python -m microbench.cli advanced-baseline-comparison --out-dir runs_advanced_baseline_comparison --require-pass
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
 python -m microbench.cli rl-smoke --out-dir runs_external_rl_smoke --policy-spec examples/external_policy_spec.json --require-pass
 python -m microbench.cli rl-smoke --out-dir runs_external_model_predict_smoke --policy-spec examples/external_policy_model_predict_spec.json --max-steps 3 --require-pass
@@ -420,6 +422,16 @@ python -m microbench.cli baseline-report \
   --suite official_experimental_baselines \
   --out runs_experimental_baselines/baseline_report.json
 ```
+
+Run a compact shared 3D advanced-baseline comparison:
+
+```bash
+python -m microbench.cli advanced-baseline-comparison \
+  --out-dir runs_advanced_baseline_comparison \
+  --require-pass
+```
+
+This runs ORCA, stale-aware ORCA, CBF-QP, MPC-local, VO, and RVO on the same `urban_conflict_3d` lane and writes `advanced_baseline_comparison.json`, `baseline_report.json`, `results.csv`, and `summary.csv`. Use it as a quick apples-to-apples advanced-baseline artifact; the all-suite leaderboard remains the publication-grade benchmark evidence.
 
 Run the generated agentic stress suite:
 

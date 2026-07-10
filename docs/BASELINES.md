@@ -10,6 +10,7 @@ python -m microbench.cli baseline-audit --require-public-alpha-ready --json
 python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
 python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass
+python -m microbench.cli advanced-baseline-comparison --out-dir runs_advanced_baseline_comparison --require-pass
 python -m microbench.cli baseline-review --out-dir runs_baseline_review --duration-s 20
 python -m microbench.cli baseline-leaderboard --out-dir runs_baseline_leaderboard --suites all --require-pass --require-complete
 ```
@@ -197,6 +198,16 @@ python -m microbench.cli baseline-report \
 ```
 
 The checked-in example lives at `golden/baseline_comparison/report.json`.
+
+Run a compact shared 3D comparison for advanced local-avoidance baselines:
+
+```bash
+python -m microbench.cli advanced-baseline-comparison \
+  --out-dir runs_advanced_baseline_comparison \
+  --require-pass
+```
+
+This runs `orca_heuristic`, `orca_with_staleness`, `cbf_qp`, `mpc_local`, `velocity_obstacle`, and `reciprocal_velocity_obstacle` on the same `urban_conflict_3d` scenario, with the same seed, agent count, duration override, and communication profile. It writes `advanced_baseline_comparison.json`, `baseline_report.json`, `results.csv`, `summary.csv`, and a copied scenario file under `_comparison_scenario/`. Use it as a quick apples-to-apples advanced-baseline artifact before spending time on the full official leaderboard.
 
 Build an all-official-suite baseline leaderboard:
 

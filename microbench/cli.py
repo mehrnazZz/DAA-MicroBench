@@ -32,10 +32,17 @@ from microbench.rl.submission_bundle import (
 )
 from microbench.rl.submission_schema_check import run_learned_submission_schema_check
 from microbench.tools import (
+    DEFAULT_ADVANCED_COMPARISON_COMM_PROFILE,
+    DEFAULT_ADVANCED_COMPARISON_DURATION_S,
+    DEFAULT_ADVANCED_COMPARISON_METHODS,
+    DEFAULT_ADVANCED_COMPARISON_N_AGENTS,
+    DEFAULT_ADVANCED_COMPARISON_SCENARIO,
+    DEFAULT_ADVANCED_COMPARISON_SEED,
     build_baseline_audit,
     build_current_schema_candidate,
     compare_current_schema_golden,
     mine_worst_cases,
+    run_advanced_baseline_comparison,
     run_baseline_leaderboard,
     run_baseline_behavior_smoke,
     run_baseline_reference_evidence,
@@ -733,6 +740,43 @@ def _baseline_evidence(args) -> None:
         raise SystemExit(f"baseline evidence checks failed: {','.join(failed)}")
 
 
+def _advanced_baseline_comparison(args) -> None:
+    duration_s = None if args.full_duration else float(args.duration_s)
+    report = run_advanced_baseline_comparison(
+        out_dir=args.out_dir,
+        scenario=args.scenario,
+        methods=_parse_str_list(args.methods) if args.methods else None,
+        n_agents=int(args.n),
+        seed=int(args.seed),
+        comm_profile=str(args.comm),
+        duration_s=duration_s,
+        save_traces=bool(args.save_traces),
+    )
+
+    if args.json:
+        print(json.dumps(report, allow_nan=False, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "REVIEW"
+        print(
+            "advanced-baseline-comparison: "
+            f"{status} runs={report['run_count']}/{report['planned_run_count']} "
+            f"scenario={report['scenario']} report={report['report_path']}"
+        )
+        for row in report["ranking"]:
+            print(
+                f"  rank={row['rank']} method={row['method']} score_v0={row.get('score_v0')} "
+                f"collision_rate={row.get('collision_episode_rate')} completion={row.get('completion_rate_mean')} "
+                f"min_sep={row.get('min_sep_min_mean')}"
+            )
+
+    if args.require_pass and not report["ok"]:
+        raise SystemExit(
+            "advanced baseline comparison failed: "
+            f"checks={report['checks']} guardrails={report['guardrail_failures']} "
+            f"nonfinite={report['nonfinite_methods']}"
+        )
+
+
 def _baseline_review(args) -> None:
     duration_s = None if args.full_duration else float(args.duration_s)
     report = run_baseline_stable_review(
@@ -1309,6 +1353,42 @@ def build_parser() -> argparse.ArgumentParser:
     p_be.add_argument("--json", action="store_true", help="Emit machine-readable evidence report")
     p_be.add_argument("--require-pass", action="store_true", help="Fail if any evidence check fails")
 
+    p_abc = sub.add_parser(
+        "advanced-baseline-comparison",
+        help="Run a compact shared 3D comparison lane for advanced baselines",
+    )
+    p_abc.add_argument("--out-dir", required=True, help="Fresh output directory for comparison artifacts")
+    p_abc.add_argument(
+        "--scenario",
+        default=DEFAULT_ADVANCED_COMPARISON_SCENARIO,
+        help="Scenario path or bundled scenario id",
+    )
+    p_abc.add_argument(
+        "--methods",
+        default=None,
+        help=(
+            "Comma-separated methods; defaults to "
+            + ",".join(DEFAULT_ADVANCED_COMPARISON_METHODS)
+        ),
+    )
+    p_abc.add_argument("--n", type=int, default=DEFAULT_ADVANCED_COMPARISON_N_AGENTS, help="Agent count")
+    p_abc.add_argument("--seed", type=int, default=DEFAULT_ADVANCED_COMPARISON_SEED, help="Scenario seed")
+    p_abc.add_argument("--comm", default=DEFAULT_ADVANCED_COMPARISON_COMM_PROFILE, help="Communication profile")
+    p_abc.add_argument(
+        "--duration-s",
+        type=float,
+        default=DEFAULT_ADVANCED_COMPARISON_DURATION_S,
+        help="Scenario duration override; use --full-duration for the scenario default",
+    )
+    p_abc.add_argument("--full-duration", action="store_true", help="Use the scenario's configured duration")
+    p_abc.add_argument("--save-traces", action="store_true", help="Save per-method episode traces")
+    p_abc.add_argument("--json", action="store_true", help="Emit machine-readable comparison report")
+    p_abc.add_argument(
+        "--require-pass",
+        action="store_true",
+        help="Fail if the comparison artifact is incomplete or has planner guardrail errors",
+    )
+
     p_brv = sub.add_parser("baseline-review", help="Run optional longer stable-metadata review lanes for baseline candidates")
     p_brv.add_argument("--out-dir", required=True, help="Fresh output directory for review artifacts")
     p_brv.add_argument("--root", default=".", help="Repository root used for docs/tests coverage checks")
@@ -1561,6 +1641,9 @@ def main() -> None:
         return
     if args.cmd == "baseline-evidence":
         _baseline_evidence(args)
+        return
+    if args.cmd == "advanced-baseline-comparison":
+        _advanced_baseline_comparison(args)
         return
     if args.cmd == "baseline-review":
         _baseline_review(args)

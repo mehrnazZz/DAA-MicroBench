@@ -49,6 +49,7 @@ python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-
 python -m microbench.cli baseline-leaderboard --out-dir runs_baseline_leaderboard --suites all --require-pass --require-complete
 python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass
+python -m microbench.cli advanced-baseline-comparison --out-dir runs_advanced_baseline_comparison --require-pass
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
 python -m microbench.cli rl-smoke --out-dir runs_external_rl_smoke --policy-spec examples/external_policy_spec.json --require-pass
 python -m microbench.cli rl-smoke --out-dir runs_external_model_predict_smoke --policy-spec examples/external_policy_model_predict_spec.json --max-steps 3 --require-pass
@@ -74,6 +75,7 @@ python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --re
 - `cbf_qp` and `mpc_local` also pass the longer stable-metadata prep lanes in `baseline-review`, but they remain experimental until the reference-role decision, CBF validation, and MPC compute/stress characterization are stronger.
 - `velocity_obstacle` and `reciprocal_velocity_obstacle` are deterministic VO-family baselines for 2D/3D local deconfliction; both still need official stress-suite calibration before promotion.
 - `baseline-evidence` adds targeted CBF fallback/solver-status checks, dense-3D MPC profiling, and VO/RVO HRVO responsibility checks; it is evidence for review, not a stable-v1 promotion by itself.
+- `advanced-baseline-comparison` adds a compact shared `urban_conflict_3d` lane for ORCA/CBF/MPC/VO/RVO side-by-side artifacts; it is useful review evidence, not a substitute for the all-suite leaderboard.
 - The PettingZoo/Gymnasium-style RL interface is available for public-alpha experimentation, but observation vectors and reward defaults are not stable-v1 contracts yet.
 - `rl-smoke` checks wrapper API health and 2D/3D coverage, not policy quality or leaderboard safety.
 - `--policy-spec` lets `rl-smoke`, `rl-calibration`, `learned_policy_spec`, and `learned-submission-bundle` load trusted external JSON/YAML policy specs for learned-policy adoption tests.

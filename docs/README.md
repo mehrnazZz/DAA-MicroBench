@@ -82,6 +82,12 @@ Run targeted CBF/MPC/VO/RVO reference-evidence checks:
 python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass
 ```
 
+Run the compact shared 3D advanced-baseline comparison:
+
+```bash
+python -m microbench.cli advanced-baseline-comparison --out-dir runs_advanced_baseline_comparison --require-pass
+```
+
 Run the all-suite baseline leaderboard:
 
 ```bash
