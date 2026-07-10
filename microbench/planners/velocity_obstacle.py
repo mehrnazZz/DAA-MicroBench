@@ -65,6 +65,8 @@ class VelocityObstaclePlanner(ILocalPlanner):
         self.obstacle_margin_m = float(cfg.get("obstacle_margin_m", 0.2))
         self.near_clearance_m = float(cfg.get("near_clearance_m", 1.25))
         self.stale_inflation_gain = float(cfg.get("stale_inflation_gain", 0.7))
+        self.stale_age_cap_s = float(cfg.get("stale_age_cap_s", self.time_horizon_s))
+        self.track_uncertainty_speed_gain = float(cfg.get("track_uncertainty_speed_gain", 0.1))
         self.goal_slowdown_radius_m = float(cfg.get("goal_slowdown_radius_m", 6.0))
         self.candidate_samples_2d = int(cfg.get("candidate_samples_2d", 24))
         self.candidate_samples_3d = int(cfg.get("candidate_samples_3d", 36))
@@ -93,9 +95,11 @@ class VelocityObstaclePlanner(ILocalPlanner):
 
         best_idx = 0
         best_cost = float("inf")
-        best_breakdown: dict[str, float | int | None] = {}
+        best_breakdown: dict[str, float | int | bool | None] = {}
+        candidate_records: list[tuple[np.ndarray, float, dict[str, float | int | bool | None]]] = []
         for idx, candidate in enumerate(candidates):
             cost, breakdown = self._score_candidate(planner_input, candidate, v_pref, current)
+            candidate_records.append((candidate, cost, breakdown))
             if cost < best_cost:
                 best_idx = idx
                 best_cost = cost
@@ -106,6 +110,7 @@ class VelocityObstaclePlanner(ILocalPlanner):
         if planner_input.planar:
             v_cmd[1] = 0.0
 
+        risk_summary = self._candidate_risk_summary(candidate_records, best_idx)
         debug_info = {
             "vo_algorithm": "velocity_obstacle_cone_sampling",
             "vo_horizon_s": float(self.time_horizon_s),
@@ -114,11 +119,25 @@ class VelocityObstaclePlanner(ILocalPlanner):
             "vo_candidate_limit": int(self.max_candidates),
             "vo_best_index": int(best_idx),
             "vo_best_cost": float(best_cost),
+            "vo_best_predicted_conflict": bool(best_breakdown.get("predicted_conflict", False)),
             "vo_conflict_count": int(best_breakdown.get("conflict_count", 0) or 0),
             "vo_min_ttc_s": best_breakdown.get("min_ttc_s"),
             "vo_min_pred_clearance_m": best_breakdown.get("min_pred_clearance_m"),
+            "vo_current_min_pred_clearance_m": risk_summary["current_min_pred_clearance_m"],
+            "vo_goal_min_pred_clearance_m": risk_summary["goal_min_pred_clearance_m"],
+            "vo_best_clearance_improvement_m": risk_summary["best_clearance_improvement_m"],
+            "vo_candidate_min_clearance_m": risk_summary["candidate_min_clearance_m"],
+            "vo_candidate_max_clearance_m": risk_summary["candidate_max_clearance_m"],
+            "vo_safe_candidate_count": int(risk_summary["safe_candidate_count"]),
+            "vo_pred_conflict_candidate_count": int(risk_summary["pred_conflict_candidate_count"]),
             "vo_cone_penalty": float(best_breakdown.get("cone_penalty", 0.0) or 0.0),
             "vo_obstacle_penalty": float(best_breakdown.get("obstacle_penalty", 0.0) or 0.0),
+            "vo_tracking_cost": float(best_breakdown.get("tracking_cost", 0.0) or 0.0),
+            "vo_progress_cost": float(best_breakdown.get("progress_cost", 0.0) or 0.0),
+            "vo_smoothness_cost": float(best_breakdown.get("smoothness_cost", 0.0) or 0.0),
+            "vo_neighbor_count_considered": int(min(len(planner_input.neighbors), self.max_neighbors)),
+            "vo_obstacle_count_considered": int(len(planner_input.obstacles)),
+            "vo_stale_inflation_max_m": float(self._max_track_inflation(planner_input)),
             "vo_planar": bool(planner_input.planar),
         }
         debug_info["vo_algorithm"] = self.algorithm_name
@@ -255,7 +274,7 @@ class VelocityObstaclePlanner(ILocalPlanner):
         candidate: np.ndarray,
         v_pref: np.ndarray,
         current: np.ndarray,
-    ) -> tuple[float, dict[str, float | int | None]]:
+    ) -> tuple[float, dict[str, float | int | bool | None]]:
         goal_dir = np.asarray(planner_input.goal_dir, dtype=np.float32).copy()
         if planner_input.planar:
             goal_dir[1] = 0.0
@@ -282,11 +301,51 @@ class VelocityObstaclePlanner(ILocalPlanner):
 
         total = tracking + progress + smoothness + cone_penalty + obstacle_penalty
         return float(total), {
+            "tracking_cost": float(tracking),
+            "progress_cost": float(progress),
+            "smoothness_cost": float(smoothness),
             "cone_penalty": float(cone_penalty),
             "obstacle_penalty": float(obstacle_penalty),
             "min_pred_clearance_m": min_clearance,
             "min_ttc_s": min_ttc,
             "conflict_count": int(conflict_count),
+            "predicted_conflict": bool(conflict_count > 0 or (min_clearance is not None and min_clearance <= 0.0)),
+        }
+
+    def _candidate_risk_summary(
+        self,
+        records: list[tuple[np.ndarray, float, dict[str, float | int | bool | None]]],
+        best_idx: int,
+    ) -> dict[str, float | int | None]:
+        clearances = [
+            float(breakdown["min_pred_clearance_m"])
+            for _, _, breakdown in records
+            if breakdown.get("min_pred_clearance_m") is not None
+        ]
+        safe_count = sum(
+            1
+            for _, _, breakdown in records
+            if breakdown.get("min_pred_clearance_m") is None
+            or float(breakdown["min_pred_clearance_m"]) > 0.0
+        )
+        pred_conflict_count = sum(1 for _, _, breakdown in records if bool(breakdown.get("predicted_conflict", False)))
+        best = records[max(0, min(len(records) - 1, int(best_idx)))][2] if records else {}
+        goal = records[0][2] if records else {}
+        current = records[1][2] if len(records) > 1 else {}
+        best_clearance = best.get("min_pred_clearance_m")
+        current_clearance = current.get("min_pred_clearance_m")
+        return {
+            "safe_candidate_count": int(safe_count),
+            "pred_conflict_candidate_count": int(pred_conflict_count),
+            "candidate_min_clearance_m": min(clearances) if clearances else None,
+            "candidate_max_clearance_m": max(clearances) if clearances else None,
+            "current_min_pred_clearance_m": current_clearance,
+            "goal_min_pred_clearance_m": goal.get("min_pred_clearance_m"),
+            "best_clearance_improvement_m": (
+                None
+                if best_clearance is None or current_clearance is None
+                else float(best_clearance) - float(current_clearance)
+            ),
         }
 
     def _neighbor_vo_penalty(
@@ -303,7 +362,7 @@ class VelocityObstaclePlanner(ILocalPlanner):
             rel_vel[1] = 0.0
 
         dist = _norm(rel)
-        age_inflation = self.stale_inflation_gain * max(0.0, float(nobs.msg_age_sec))
+        age_inflation = self._track_inflation_m(nobs)
         radius = float(ego.radius) + float(nobs.radius) + self.safety_margin_m + age_inflation
         current_clearance = dist - radius
         penalty = 0.0
@@ -342,6 +401,20 @@ class VelocityObstaclePlanner(ILocalPlanner):
             penalty += self.clearance_weight * gap * gap
 
         return float(penalty), float(min(current_clearance, cpa_clearance)), float(ttc), bool(conflict)
+
+    def _track_age_s(self, nobs: NeighborObs) -> float:
+        msg_age = max(0.0, float(getattr(nobs, "msg_age_sec", 0.0) or 0.0))
+        track_age = max(0.0, float(getattr(nobs, "track_age_sec", 0.0) or 0.0))
+        return min(max(msg_age, track_age), max(0.0, self.stale_age_cap_s))
+
+    def _track_inflation_m(self, nobs: NeighborObs) -> float:
+        age_s = self._track_age_s(nobs)
+        speed = _norm(np.asarray(nobs.vel, dtype=np.float32))
+        return float(self.stale_inflation_gain * age_s + self.track_uncertainty_speed_gain * age_s * speed)
+
+    def _max_track_inflation(self, planner_input: PlannerInput) -> float:
+        values = [self._track_inflation_m(nobs) for nobs in planner_input.neighbors[: self.max_neighbors]]
+        return max(values) if values else 0.0
 
     def _obstacle_penalty(self, planner_input: PlannerInput, candidate: np.ndarray) -> tuple[float, float | None]:
         if not planner_input.obstacles:
@@ -406,14 +479,24 @@ class ReciprocalVelocityObstaclePlanner(VelocityObstaclePlanner):
         return cache
 
     def _extra_debug_info(self, planner_input: PlannerInput) -> dict[str, object]:
-        responsibilities = [
-            self._responsibility(planner_input, nobs)
-            for nobs in planner_input.neighbors[: self.max_neighbors]
-        ]
+        neighbors = list(planner_input.neighbors[: self.max_neighbors])
+        responsibilities = [self._responsibility(planner_input, nobs) for nobs in neighbors]
+        stale_boosts = [self._stale_responsibility_boost(nobs) for nobs in neighbors]
+        apex_shifts: list[float] = []
+        for nobs in neighbors:
+            neighbor_vel = np.asarray(nobs.vel, dtype=np.float32).copy()
+            if planner_input.planar:
+                neighbor_vel[1] = 0.0
+            apex_shifts.append(_norm(self._reciprocal_apex(planner_input, nobs) - neighbor_vel))
         return {
             "vo_reciprocal_mode": "hrvo",
             "vo_responsibility_mean": float(sum(responsibilities) / len(responsibilities)) if responsibilities else None,
+            "vo_responsibility_min": float(min(responsibilities)) if responsibilities else None,
             "vo_responsibility_max": float(max(responsibilities)) if responsibilities else None,
+            "vo_stale_responsibility_boost_mean": float(sum(stale_boosts) / len(stale_boosts)) if stale_boosts else None,
+            "vo_hrvo_apex_shift_mean": float(sum(apex_shifts) / len(apex_shifts)) if apex_shifts else None,
+            "vo_hrvo_apex_shift_max": float(max(apex_shifts)) if apex_shifts else None,
+            "vo_boundary_candidate_count": int(len(self._reciprocal_boundary_candidates(planner_input))),
         }
 
     def _responsibility(self, planner_input: PlannerInput, nobs: NeighborObs) -> float:
@@ -442,9 +525,12 @@ class ReciprocalVelocityObstaclePlanner(VelocityObstaclePlanner):
         elif int(ego.idx) < int(nobs.idx):
             base -= 0.5 * self.priority_responsibility_gain
 
-        stale_frac = min(1.0, max(0.0, float(nobs.msg_age_sec)) / max(1e-6, self.time_horizon_s))
-        base += self.stale_responsibility_gain * stale_frac
+        base += self._stale_responsibility_boost(nobs)
         return float(min(self.responsibility_max, max(self.responsibility_min, base)))
+
+    def _stale_responsibility_boost(self, nobs: NeighborObs) -> float:
+        stale_frac = min(1.0, self._track_age_s(nobs) / max(1e-6, self.time_horizon_s))
+        return float(self.stale_responsibility_gain * stale_frac)
 
     def _reciprocal_apex(self, planner_input: PlannerInput, nobs: NeighborObs) -> np.ndarray:
         cached = self._reciprocal_cache.get(int(nobs.idx))
@@ -492,7 +578,7 @@ class ReciprocalVelocityObstaclePlanner(VelocityObstaclePlanner):
             dist = _norm(rel)
             if dist <= 1e-6:
                 continue
-            age_inflation = self.stale_inflation_gain * max(0.0, float(nobs.msg_age_sec))
+            age_inflation = self._track_inflation_m(nobs)
             radius = float(ego.radius) + float(nobs.radius) + self.safety_margin_m + age_inflation
             theta = min(math.pi * 0.48, math.asin(min(0.98, radius / max(dist, radius + 1e-6))) + self.tangent_margin_rad)
             axis = _normalize(rel)
@@ -553,7 +639,7 @@ class ReciprocalVelocityObstaclePlanner(VelocityObstaclePlanner):
             rel_vel[1] = 0.0
 
         dist = _norm(rel)
-        age_inflation = self.stale_inflation_gain * max(0.0, float(nobs.msg_age_sec))
+        age_inflation = self._track_inflation_m(nobs)
         radius = float(ego.radius) + float(nobs.radius) + self.safety_margin_m + age_inflation
         current_clearance = dist - radius
         if current_clearance <= 0.0:

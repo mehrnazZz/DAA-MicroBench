@@ -84,7 +84,7 @@ def test_velocity_obstacle_head_on_avoids_full_speed_cone() -> None:
     assert out.debug_info["vo_min_ttc_s"] is not None
 
 
-def test_velocity_obstacle_stale_track_is_more_conservative() -> None:
+def test_velocity_obstacle_stale_track_inflates_candidate_risk() -> None:
     fresh = VelocityObstaclePlanner()
     stale = VelocityObstaclePlanner()
     ego = _ego(vel=(2.0, 0.0, 0.0))
@@ -92,7 +92,11 @@ def test_velocity_obstacle_stale_track_is_more_conservative() -> None:
     fresh_out = fresh.compute_cmd(_input(ego=ego, neighbors=[_neighbor(age=0.0)]))
     stale_out = stale.compute_cmd(_input(ego=ego, neighbors=[_neighbor(age=1.0)]))
 
-    assert stale_out.debug_info["vo_min_pred_clearance_m"] <= fresh_out.debug_info["vo_min_pred_clearance_m"]
+    assert fresh_out.debug_info["vo_stale_inflation_max_m"] == 0.0
+    assert stale_out.debug_info["vo_stale_inflation_max_m"] > 0.0
+    assert stale_out.debug_info["vo_candidate_min_clearance_m"] < fresh_out.debug_info["vo_candidate_min_clearance_m"]
+    assert stale_out.debug_info["vo_pred_conflict_candidate_count"] > fresh_out.debug_info["vo_pred_conflict_candidate_count"]
+    assert stale_out.debug_info["vo_safe_candidate_count"] < fresh_out.debug_info["vo_safe_candidate_count"]
 
 
 def test_velocity_obstacle_obstacle_in_path_redirects_or_slows() -> None:
@@ -136,6 +140,8 @@ def test_reciprocal_velocity_obstacle_reports_hrvo_responsibility() -> None:
     assert out.debug_info["vo_algorithm"] == "hybrid_reciprocal_velocity_obstacle"
     assert out.debug_info["vo_reciprocal_mode"] == "hrvo"
     assert out.debug_info["vo_responsibility_mean"] > 0.5
+    assert out.debug_info["vo_hrvo_apex_shift_mean"] > 0.0
+    assert out.debug_info["vo_boundary_candidate_count"] > 0
     assert out.debug_info["vo_min_ttc_s"] is not None
 
 

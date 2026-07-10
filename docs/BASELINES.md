@@ -31,8 +31,8 @@ Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pas
 | `orca_with_staleness` | reference baseline | same as `orca_heuristic`, with stronger stale-track inflation | 2D, 3D | Degraded communication or stale sensor-track comparison baseline. |
 | `cbf_qp` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | CBF safety-filter baseline with deterministic projection, optional SciPy solver mode, obstacle barriers, and stale-track inflation. |
 | `mpc_local` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Deterministic short-horizon predictive sampling baseline with candidate-risk diagnostics and stale-track inflation. |
-| `velocity_obstacle` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Deterministic finite-horizon velocity-obstacle cone sampling baseline. |
-| `reciprocal_velocity_obstacle` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Hybrid reciprocal/HRVO-style cone sampling baseline with responsibility sharing. |
+| `velocity_obstacle` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Deterministic finite-horizon velocity-obstacle cone sampler with candidate-risk diagnostics. |
+| `reciprocal_velocity_obstacle` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Hybrid reciprocal/HRVO-style cone sampler with responsibility and apex-shift diagnostics. |
 | `learned_tiny` | experimental learned baseline | frozen JSON weights, goal, local neighbor tracks, V2V/sensor/fused observations | 2D, 3D | Tiny learned-model fixture for packaging, disclosure, adapter, and benchmark-result plumbing. |
 | `learned_policy_spec` | learned submission bridge | trusted JSON/YAML policy spec, RL observation/action contract, local neighbor tracks, V2V/sensor/fused observations | 2D, 3D | Externally configured bridge for evaluating learned policies as standard planner CSV rows; not a reference baseline. |
 | `priority_yield` | agentic reference baseline | local tracks, priority, agent messages | 2D, 3D | Simple decentralized right-of-way behavior. |
@@ -343,13 +343,13 @@ Observed local calibration on tiny generated suites before public-alpha tuning:
 - a single `official_3d_stress` `mpc_local` row can still take tens of seconds wall-clock locally, so it remains outside default CI smoke
 - a 20-second stable-metadata prep review with `baseline-review --methods cbf_qp,mpc_local --duration-s 20` passes the selected 3D/degraded review lanes for both methods, but reports `needs_reference_role_decision` because both remain `experimental_baseline`
 - passing that review is evidence for promotion discussion, not promotion by itself; CBF still needs stronger solver/fallback validation, and MPC still needs broader compute and dense-3D stress characterization before either should become a public reference baseline
-- `baseline-evidence` adds a cheap dense-3D MPC candidate-cap and p95 profiling check; passing it is a local evidence point, not a substitute for generated-suite stress characterization
+- `baseline-evidence` adds cheap CBF, MPC, VO, and RVO targeted checks; passing it is a local evidence point, not a substitute for generated-suite stress characterization
 
 ## Velocity-Obstacle Baselines
 
-`velocity_obstacle` is an experimental 2D/3D finite-horizon VO-cone sampler. It samples bounded candidate velocity commands, predicts each local neighbor with constant velocity, penalizes candidates that enter the inflated velocity-obstacle cone within the configured horizon, and also scores static AABB obstacle clearance.
+`velocity_obstacle` is an experimental 2D/3D finite-horizon VO-cone sampler. It samples bounded candidate velocity commands, predicts each local neighbor with constant velocity, penalizes candidates that enter the inflated velocity-obstacle cone within the configured horizon, inflates stale tracks using bounded age and velocity uncertainty, and also scores static AABB obstacle clearance.
 
-`reciprocal_velocity_obstacle` is the stronger reciprocal variant. It uses a hybrid VO/RVO apex, deterministic responsibility sharing, stale-track responsibility inflation, and tangent-boundary candidate commands. It is meant to be compared against `velocity_obstacle` to show the benefit and limits of reciprocal assumptions under degraded V2V/sensor conditions.
+`reciprocal_velocity_obstacle` is the stronger reciprocal variant. It uses a hybrid VO/RVO apex, deterministic responsibility sharing, stale-track responsibility inflation, HRVO-style apex diagnostics, and tangent-boundary candidate commands. It is meant to be compared against `velocity_obstacle` to show the benefit and limits of reciprocal assumptions under degraded V2V/sensor conditions.
 
 Useful debug fields include:
 
@@ -358,11 +358,19 @@ Useful debug fields include:
 - `vo_conflict_count`
 - `vo_min_ttc_s`
 - `vo_min_pred_clearance_m`
+- `vo_best_clearance_improvement_m`
+- `vo_safe_candidate_count`
+- `vo_pred_conflict_candidate_count`
+- `vo_stale_inflation_max_m`
 - `vo_cone_penalty`
 - `vo_obstacle_penalty`
 - `vo_planar`
 - `vo_reciprocal_mode` for `reciprocal_velocity_obstacle`
 - `vo_responsibility_mean` for `reciprocal_velocity_obstacle`
+- `vo_responsibility_min` / `vo_responsibility_max` for `reciprocal_velocity_obstacle`
+- `vo_stale_responsibility_boost_mean` for `reciprocal_velocity_obstacle`
+- `vo_hrvo_apex_shift_mean` / `vo_hrvo_apex_shift_max` for `reciprocal_velocity_obstacle`
+- `vo_boundary_candidate_count` for `reciprocal_velocity_obstacle`
 
 Requirements before promoting it to a reference baseline:
 

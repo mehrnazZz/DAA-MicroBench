@@ -73,7 +73,7 @@ python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --re
 - `learned_tiny` is a frozen tiny learned-model fixture for adapter, disclosure, and CSV-plumbing tests; it is not a competitive learned DAA baseline.
 - `cbf_qp` and `mpc_local` also pass the longer stable-metadata prep lanes in `baseline-review`, but they remain experimental until the reference-role decision, CBF validation, and MPC compute/stress characterization are stronger.
 - `velocity_obstacle` and `reciprocal_velocity_obstacle` are deterministic VO-family baselines for 2D/3D local deconfliction; both still need official stress-suite calibration before promotion.
-- `baseline-evidence` adds targeted CBF fallback/solver-status checks and dense-3D MPC profiling; it is evidence for review, not a stable-v1 promotion by itself.
+- `baseline-evidence` adds targeted CBF fallback/solver-status checks, dense-3D MPC profiling, and VO/RVO HRVO responsibility checks; it is evidence for review, not a stable-v1 promotion by itself.
 - The PettingZoo/Gymnasium-style RL interface is available for public-alpha experimentation, but observation vectors and reward defaults are not stable-v1 contracts yet.
 - `rl-smoke` checks wrapper API health and 2D/3D coverage, not policy quality or leaderboard safety.
 - `--policy-spec` lets `rl-smoke`, `rl-calibration`, `learned_policy_spec`, and `learned-submission-bundle` load trusted external JSON/YAML policy specs for learned-policy adoption tests.

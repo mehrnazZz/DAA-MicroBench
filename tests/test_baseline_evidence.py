@@ -14,9 +14,9 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_baseline_evidence_cbf_mpc_checks_pass_with_promotion_blockers() -> None:
     report = run_baseline_reference_evidence(mpc_profile_iters=3, mpc_p95_max_ms=250.0)
 
-    assert report["schema_version"] == "0.1"
+    assert report["schema_version"] == "0.2"
     assert report["ok"] is True
-    assert report["methods"] == ["cbf_qp", "mpc_local"]
+    assert report["methods"] == ["cbf_qp", "mpc_local", "velocity_obstacle", "reciprocal_velocity_obstacle"]
     assert report["summary"]["failed_count"] == 0
     names = {(check["method"], check["name"]) for check in report["checks"]}
     assert ("cbf_qp", "cbf_projection_feasible_constraint") in names
@@ -26,8 +26,13 @@ def test_baseline_evidence_cbf_mpc_checks_pass_with_promotion_blockers() -> None
     assert ("mpc_local", "mpc_dense_3d_candidate_cap_and_signals") in names
     assert ("mpc_local", "mpc_stale_track_inflates_rollout_risk") in names
     assert ("mpc_local", "mpc_dense_3d_profile_p95_bounded") in names
+    assert ("velocity_obstacle", "vo_finite_horizon_cone_signals") in names
+    assert ("reciprocal_velocity_obstacle", "rvo_hrvo_apex_and_candidate_signals") in names
+    assert ("reciprocal_velocity_obstacle", "rvo_priority_and_stale_responsibility") in names
     assert "keep_experimental" in report["promotion_recommendations"]["cbf_qp"]
     assert "keep_experimental" in report["promotion_recommendations"]["mpc_local"]
+    assert "keep_experimental" in report["promotion_recommendations"]["velocity_obstacle"]
+    assert "keep_experimental" in report["promotion_recommendations"]["reciprocal_velocity_obstacle"]
 
 
 def test_baseline_evidence_cli_json_writes_report(tmp_path: Path) -> None:

@@ -1302,7 +1302,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_bp.add_argument("--require-calibrated", action="store_true", help="Fail if public-alpha calibration evidence is missing")
     p_bp.add_argument("--require-stable-v1-ready", action="store_true", help="Fail if stable-v1 promotion blockers remain")
 
-    p_be = sub.add_parser("baseline-evidence", help="Run targeted CBF/MPC reference-evidence checks")
+    p_be = sub.add_parser("baseline-evidence", help="Run targeted CBF/MPC/VO/RVO reference-evidence checks")
     p_be.add_argument("--out-dir", required=True, help="Fresh output directory for evidence artifacts")
     p_be.add_argument("--mpc-profile-iters", type=int, default=20, help="Dense 3D MPC timing samples")
     p_be.add_argument("--max-mpc-p95-ms", type=float, default=50.0, help="Allowed dense 3D MPC p95 per-call latency")

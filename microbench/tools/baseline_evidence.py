@@ -10,10 +10,11 @@ import numpy as np
 
 from microbench.planners.cbf_qp import CbfQpPlanner
 from microbench.planners.mpc_local import MpcLocalPlanner
-from microbench.types import AABBObs, AgentState, NeighborObs, PlannerInput
+from microbench.planners.velocity_obstacle import ReciprocalVelocityObstaclePlanner, VelocityObstaclePlanner
+from microbench.types import AABBObs, AgentContext, AgentState, NeighborObs, PlannerInput
 
 
-BASELINE_EVIDENCE_SCHEMA_VERSION = "0.1"
+BASELINE_EVIDENCE_SCHEMA_VERSION = "0.2"
 DEFAULT_MPC_PROFILE_ITERS = 20
 DEFAULT_MPC_P95_MAX_MS = 50.0
 
@@ -359,6 +360,122 @@ def _mpc_evidence_checks(*, profile_iters: int, p95_max_ms: float) -> list[dict[
     return checks
 
 
+def _vo_conflict_input(*, stale_age_s: float = 1.0, planar: bool = True, priority: int | None = None) -> PlannerInput:
+    ego = _agent(
+        idx=2,
+        pos=(0.0, 0.0, 0.0),
+        vel=(2.0, 0.0, 0.0),
+        goal=(12.0, 0.0, 0.0),
+        v_max=3.0,
+        a_max=2.0,
+    )
+    neighbor = _neighbor(
+        idx=1,
+        pos=(5.0, 0.0, 0.0),
+        vel=(-2.0, 0.0, 0.0),
+        msg_age_sec=float(stale_age_s),
+    )
+    ctx = None
+    if priority is not None:
+        ctx = AgentContext(agent_id=2, method="reciprocal_velocity_obstacle", seed=0, priority=int(priority))
+    return PlannerInput(
+        ego=ego,
+        goal_dir=np.asarray([1.0, 0.0, 0.0], dtype=np.float32),
+        neighbors=[neighbor],
+        dt=0.02,
+        t=0.0,
+        obstacles=[],
+        planar=bool(planar),
+        agent_context=ctx,
+    )
+
+
+def _vo_evidence_checks() -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+    vo_method = "velocity_obstacle"
+    rvo_method = "reciprocal_velocity_obstacle"
+
+    vo = VelocityObstaclePlanner(cfg={"candidate_samples_2d": 24, "candidate_samples_3d": 36})
+    inp = _vo_conflict_input(stale_age_s=1.0, planar=True)
+    vo_out = vo.compute_cmd(inp)
+    vo_debug = vo_out.debug_info
+    checks.append(
+        _check(
+            vo_method,
+            "vo_finite_horizon_cone_signals",
+            bool(
+                vo_debug.get("vo_algorithm") == "velocity_obstacle_cone_sampling"
+                and int(vo_debug.get("vo_candidates", 0)) > 0
+                and int(vo_debug.get("vo_pred_conflict_candidate_count", 0)) > 0
+                and int(vo_debug.get("vo_safe_candidate_count", 0)) > 0
+                and vo_debug.get("vo_min_ttc_s") is not None
+                and vo_debug.get("vo_best_clearance_improvement_m") is not None
+                and float(vo_debug.get("vo_best_clearance_improvement_m", -9999.0)) > 0.0
+                and float(vo_debug.get("vo_stale_inflation_max_m", 0.0)) > 0.0
+                and _finite_vec(vo_out.v_cmd)
+            ),
+            {
+                "v_cmd": [float(x) for x in vo_out.v_cmd],
+                "debug_info": vo_debug,
+            },
+        )
+    )
+
+    rvo = ReciprocalVelocityObstaclePlanner(cfg={"candidate_samples_2d": 24, "candidate_samples_3d": 36})
+    rvo_out = rvo.compute_cmd(inp)
+    rvo_debug = rvo_out.debug_info
+    checks.append(
+        _check(
+            rvo_method,
+            "rvo_hrvo_apex_and_candidate_signals",
+            bool(
+                rvo_debug.get("vo_algorithm") == "hybrid_reciprocal_velocity_obstacle"
+                and rvo_debug.get("vo_reciprocal_mode") == "hrvo"
+                and float(rvo_debug.get("vo_hrvo_apex_shift_mean", 0.0)) > 0.0
+                and int(rvo_debug.get("vo_boundary_candidate_count", 0)) > 0
+                and rvo_debug.get("vo_responsibility_mean") is not None
+                and float(rvo_debug.get("vo_responsibility_mean", 0.0)) > 0.5
+                and int(rvo_debug.get("vo_safe_candidate_count", 0)) >= int(vo_debug.get("vo_safe_candidate_count", 0))
+                and int(rvo_debug.get("vo_pred_conflict_candidate_count", 9999))
+                <= int(vo_debug.get("vo_pred_conflict_candidate_count", 0))
+                and _finite_vec(rvo_out.v_cmd)
+            ),
+            {
+                "vo_v_cmd": [float(x) for x in vo_out.v_cmd],
+                "rvo_v_cmd": [float(x) for x in rvo_out.v_cmd],
+                "vo_debug_info": vo_debug,
+                "rvo_debug_info": rvo_debug,
+            },
+        )
+    )
+
+    fresh = rvo.compute_cmd(_vo_conflict_input(stale_age_s=0.0, planar=True))
+    stale = rvo.compute_cmd(_vo_conflict_input(stale_age_s=1.0, planar=True))
+    low_priority = rvo.compute_cmd(_vo_conflict_input(stale_age_s=0.0, planar=True, priority=10))
+    high_priority = rvo.compute_cmd(_vo_conflict_input(stale_age_s=0.0, planar=True, priority=0))
+    checks.append(
+        _check(
+            rvo_method,
+            "rvo_priority_and_stale_responsibility",
+            bool(
+                float(stale.debug_info.get("vo_responsibility_mean", 0.0))
+                > float(fresh.debug_info.get("vo_responsibility_mean", 0.0))
+                and float(stale.debug_info.get("vo_stale_responsibility_boost_mean", 0.0)) > 0.0
+                and float(low_priority.debug_info.get("vo_responsibility_mean", 0.0))
+                > float(high_priority.debug_info.get("vo_responsibility_mean", 1.0))
+                and float(high_priority.debug_info.get("vo_responsibility_mean", 1.0)) >= 0.45
+            ),
+            {
+                "fresh_debug_info": fresh.debug_info,
+                "stale_debug_info": stale.debug_info,
+                "low_priority_debug_info": low_priority.debug_info,
+                "high_priority_debug_info": high_priority.debug_info,
+            },
+        )
+    )
+    return checks
+
+
 def run_baseline_reference_evidence(
     *,
     mpc_profile_iters: int = DEFAULT_MPC_PROFILE_ITERS,
@@ -367,23 +484,28 @@ def run_baseline_reference_evidence(
     checks = [
         *_cbf_evidence_checks(),
         *_mpc_evidence_checks(profile_iters=mpc_profile_iters, p95_max_ms=mpc_p95_max_ms),
+        *_vo_evidence_checks(),
     ]
     failed = [check for check in checks if not check["ok"]]
     return {
         "schema_version": BASELINE_EVIDENCE_SCHEMA_VERSION,
-        "evidence_type": "cbf_mpc_reference_evidence",
-        "methods": ["cbf_qp", "mpc_local"],
+        "evidence_type": "advanced_baseline_reference_evidence",
+        "methods": ["cbf_qp", "mpc_local", "velocity_obstacle", "reciprocal_velocity_obstacle"],
         "ok": not failed,
         "summary": {
             "check_count": len(checks),
             "failed_count": len(failed),
             "cbf_check_count": sum(1 for check in checks if check["method"] == "cbf_qp"),
             "mpc_check_count": sum(1 for check in checks if check["method"] == "mpc_local"),
+            "vo_check_count": sum(1 for check in checks if check["method"] == "velocity_obstacle"),
+            "rvo_check_count": sum(1 for check in checks if check["method"] == "reciprocal_velocity_obstacle"),
         },
         "checks": checks,
         "promotion_recommendations": {
             "cbf_qp": "keep_experimental_until_solver_backends_and_infeasible_constraint_behavior_are_validated_beyond_targeted_cases",
             "mpc_local": "keep_experimental_until_dense_3d_compute_bands_and_stress_behavior_are_calibrated_on_official_suites",
+            "velocity_obstacle": "keep_experimental_until_all_suite_vo_evidence_is_calibrated_against_orca_and_rvo",
+            "reciprocal_velocity_obstacle": "keep_experimental_until_hrvo_responsibility_and_degraded_track_behavior_are_calibrated_on_official_suites",
         },
     }
 

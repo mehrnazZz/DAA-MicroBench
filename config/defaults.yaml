@@ -137,6 +137,8 @@ velocity_obstacle: &velocity_obstacle_defaults
   obstacle_margin_m: 0.2
   near_clearance_m: 1.25
   stale_inflation_gain: 0.7
+  stale_age_cap_s: 3.0
+  track_uncertainty_speed_gain: 0.1
   goal_slowdown_radius_m: 6.0
   candidate_samples_2d: 24
   candidate_samples_3d: 36

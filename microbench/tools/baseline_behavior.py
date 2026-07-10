@@ -183,11 +183,15 @@ def _planner_output_contracts(methods: list[str]) -> list[dict[str, Any]]:
                     int(info.get("vo_candidates", 0)) > 0
                     and int(info.get("vo_conflict_count", 0)) >= 1
                     and info.get("vo_min_pred_clearance_m") is not None
+                    and info.get("vo_best_clearance_improvement_m") is not None
+                    and int(info.get("vo_pred_conflict_candidate_count", 0)) >= 1
                     and info.get("vo_planar") is False,
                     {
                         "vo_candidates": info.get("vo_candidates"),
                         "vo_conflict_count": info.get("vo_conflict_count"),
                         "vo_min_pred_clearance_m": info.get("vo_min_pred_clearance_m"),
+                        "vo_best_clearance_improvement_m": info.get("vo_best_clearance_improvement_m"),
+                        "vo_pred_conflict_candidate_count": info.get("vo_pred_conflict_candidate_count"),
                         "vo_planar": info.get("vo_planar"),
                     },
                 )
@@ -208,13 +212,17 @@ def _planner_output_contracts(methods: list[str]) -> list[dict[str, Any]]:
                     and int(info.get("vo_conflict_count", 0)) >= 1
                     and info.get("vo_min_pred_clearance_m") is not None
                     and info.get("vo_reciprocal_mode") == "hrvo"
-                    and info.get("vo_responsibility_mean") is not None,
+                    and info.get("vo_responsibility_mean") is not None
+                    and info.get("vo_hrvo_apex_shift_mean") is not None
+                    and int(info.get("vo_boundary_candidate_count", 0)) > 0,
                     {
                         "vo_candidates": info.get("vo_candidates"),
                         "vo_conflict_count": info.get("vo_conflict_count"),
                         "vo_min_pred_clearance_m": info.get("vo_min_pred_clearance_m"),
                         "vo_reciprocal_mode": info.get("vo_reciprocal_mode"),
                         "vo_responsibility_mean": info.get("vo_responsibility_mean"),
+                        "vo_hrvo_apex_shift_mean": info.get("vo_hrvo_apex_shift_mean"),
+                        "vo_boundary_candidate_count": info.get("vo_boundary_candidate_count"),
                     },
                 )
             )
