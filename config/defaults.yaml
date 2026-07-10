@@ -115,6 +115,8 @@ mpc_local:
   safety_margin_m: 0.25
   obstacle_margin_m: 0.2
   stale_inflation_gain: 0.6
+  stale_age_cap_s: 1.5
+  track_uncertainty_speed_gain: 0.1
   goal_slowdown_radius_m: 6.0
   tracking_weight: 1.0
   progress_weight: 0.2

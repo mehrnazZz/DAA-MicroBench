@@ -74,6 +74,8 @@ class MpcLocalPlanner(ILocalPlanner):
         self.safety_margin_m = float(cfg.get("safety_margin_m", 0.25))
         self.obstacle_margin_m = float(cfg.get("obstacle_margin_m", 0.2))
         self.stale_inflation_gain = float(cfg.get("stale_inflation_gain", 0.6))
+        self.stale_age_cap_s = float(cfg.get("stale_age_cap_s", 1.5))
+        self.track_uncertainty_speed_gain = float(cfg.get("track_uncertainty_speed_gain", 0.1))
         self.goal_slowdown_radius_m = float(cfg.get("goal_slowdown_radius_m", 6.0))
         self.tracking_weight = float(cfg.get("tracking_weight", 1.0))
         self.progress_weight = float(cfg.get("progress_weight", 0.2))
@@ -101,9 +103,11 @@ class MpcLocalPlanner(ILocalPlanner):
 
         best_idx = 0
         best_cost = float("inf")
-        best_breakdown: dict[str, float | None] = {}
+        best_breakdown: dict[str, float | bool | None] = {}
+        candidate_records: list[tuple[np.ndarray, float, dict[str, float | bool | None]]] = []
         for idx, candidate in enumerate(candidates):
             cost, breakdown = self._score_candidate(planner_input, candidate, v_pref, current, max_delta)
+            candidate_records.append((candidate, cost, breakdown))
             if cost < best_cost:
                 best_idx = idx
                 best_cost = cost
@@ -115,6 +119,7 @@ class MpcLocalPlanner(ILocalPlanner):
             v_cmd[1] = 0.0
 
         min_clearance = best_breakdown.get("min_pred_clearance_m")
+        risk_summary = self._candidate_risk_summary(candidate_records, best_idx)
         return PlannerOutput(
             v_cmd=v_cmd.astype(float),
             debug_info={
@@ -125,12 +130,27 @@ class MpcLocalPlanner(ILocalPlanner):
                 "mpc_candidate_limit": int(self.max_candidates),
                 "mpc_best_index": int(best_idx),
                 "mpc_best_cost": float(best_cost),
+                "mpc_best_predicted_collision": bool(best_breakdown.get("predicted_collision", False)),
                 "mpc_min_pred_clearance_m": min_clearance,
+                "mpc_current_min_pred_clearance_m": risk_summary["current_min_pred_clearance_m"],
+                "mpc_goal_step_min_pred_clearance_m": risk_summary["goal_step_min_pred_clearance_m"],
+                "mpc_best_clearance_improvement_m": risk_summary["best_clearance_improvement_m"],
+                "mpc_candidate_min_clearance_m": risk_summary["candidate_min_clearance_m"],
+                "mpc_candidate_max_clearance_m": risk_summary["candidate_max_clearance_m"],
+                "mpc_safe_candidate_count": int(risk_summary["safe_candidate_count"]),
+                "mpc_pred_collision_candidate_count": int(risk_summary["pred_collision_candidate_count"]),
                 "mpc_collision_penalty": float(best_breakdown.get("collision_penalty", 0.0) or 0.0),
                 "mpc_obstacle_penalty": float(best_breakdown.get("obstacle_penalty", 0.0) or 0.0),
                 "mpc_approach_penalty": float(best_breakdown.get("approach_penalty", 0.0) or 0.0),
+                "mpc_tracking_cost": float(best_breakdown.get("tracking_cost", 0.0) or 0.0),
+                "mpc_progress_cost": float(best_breakdown.get("progress_cost", 0.0) or 0.0),
+                "mpc_smoothness_cost": float(best_breakdown.get("smoothness_cost", 0.0) or 0.0),
+                "mpc_low_speed_cost": float(best_breakdown.get("low_speed_cost", 0.0) or 0.0),
                 "mpc_accel_delta_norm": float(_norm(v_cmd - current)),
                 "mpc_accel_delta_limit": float(max_delta),
+                "mpc_neighbor_count_considered": int(min(len(planner_input.neighbors), self.max_neighbors)),
+                "mpc_obstacle_count_considered": int(len(planner_input.obstacles)),
+                "mpc_stale_inflation_max_m": float(self._max_track_inflation(planner_input)),
                 "mpc_planar": bool(planner_input.planar),
             },
         )
@@ -251,7 +271,7 @@ class MpcLocalPlanner(ILocalPlanner):
         v_pref: np.ndarray,
         current: np.ndarray,
         max_delta: float,
-    ) -> tuple[float, dict[str, float | None]]:
+    ) -> tuple[float, dict[str, float | bool | None]]:
         goal_dir = _normalize(np.asarray(planner_input.goal_dir, dtype=np.float32))
         if planner_input.planar:
             goal_dir[1] = 0.0
@@ -264,10 +284,56 @@ class MpcLocalPlanner(ILocalPlanner):
         collision_penalty, obstacle_penalty, approach_penalty, min_clearance = self._rollout_risk(planner_input, candidate)
         total = tracking + progress + smoothness + low_speed + collision_penalty + obstacle_penalty + approach_penalty
         return float(total), {
+            "tracking_cost": float(tracking),
+            "progress_cost": float(progress),
+            "smoothness_cost": float(smoothness),
+            "low_speed_cost": float(low_speed),
             "collision_penalty": float(collision_penalty),
             "obstacle_penalty": float(obstacle_penalty),
             "approach_penalty": float(approach_penalty),
             "min_pred_clearance_m": min_clearance,
+            "predicted_collision": bool(min_clearance is not None and min_clearance <= self.collision_clearance_m),
+        }
+
+    def _candidate_risk_summary(
+        self,
+        records: list[tuple[np.ndarray, float, dict[str, float | bool | None]]],
+        best_idx: int,
+    ) -> dict[str, float | int | None]:
+        clearances = [
+            float(breakdown["min_pred_clearance_m"])
+            for _, _, breakdown in records
+            if breakdown.get("min_pred_clearance_m") is not None
+        ]
+        safe_count = sum(
+            1
+            for _, _, breakdown in records
+            if breakdown.get("min_pred_clearance_m") is None
+            or float(breakdown["min_pred_clearance_m"]) > self.collision_clearance_m
+        )
+        pred_collision_count = sum(
+            1
+            for _, _, breakdown in records
+            if breakdown.get("min_pred_clearance_m") is not None
+            and float(breakdown["min_pred_clearance_m"]) <= self.collision_clearance_m
+        )
+        best = records[max(0, min(len(records) - 1, int(best_idx)))][2] if records else {}
+        current = records[0][2] if records else {}
+        goal_step = records[1][2] if len(records) > 1 else {}
+        best_clearance = best.get("min_pred_clearance_m")
+        current_clearance = current.get("min_pred_clearance_m")
+        return {
+            "safe_candidate_count": int(safe_count),
+            "pred_collision_candidate_count": int(pred_collision_count),
+            "candidate_min_clearance_m": min(clearances) if clearances else None,
+            "candidate_max_clearance_m": max(clearances) if clearances else None,
+            "current_min_pred_clearance_m": current_clearance,
+            "goal_step_min_pred_clearance_m": goal_step.get("min_pred_clearance_m"),
+            "best_clearance_improvement_m": (
+                None
+                if best_clearance is None or current_clearance is None
+                else float(best_clearance) - float(current_clearance)
+            ),
         }
 
     def _rollout_risk(self, planner_input: PlannerInput, candidate: np.ndarray) -> tuple[float, float, float, float | None]:
@@ -316,7 +382,7 @@ class MpcLocalPlanner(ILocalPlanner):
         rel = np.asarray(ego_pos, dtype=np.float32) - p_j
         if planner_input.planar:
             rel[1] = 0.0
-        age_inflation = self.stale_inflation_gain * max(0.0, float(nobs.msg_age_sec))
+        age_inflation = self._track_inflation_m(nobs)
         radius = float(ego.radius) + float(nobs.radius) + self.safety_margin_m + age_inflation
         return _norm(rel) - radius
 
@@ -328,7 +394,7 @@ class MpcLocalPlanner(ILocalPlanner):
         dist = _norm(rel)
         if dist < 1e-9:
             return self.approach_weight
-        age_inflation = self.stale_inflation_gain * max(0.0, float(nobs.msg_age_sec))
+        age_inflation = self._track_inflation_m(nobs)
         radius = float(ego.radius) + float(nobs.radius) + self.safety_margin_m + age_inflation
         clearance = dist - radius
         rel_hat = rel / dist
@@ -374,3 +440,17 @@ class MpcLocalPlanner(ILocalPlanner):
         if clearance < self.near_clearance_m:
             return near_weight * (self.near_clearance_m - clearance) ** 2
         return 0.0
+
+    def _track_age_s(self, nobs: NeighborObs) -> float:
+        msg_age = max(0.0, float(getattr(nobs, "msg_age_sec", 0.0) or 0.0))
+        track_age = max(0.0, float(getattr(nobs, "track_age_sec", 0.0) or 0.0))
+        return min(max(msg_age, track_age), max(0.0, self.stale_age_cap_s))
+
+    def _track_inflation_m(self, nobs: NeighborObs) -> float:
+        age_s = self._track_age_s(nobs)
+        speed = _norm(np.asarray(nobs.vel, dtype=np.float32))
+        return float(self.stale_inflation_gain * age_s + self.track_uncertainty_speed_gain * age_s * speed)
+
+    def _max_track_inflation(self, planner_input: PlannerInput) -> float:
+        values = [self._track_inflation_m(nobs) for nobs in planner_input.neighbors[: self.max_neighbors]]
+        return max(values) if values else 0.0

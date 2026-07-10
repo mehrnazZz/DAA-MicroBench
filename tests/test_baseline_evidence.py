@@ -24,6 +24,7 @@ def test_baseline_evidence_cbf_mpc_checks_pass_with_promotion_blockers() -> None
     assert ("cbf_qp", "cbf_stale_track_inflates_barrier") in names
     assert ("cbf_qp", "cbf_auto_solver_path_reports_status") in names
     assert ("mpc_local", "mpc_dense_3d_candidate_cap_and_signals") in names
+    assert ("mpc_local", "mpc_stale_track_inflates_rollout_risk") in names
     assert ("mpc_local", "mpc_dense_3d_profile_p95_bounded") in names
     assert "keep_experimental" in report["promotion_recommendations"]["cbf_qp"]
     assert "keep_experimental" in report["promotion_recommendations"]["mpc_local"]

@@ -279,6 +279,12 @@ def _mpc_evidence_checks(*, profile_iters: int, p95_max_ms: float) -> list[dict[
                 and int(debug.get("mpc_candidates_raw", 0)) >= int(debug.get("mpc_candidates", 0))
                 and float(debug.get("mpc_accel_delta_norm", 9999.0)) <= accel_limit + 1e-6
                 and debug.get("mpc_min_pred_clearance_m") is not None
+                and int(debug.get("mpc_neighbor_count_considered", 0)) == 8
+                and int(debug.get("mpc_obstacle_count_considered", 0)) == 1
+                and int(debug.get("mpc_pred_collision_candidate_count", 0)) > 0
+                and debug.get("mpc_best_clearance_improvement_m") is not None
+                and float(debug.get("mpc_best_clearance_improvement_m", -9999.0)) > 0.0
+                and float(debug.get("mpc_stale_inflation_max_m", 0.0)) > 0.0
                 and _finite_vec(out.v_cmd)
             ),
             {
@@ -286,6 +292,42 @@ def _mpc_evidence_checks(*, profile_iters: int, p95_max_ms: float) -> list[dict[
                 "debug_info": debug,
                 "neighbor_count": len(inp.neighbors),
                 "obstacle_count": len(inp.obstacles),
+            },
+        )
+    )
+
+    stale_planner = MpcLocalPlanner(
+        cfg={
+            "candidate_samples_2d": 8,
+            "stale_inflation_gain": 1.0,
+            "track_uncertainty_speed_gain": 0.0,
+            "stale_age_cap_s": 2.0,
+        }
+    )
+    stale_ego = _agent(pos=(0.0, 0.0, 0.0), vel=(1.0, 0.0, 0.0))
+    fresh_track = _neighbor(idx=1, pos=(2.4, 0.0, 0.0), msg_age_sec=0.0)
+    stale_track = _neighbor(idx=1, pos=(2.4, 0.0, 0.0), msg_age_sec=1.0)
+    fresh_out = stale_planner.compute_cmd(_planner_input(ego=stale_ego, neighbors=[fresh_track]))
+    stale_out = stale_planner.compute_cmd(_planner_input(ego=stale_ego, neighbors=[stale_track]))
+    checks.append(
+        _check(
+            method,
+            "mpc_stale_track_inflates_rollout_risk",
+            bool(
+                float(fresh_out.debug_info.get("mpc_stale_inflation_max_m", 1.0)) == 0.0
+                and float(stale_out.debug_info.get("mpc_stale_inflation_max_m", 0.0)) > 0.9
+                and stale_out.debug_info.get("mpc_min_pred_clearance_m") is not None
+                and fresh_out.debug_info.get("mpc_min_pred_clearance_m") is not None
+                and float(stale_out.debug_info["mpc_min_pred_clearance_m"])
+                < float(fresh_out.debug_info["mpc_min_pred_clearance_m"])
+                and float(stale_out.debug_info.get("mpc_collision_penalty", 0.0))
+                > float(fresh_out.debug_info.get("mpc_collision_penalty", 0.0))
+            ),
+            {
+                "fresh_v_cmd": [float(x) for x in fresh_out.v_cmd],
+                "stale_v_cmd": [float(x) for x in stale_out.v_cmd],
+                "fresh_debug_info": fresh_out.debug_info,
+                "stale_debug_info": stale_out.debug_info,
             },
         )
     )

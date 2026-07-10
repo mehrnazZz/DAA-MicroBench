@@ -30,7 +30,7 @@ Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pas
 | `orca_heuristic` | reference baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Main ORCA-like geometric comparison baseline. |
 | `orca_with_staleness` | reference baseline | same as `orca_heuristic`, with stronger stale-track inflation | 2D, 3D | Degraded communication or stale sensor-track comparison baseline. |
 | `cbf_qp` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | CBF safety-filter baseline with deterministic projection, optional SciPy solver mode, obstacle barriers, and stale-track inflation. |
-| `mpc_local` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Deterministic short-horizon predictive sampling baseline. |
+| `mpc_local` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Deterministic short-horizon predictive sampling baseline with candidate-risk diagnostics and stale-track inflation. |
 | `velocity_obstacle` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Deterministic finite-horizon velocity-obstacle cone sampling baseline. |
 | `reciprocal_velocity_obstacle` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Hybrid reciprocal/HRVO-style cone sampling baseline with responsibility sharing. |
 | `learned_tiny` | experimental learned baseline | frozen JSON weights, goal, local neighbor tracks, V2V/sensor/fused observations | 2D, 3D | Tiny learned-model fixture for packaging, disclosure, adapter, and benchmark-result plumbing. |
@@ -302,9 +302,9 @@ python -m microbench.cli baseline-evidence \
 
 For `cbf_qp`, this records feasible projection behavior, forced fallback behavior with residual violation reporting, stale-track barrier inflation, and optional solver-path status. Passing it supports continued public-alpha use, but the report intentionally recommends keeping CBF experimental until solver backends and infeasible-constraint behavior are validated beyond these targeted cases.
 
-## MPC-Local Skeleton
+## MPC-Local Predictive Baseline
 
-`mpc_local` is currently an experimental local predictive baseline. It samples one-step-reachable velocity commands, rolls them forward over a short horizon, and scores goal tracking, progress, smoothness, predicted agent-agent clearance, static obstacle clearance, and approach-to-conflict costs.
+`mpc_local` is currently an experimental local predictive baseline. It samples one-step-reachable velocity commands, rolls them forward over a short horizon, and scores goal tracking, progress, smoothness, predicted agent-agent clearance, static obstacle clearance, approach-to-conflict costs, and stale-track risk inflation.
 
 It is intentionally dependency-free and deterministic. Its command is bounded by `a_max * dt` from the current velocity, so the dynamics layer should not need to rescue it through acceleration saturation during normal operation.
 
@@ -314,9 +314,15 @@ Useful debug fields include:
 - `mpc_horizon_steps`
 - `mpc_best_cost`
 - `mpc_min_pred_clearance_m`
+- `mpc_best_clearance_improvement_m`
+- `mpc_current_min_pred_clearance_m`
+- `mpc_goal_step_min_pred_clearance_m`
+- `mpc_safe_candidate_count`
+- `mpc_pred_collision_candidate_count`
 - `mpc_collision_penalty`
 - `mpc_obstacle_penalty`
 - `mpc_approach_penalty`
+- `mpc_stale_inflation_max_m`
 - `mpc_accel_delta_norm`
 
 Requirements before promoting it to a reference baseline:
@@ -325,10 +331,10 @@ Requirements before promoting it to a reference baseline:
 - completion bands on generated 3D stress slices that remain practical to run locally
 - broad but explicit compute p95 bands on smoke, experimental, and small 3D stress rows
 - zero planner timeout/error/fallback counts in smoke and experimental baseline runs
-- tests for degraded observations, dense 3D scenes, candidate capping, and public `PlannerInput`/`PlannerOutput` behavior
+- broader tests for degraded observations, dense 3D scenes, candidate capping, candidate-risk accounting, and public `PlannerInput`/`PlannerOutput` behavior
 - optional stronger shooting-method or solver-backed variant if needed
 
-`baseline-evidence` exercises a dense nonplanar local scene with nearby traffic and an obstacle, checks candidate capping/debug signals, and records per-call p50/p95 timing for the sampled planner call. Passing it supports public-alpha comparison, but the report intentionally recommends keeping MPC experimental until dense-3D compute bands and stress behavior are calibrated on official suites.
+`baseline-evidence` exercises a dense nonplanar local scene with nearby traffic and an obstacle, checks candidate capping/debug signals, verifies stale-track risk inflation, and records per-call p50/p95 timing for the sampled planner call. Passing it supports public-alpha comparison, but the report intentionally recommends keeping MPC experimental until dense-3D compute bands and stress behavior are calibrated on official suites.
 
 Observed local calibration on tiny generated suites before public-alpha tuning:
 

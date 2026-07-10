@@ -195,7 +195,7 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_obstacles=True,
         description=(
             "Deterministic local predictive baseline that samples one-step-reachable velocity "
-            "commands and scores short-horizon rollouts against neighbors and obstacles."
+            "commands and scores short-horizon rollouts against neighbors, stale tracks, and obstacles."
         ),
         limitations=(
             "Not a full nonlinear MPC solver.",

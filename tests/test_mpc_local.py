@@ -53,6 +53,8 @@ def test_mpc_local_open_space_tracks_goal_and_respects_accel() -> None:
     assert np.linalg.norm(out.v_cmd - ego.vel) <= ego.a_max * 0.02 + 1e-6
     assert out.debug_info["mpc_candidates"] > 0
     assert out.debug_info["mpc_min_pred_clearance_m"] is None
+    assert out.debug_info["mpc_safe_candidate_count"] == out.debug_info["mpc_candidates"]
+    assert out.debug_info["mpc_pred_collision_candidate_count"] == 0
 
 
 def test_mpc_local_close_head_on_decelerates() -> None:
@@ -72,6 +74,9 @@ def test_mpc_local_close_head_on_decelerates() -> None:
     assert np.linalg.norm(out.v_cmd - ego.vel) <= ego.a_max * 0.02 + 1e-6
     assert out.debug_info["mpc_approach_penalty"] > 0.0
     assert out.debug_info["mpc_min_pred_clearance_m"] is not None
+    assert out.debug_info["mpc_neighbor_count_considered"] == 1
+    assert out.debug_info["mpc_best_clearance_improvement_m"] is not None
+    assert out.debug_info["mpc_pred_collision_candidate_count"] > 0
 
 
 def test_mpc_local_obstacle_in_path_decelerates() -> None:
@@ -86,6 +91,8 @@ def test_mpc_local_obstacle_in_path_decelerates() -> None:
     assert out.v_cmd[0] < ego.vel[0]
     assert np.linalg.norm(out.v_cmd - ego.vel) <= ego.a_max * 0.02 + 1e-6
     assert out.debug_info["mpc_obstacle_penalty"] > 0.0
+    assert out.debug_info["mpc_obstacle_count_considered"] == 1
+    assert out.debug_info["mpc_candidate_min_clearance_m"] is not None
 
 
 def test_mpc_local_preserves_3d_command_shape() -> None:
@@ -127,3 +134,42 @@ def test_mpc_local_reports_and_enforces_candidate_cap() -> None:
     assert out.debug_info["mpc_candidates"] <= 12
     assert out.debug_info["mpc_candidates_raw"] >= out.debug_info["mpc_candidates"]
     assert out.debug_info["mpc_candidate_limit"] == 12
+
+
+def test_mpc_local_stale_track_inflates_rollout_risk() -> None:
+    ego = _agent((0.0, 0.0, 0.0), vel=(1.0, 0.0, 0.0))
+    fresh = NeighborObs(
+        idx=1,
+        pos=np.asarray([2.4, 0.0, 0.0], dtype=np.float32),
+        vel=np.asarray([0.0, 0.0, 0.0], dtype=np.float32),
+        radius=0.5,
+        msg_age_sec=0.0,
+        track_age_sec=0.0,
+        valid=True,
+    )
+    stale = NeighborObs(
+        idx=1,
+        pos=np.asarray([2.4, 0.0, 0.0], dtype=np.float32),
+        vel=np.asarray([0.0, 0.0, 0.0], dtype=np.float32),
+        radius=0.5,
+        msg_age_sec=0.1,
+        track_age_sec=1.0,
+        valid=True,
+        stale=True,
+    )
+    planner = MpcLocalPlanner(
+        cfg={
+            "candidate_samples_2d": 8,
+            "stale_inflation_gain": 1.0,
+            "track_uncertainty_speed_gain": 0.0,
+            "stale_age_cap_s": 2.0,
+        }
+    )
+
+    fresh_out = planner.compute_cmd(_planner_input(ego=ego, neighbors=[fresh]))
+    stale_out = planner.compute_cmd(_planner_input(ego=ego, neighbors=[stale]))
+
+    assert fresh_out.debug_info["mpc_stale_inflation_max_m"] == 0.0
+    assert stale_out.debug_info["mpc_stale_inflation_max_m"] > 0.9
+    assert stale_out.debug_info["mpc_min_pred_clearance_m"] < fresh_out.debug_info["mpc_min_pred_clearance_m"]
+    assert stale_out.debug_info["mpc_collision_penalty"] > fresh_out.debug_info["mpc_collision_penalty"]
