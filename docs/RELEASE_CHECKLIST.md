@@ -17,6 +17,7 @@ Use this checklist before tagging a public alpha, announcing a leaderboard run, 
 - [ ] `python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass` passes for targeted CBF/MPC/NMPC/EGO-Swarm/VO/RVO reference-evidence checks.
 - [ ] `python -m microbench.cli baseline-evidence --out-dir runs_optimizer_evidence --save-optimizer-traces --require-pass` writes compact Foxglove-ready optimizer trace JSONL artifacts for qualitative review.
 - [ ] `python -m microbench.cli advanced-baseline-comparison --out-dir runs_advanced_baseline_comparison --require-pass` passes for the compact shared 3D advanced-baseline lane.
+- [ ] `python -m microbench.cli optimizer-suite-review --out-dir runs_optimizer_suite_review --max-runs 4 --require-pass` passes as a capped optimizer-grade suite review before running full stress-suite calibration.
 - [ ] `python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass` passes for PettingZoo/Gymnasium wrapper health.
 - [ ] `python -m microbench.cli rl-smoke --out-dir runs_external_rl_smoke --policy-spec examples/external_policy_spec.json --require-pass` passes for external policy-spec loading.
 - [ ] `python -m microbench.cli rl-smoke --out-dir runs_external_model_predict_smoke --policy-spec examples/external_policy_model_predict_spec.json --max-steps 3 --require-pass` passes for import-based external model loading.

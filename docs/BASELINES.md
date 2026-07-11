@@ -241,6 +241,27 @@ python -m microbench.cli baseline-leaderboard \
   --require-pass
 ```
 
+Run an optimizer-grade suite review for `mpc_nonlinear` versus `ego_swarm_opt`:
+
+```bash
+python -m microbench.cli optimizer-suite-review \
+  --out-dir runs_optimizer_suite_review \
+  --max-runs 4 \
+  --require-pass
+```
+
+This delegates the actual runs to `baseline-leaderboard`, writes the normal leaderboard artifacts, and adds `optimizer_suite_review.json` with method summaries, guardrail/collision/incomplete-row findings, and Foxglove rerun/export commands for the most interesting review cases. To materialize full traces for those review cases, add `--save-review-traces`. For publication-scale optimizer claims, use the full generated stress suites without a run cap:
+
+```bash
+python -m microbench.cli optimizer-suite-review \
+  --out-dir runs_optimizer_suite_review_full \
+  --suites official_alpha,official_3d_stress,official_agentic_stress \
+  --resume \
+  --run-timeout-s 180 \
+  --require-pass \
+  --require-complete
+```
+
 Long 3D stress runs can be checkpointed. Use `--max-wall-time-s` to stop launching new episodes after a global wall-clock budget, `--resume` to continue from existing per-suite `results.csv` rows, and `--run-timeout-s` to write a failed timeout row instead of letting one episode monopolize the job:
 
 ```bash

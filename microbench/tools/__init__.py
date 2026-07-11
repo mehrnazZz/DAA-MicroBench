@@ -21,6 +21,12 @@ from microbench.tools.baseline_leaderboard import (
     SERIOUS_BASELINE_METHODS,
     run_baseline_leaderboard,
 )
+from microbench.tools.optimizer_suite_review import (
+    DEFAULT_OPTIMIZER_REVIEW_SUITES,
+    OPTIMIZER_REVIEW_METHODS,
+    run_optimizer_suite_review,
+    write_optimizer_suite_review,
+)
 from microbench.tools.baseline_promotion import (
     run_baseline_promotion_calibration,
     write_baseline_promotion_calibration,
@@ -49,13 +55,17 @@ __all__ = [
     "DEFAULT_ADVANCED_COMPARISON_SCENARIO",
     "DEFAULT_ADVANCED_COMPARISON_SEED",
     "mine_worst_cases",
+    "DEFAULT_OPTIMIZER_REVIEW_SUITES",
+    "OPTIMIZER_REVIEW_METHODS",
     "run_baseline_leaderboard",
+    "run_optimizer_suite_review",
     "run_advanced_baseline_comparison",
     "run_baseline_behavior_smoke",
     "run_baseline_reference_evidence",
     "run_baseline_promotion_calibration",
     "run_baseline_stable_review",
     "write_baseline_report",
+    "write_optimizer_suite_review",
     "write_advanced_baseline_comparison",
     "SERIOUS_BASELINE_METHODS",
     "write_baseline_audit",

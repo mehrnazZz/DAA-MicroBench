@@ -38,6 +38,8 @@ from microbench.tools import (
     DEFAULT_ADVANCED_COMPARISON_N_AGENTS,
     DEFAULT_ADVANCED_COMPARISON_SCENARIO,
     DEFAULT_ADVANCED_COMPARISON_SEED,
+    DEFAULT_OPTIMIZER_REVIEW_SUITES,
+    OPTIMIZER_REVIEW_METHODS,
     build_baseline_audit,
     build_current_schema_candidate,
     compare_current_schema_golden,
@@ -48,6 +50,7 @@ from microbench.tools import (
     run_baseline_reference_evidence,
     run_baseline_promotion_calibration,
     run_baseline_stable_review,
+    run_optimizer_suite_review,
     write_baseline_report,
     write_current_schema_golden,
 )
@@ -781,6 +784,70 @@ def _advanced_baseline_comparison(args) -> None:
         )
 
 
+def _optimizer_suite_review(args) -> None:
+    suites = list_official_suites() if args.suites == "all" else _parse_str_list(args.suites)
+    report = run_optimizer_suite_review(
+        out_dir=args.out_dir,
+        suites=suites,
+        methods=_parse_str_list(args.methods) if args.methods else None,
+        n_agents=_parse_int_list(args.n) if args.n else None,
+        seeds=_parse_int_list(args.seeds) if args.seeds else None,
+        comm_profiles=_parse_str_list(args.comm) if args.comm else None,
+        max_runs=args.max_runs,
+        stretch=bool(args.stretch),
+        resume=bool(args.resume),
+        max_wall_time_s=args.max_wall_time_s,
+        run_timeout_s=args.run_timeout_s,
+        max_trace_cases=int(args.max_trace_cases),
+        save_review_traces=bool(args.save_review_traces),
+        trace_max_steps=int(args.trace_max_steps),
+    )
+
+    if args.json:
+        print(json.dumps(report, allow_nan=False, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "REVIEW"
+        findings = report["findings"]
+        print(
+            "optimizer-suite-review: "
+            f"{status} suites={len(report['suites'])} methods={len(report['methods'])} "
+            f"selected_complete={report['selected_complete']} report={report['report_path']}"
+        )
+        print(
+            "  findings: "
+            f"collisions={findings['collision_episode_rows']} "
+            f"negative_clearance={findings['negative_clearance_rows']} "
+            f"incomplete={findings['incomplete_episode_rows']} "
+            f"guardrails={findings['guardrail_rows']} "
+            f"dimensions={','.join(findings['dimensions_covered']) or '-'}"
+        )
+        for entry in report["method_summaries"]:
+            print(
+                f"  {entry['method']}: runs={entry['run_count']} "
+                f"collision_rate={entry['collision_episode_rate']} "
+                f"completion={entry['completion_rate_mean']} "
+                f"worst_min_sep={entry['min_sep_min_worst_m']} "
+                f"planner_p95_max={entry['planner_ms_p95_max']}"
+            )
+        if report["review_cases"]:
+            print("  review_cases:")
+            for case in report["review_cases"]:
+                trace_status = f" trace={case.get('trace_status')}" if case.get("trace_status") else ""
+                print(
+                    f"    {case['suite']} {case['scenario']} {case['method']} "
+                    f"N={case['N']} seed={case['seed']} comm={case['comm_profile']}{trace_status}"
+                )
+
+    if args.require_pass and not report["ok"]:
+        raise SystemExit(
+            "optimizer suite review failed: "
+            f"official_acceptance_ok={report['official_acceptance_ok']} "
+            f"selected_complete={report['selected_complete']} findings={report['findings']}"
+        )
+    if args.require_complete and not report["publication_complete"]:
+        raise SystemExit("optimizer suite review incomplete for publication-scale claims")
+
+
 def _baseline_review(args) -> None:
     duration_s = None if args.full_duration else float(args.duration_s)
     report = run_baseline_stable_review(
@@ -1405,6 +1472,64 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fail if the comparison artifact is incomplete or has planner guardrail errors",
     )
 
+    p_osr = sub.add_parser(
+        "optimizer-suite-review",
+        help="Run optimizer-grade baselines across official suites and write a review report",
+    )
+    p_osr.add_argument("--out-dir", required=True, help="Fresh output directory for optimizer review artifacts")
+    p_osr.add_argument(
+        "--suites",
+        default=",".join(DEFAULT_OPTIMIZER_REVIEW_SUITES),
+        help="Comma-separated official suite ids, or 'all' for every generated official suite",
+    )
+    p_osr.add_argument(
+        "--methods",
+        default=None,
+        help="Comma-separated methods; defaults to " + ",".join(OPTIMIZER_REVIEW_METHODS),
+    )
+    p_osr.add_argument("--n", default=None, help="Optional agent-count override list/range, e.g. 4,8")
+    p_osr.add_argument("--seeds", default=None, help="Optional seed override list/range, e.g. 0:2")
+    p_osr.add_argument("--comm", default=None, help="Optional comm-profile override list")
+    p_osr.add_argument("--max-runs", type=int, default=None, help="Optional per-suite run cap for smoke checks")
+    p_osr.add_argument("--resume", action="store_true", help="Resume from existing per-suite results.csv rows")
+    p_osr.add_argument(
+        "--max-wall-time-s",
+        type=float,
+        default=None,
+        help="Optional global wall-clock budget; writes partial progress when exceeded",
+    )
+    p_osr.add_argument(
+        "--run-timeout-s",
+        type=float,
+        default=None,
+        help="Optional hard per-episode wall-clock timeout for optimizer review jobs",
+    )
+    p_osr.add_argument("--stretch", action="store_true", help="Use stretch suite defaults")
+    p_osr.add_argument(
+        "--max-trace-cases",
+        type=int,
+        default=4,
+        help="Number of worst-case episodes to include as Foxglove review candidates",
+    )
+    p_osr.add_argument(
+        "--save-review-traces",
+        action="store_true",
+        help="Rerun review cases with full trace_episode.jsonl output for Foxglove export",
+    )
+    p_osr.add_argument(
+        "--trace-max-steps",
+        type=int,
+        default=4000,
+        help="Maximum full-trace frames saved for --save-review-traces",
+    )
+    p_osr.add_argument("--json", action="store_true", help="Emit machine-readable optimizer review report")
+    p_osr.add_argument("--require-pass", action="store_true", help="Fail if selected optimizer review checks fail")
+    p_osr.add_argument(
+        "--require-complete",
+        action="store_true",
+        help="Fail unless the selected suites are complete enough for publication-scale claims",
+    )
+
     p_brv = sub.add_parser("baseline-review", help="Run optional longer stable-metadata review lanes for baseline candidates")
     p_brv.add_argument("--out-dir", required=True, help="Fresh output directory for review artifacts")
     p_brv.add_argument("--root", default=".", help="Repository root used for docs/tests coverage checks")
@@ -1660,6 +1785,9 @@ def main() -> None:
         return
     if args.cmd == "advanced-baseline-comparison":
         _advanced_baseline_comparison(args)
+        return
+    if args.cmd == "optimizer-suite-review":
+        _optimizer_suite_review(args)
         return
     if args.cmd == "baseline-review":
         _baseline_review(args)

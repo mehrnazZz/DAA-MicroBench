@@ -154,6 +154,17 @@ python -m microbench.cli baseline-leaderboard \
 
 This writes one per-suite `baseline_report.json` plus an aggregate `baseline_leaderboard.json`. The aggregate is a navigation and smoke-comparison artifact; official comparisons should still be read per suite because suite difficulty and purpose differ.
 
+For optimizer-grade NMPC versus EGO-Swarm review, use the narrower wrapper:
+
+```bash
+python -m microbench.cli optimizer-suite-review \
+  --out-dir runs_optimizer_suite_review \
+  --max-runs 4 \
+  --require-pass
+```
+
+It delegates runs to `baseline-leaderboard`, then writes `optimizer_suite_review.json` with method summaries, review findings, and Foxglove rerun/export commands for the most interesting cases. Use `--save-review-traces` to write full `trace_episode.jsonl` artifacts for those cases. Remove `--max-runs` and use `--suites official_alpha,official_3d_stress,official_agentic_stress --require-complete` before making publication-scale optimizer claims.
+
 Optionally publish the same run to W&B as dashboard tables:
 
 ```bash

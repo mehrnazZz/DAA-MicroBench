@@ -88,6 +88,7 @@ python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --
 python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass
 python -m microbench.cli baseline-evidence --out-dir runs_optimizer_evidence --save-optimizer-traces --require-pass
 python -m microbench.cli advanced-baseline-comparison --out-dir runs_advanced_baseline_comparison --require-pass
+python -m microbench.cli optimizer-suite-review --out-dir runs_optimizer_suite_review --max-runs 4 --require-pass
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
 python -m microbench.cli rl-smoke --out-dir runs_external_rl_smoke --policy-spec examples/external_policy_spec.json --require-pass
 python -m microbench.cli rl-smoke --out-dir runs_external_model_predict_smoke --policy-spec examples/external_policy_model_predict_spec.json --max-steps 3 --require-pass

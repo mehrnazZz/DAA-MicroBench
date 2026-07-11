@@ -94,6 +94,12 @@ Run the compact shared 3D advanced-baseline comparison:
 python -m microbench.cli advanced-baseline-comparison --out-dir runs_advanced_baseline_comparison --require-pass
 ```
 
+Run a capped optimizer-grade suite review for NMPC versus EGO-Swarm optimization:
+
+```bash
+python -m microbench.cli optimizer-suite-review --out-dir runs_optimizer_suite_review --max-runs 4 --require-pass
+```
+
 Run the all-suite baseline leaderboard:
 
 ```bash
