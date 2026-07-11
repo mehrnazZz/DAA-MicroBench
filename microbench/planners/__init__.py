@@ -8,6 +8,7 @@ from microbench.config import deep_merge, load_defaults
 from microbench.planners.base import ILocalPlanner
 from microbench.planners.baseline_goal import BaselineGoalPlanner
 from microbench.planners.cbf_qp import CbfQpPlanner
+from microbench.planners.ego_swarm import EgoSwarmPlanner
 from microbench.planners.intent_dummy import IntentDummyPlanner
 from microbench.planners.learned_tiny import LearnedTinyPlanner
 from microbench.planners.mpc_local import MpcLocalPlanner
@@ -72,6 +73,11 @@ def _make_mpc_local() -> ILocalPlanner:
     return MpcLocalPlanner(cfg=defaults.get("mpc_local", {}))
 
 
+def _make_ego_swarm() -> ILocalPlanner:
+    defaults = load_defaults()
+    return EgoSwarmPlanner(cfg=defaults.get("ego_swarm", {}))
+
+
 def _make_velocity_obstacle() -> ILocalPlanner:
     defaults = load_defaults()
     return VelocityObstaclePlanner(cfg=defaults.get("velocity_obstacle", {}))
@@ -88,6 +94,7 @@ _FACTORIES: dict[str, Callable[[], ILocalPlanner]] = {
     "orca_with_staleness": _make_orca_with_staleness,
     "cbf_qp": _make_cbf_qp,
     "mpc_local": _make_mpc_local,
+    "ego_swarm": _make_ego_swarm,
     "velocity_obstacle": _make_velocity_obstacle,
     "reciprocal_velocity_obstacle": _make_reciprocal_velocity_obstacle,
     "template": TemplatePlanner,
@@ -222,6 +229,29 @@ _METADATA: dict[str, PlannerMetadata] = {
             "Experimental; not a formally validated VO/RVO/HRVO implementation.",
             "Uses constant-velocity local track predictions from PlannerInput.",
             "Not a stable-v1 leaderboard anchor until calibrated on official stress suites.",
+        ),
+    ),
+    "ego_swarm": PlannerMetadata(
+        method="ego_swarm",
+        display_name="EGO-Swarm-inspired trajectory-sharing baseline",
+        planner_type="decentralized_trajectory_optimization",
+        role="experimental_baseline",
+        status="experimental",
+        dimensions=("2d", "3d"),
+        observation_sources=("local_neighbors", "v2v", "sensor", "fused", "intent"),
+        uses_v2v=True,
+        uses_local_sensing=True,
+        uses_intent=True,
+        uses_obstacles=True,
+        description=(
+            "Clean-room EGO-Swarm-inspired baseline that samples smooth local trajectory "
+            "topologies, scores swarm/obstacle clearance and smoothness, and advertises "
+            "the selected local trajectory as an intent message."
+        ),
+        limitations=(
+            "Not a port of the GPL ROS/C++ EGO-Swarm implementation.",
+            "Uses DAA Microbench local tracks and AABB obstacles rather than onboard mapping or B-spline optimization.",
+            "Experimental; not a stable-v1 leaderboard anchor until calibrated on official stress suites.",
         ),
     ),
     "reciprocal_velocity_obstacle": PlannerMetadata(

@@ -30,6 +30,7 @@ SERIOUS_BASELINE_METHODS = (
     "reciprocal_velocity_obstacle",
     "cbf_qp",
     "mpc_local",
+    "ego_swarm",
     "priority_yield",
     "negotiation_yield",
     "learned_tiny",

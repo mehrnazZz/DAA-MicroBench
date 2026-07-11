@@ -128,6 +128,35 @@ mpc_local:
   low_speed_weight: 0.05
   direction_scales: [1.0, 0.5]
 
+ego_swarm:
+  horizon_s: 3.2
+  rollout_dt_s: 0.4
+  max_neighbors: 8
+  max_candidates: 48
+  offset_scales_m: [0.0, 2.0, 4.0, 7.0]
+  vertical_offset_scales_m: [2.0, 4.0]
+  safety_margin_m: 0.35
+  obstacle_margin_m: 0.25
+  near_clearance_m: 1.75
+  goal_slowdown_radius_m: 6.0
+  stale_inflation_gain: 0.7
+  stale_age_cap_s: 1.5
+  intent_age_inflation_gain: 0.35
+  track_uncertainty_speed_gain: 0.1
+  goal_weight: 1.15
+  progress_weight: 0.45
+  path_length_weight: 0.04
+  smoothness_weight: 0.22
+  offset_weight: 0.04
+  swarm_collision_weight: 4500.0
+  swarm_clearance_weight: 85.0
+  obstacle_collision_weight: 6000.0
+  obstacle_clearance_weight: 120.0
+  warm_start_weight: 0.08
+  intent_ttl_s: 1.0
+  intent_tube_margin_m: 0.35
+  max_intent_points: 10
+
 velocity_obstacle: &velocity_obstacle_defaults
   time_horizon_s: 3.0
   obstacle_time_horizon_s: 3.0

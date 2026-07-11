@@ -22,6 +22,7 @@ BASELINE_BEHAVIOR_METHODS = (
     "orca_with_staleness",
     "cbf_qp",
     "mpc_local",
+    "ego_swarm",
     "velocity_obstacle",
     "reciprocal_velocity_obstacle",
     "learned_tiny",
@@ -170,6 +171,34 @@ def _planner_output_contracts(methods: list[str]) -> list[dict[str, Any]]:
             )
         except Exception as exc:
             checks.append(_check("mpc_local_debug_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
+
+    if "ego_swarm" in methods:
+        try:
+            planner = make_planner("ego_swarm")
+            planner.reset(0)
+            out = planner.compute_cmd(_planner_input(neighbors=[_neighbor()], planar=False))
+            info = getattr(out, "debug_info", {})
+            intent = getattr(out, "intent_out", None)
+            checks.append(
+                _check(
+                    "ego_swarm_debug_contract",
+                    int(info.get("ego_swarm_candidates", 0)) > 0
+                    and str(info.get("ego_swarm_best_topology", ""))
+                    and info.get("ego_swarm_min_swarm_clearance_m") is not None
+                    and info.get("ego_swarm_planar") is False
+                    and intent is not None
+                    and getattr(intent, "kind", "") == "EGO_SWARM_TRAJECTORY",
+                    {
+                        "ego_swarm_candidates": info.get("ego_swarm_candidates"),
+                        "ego_swarm_best_topology": info.get("ego_swarm_best_topology"),
+                        "ego_swarm_min_swarm_clearance_m": info.get("ego_swarm_min_swarm_clearance_m"),
+                        "ego_swarm_planar": info.get("ego_swarm_planar"),
+                        "intent_kind": getattr(intent, "kind", None),
+                    },
+                )
+            )
+        except Exception as exc:
+            checks.append(_check("ego_swarm_debug_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
 
     if "velocity_obstacle" in methods:
         try:
