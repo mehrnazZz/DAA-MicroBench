@@ -40,6 +40,9 @@ def test_baseline_audit_public_alpha_contract() -> None:
 
     assert by_method["cbf_qp"]["readiness"] == "experimental_runnable"
     assert by_method["mpc_local"]["readiness"] == "experimental_runnable"
+    assert by_method["mpc_nonlinear"]["readiness"] == "experimental_runnable"
+    assert by_method["mpc_nonlinear"]["checks"]["docs_mentioned"] is True
+    assert by_method["mpc_nonlinear"]["checks"]["tests_mentioned"] is True
     assert by_method["ego_swarm_opt"]["readiness"] == "experimental_runnable"
     assert by_method["ego_swarm_opt"]["checks"]["docs_mentioned"] is True
     assert by_method["ego_swarm_opt"]["checks"]["tests_mentioned"] is True

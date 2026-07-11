@@ -13,6 +13,7 @@ from microbench.planners.ego_swarm_opt import EgoSwarmOptimizingPlanner
 from microbench.planners.intent_dummy import IntentDummyPlanner
 from microbench.planners.learned_tiny import LearnedTinyPlanner
 from microbench.planners.mpc_local import MpcLocalPlanner
+from microbench.planners.mpc_nonlinear import NonlinearMpcPlanner
 from microbench.planners.negotiation_yield import NegotiationYieldPlanner
 from microbench.planners.orca_expert import OrcaExpertPlanner
 from microbench.planners.priority_yield import PriorityYieldPlanner
@@ -74,6 +75,11 @@ def _make_mpc_local() -> ILocalPlanner:
     return MpcLocalPlanner(cfg=defaults.get("mpc_local", {}))
 
 
+def _make_mpc_nonlinear() -> ILocalPlanner:
+    defaults = load_defaults()
+    return NonlinearMpcPlanner(cfg=defaults.get("mpc_nonlinear", {}))
+
+
 def _make_ego_swarm() -> ILocalPlanner:
     defaults = load_defaults()
     return EgoSwarmPlanner(cfg=defaults.get("ego_swarm", {}))
@@ -100,6 +106,7 @@ _FACTORIES: dict[str, Callable[[], ILocalPlanner]] = {
     "orca_with_staleness": _make_orca_with_staleness,
     "cbf_qp": _make_cbf_qp,
     "mpc_local": _make_mpc_local,
+    "mpc_nonlinear": _make_mpc_nonlinear,
     "ego_swarm": _make_ego_swarm,
     "ego_swarm_opt": _make_ego_swarm_opt,
     "velocity_obstacle": _make_velocity_obstacle,
@@ -215,6 +222,29 @@ _METADATA: dict[str, PlannerMetadata] = {
             "Not a full nonlinear MPC solver.",
             "Experimental; not recommended as a leaderboard anchor until calibrated.",
             "Uses constant-velocity neighbor predictions from PlannerInput.",
+        ),
+    ),
+    "mpc_nonlinear": PlannerMetadata(
+        method="mpc_nonlinear",
+        display_name="Nonlinear MPC trajectory-optimization baseline",
+        planner_type="nonlinear_mpc_trajectory_optimization",
+        role="experimental_baseline",
+        status="experimental",
+        dimensions=("2d", "3d"),
+        observation_sources=("local_neighbors", "v2v", "sensor", "fused", "intent"),
+        uses_v2v=True,
+        uses_local_sensing=True,
+        uses_intent=True,
+        uses_obstacles=True,
+        description=(
+            "Clean-room nonlinear MPC baseline that optimizes finite-horizon acceleration "
+            "controls with double-integrator dynamics, warm starts, multistart avoidance seeds, "
+            "neighbor/intent/obstacle penalties, and trajectory intent output."
+        ),
+        limitations=(
+            "Simplified translational NMPC for the benchmark contract, not a full quadrotor attitude/rotor model.",
+            "Uses supplied local tracks, intent trajectories, and AABB obstacles rather than raw onboard sensing or mapping.",
+            "Experimental; needs broader dense-3D and solver-mode calibration before becoming a reference baseline.",
         ),
     ),
     "velocity_obstacle": PlannerMetadata(

@@ -431,7 +431,7 @@ python -m microbench.cli advanced-baseline-comparison \
   --require-pass
 ```
 
-This runs ORCA, stale-aware ORCA, CBF-QP, MPC-local, sampled EGO-Swarm-inspired trajectory sharing, optimized EGO-Swarm-style control-point planning, VO, and RVO on the same `urban_conflict_3d` lane and writes `advanced_baseline_comparison.json`, `baseline_report.json`, `results.csv`, and `summary.csv`. Use it as a quick apples-to-apples advanced-baseline artifact; the all-suite leaderboard remains the publication-grade benchmark evidence.
+This runs ORCA, stale-aware ORCA, CBF-QP, MPC-local, nonlinear MPC, sampled EGO-Swarm-inspired trajectory sharing, optimized EGO-Swarm-style control-point planning, VO, and RVO on the same `urban_conflict_3d` lane and writes `advanced_baseline_comparison.json`, `baseline_report.json`, `results.csv`, and `summary.csv`. Use it as a quick apples-to-apples advanced-baseline artifact; the all-suite leaderboard remains the publication-grade benchmark evidence.
 
 Run the generated agentic stress suite:
 
@@ -520,6 +520,7 @@ Expected baseline sanity behavior:
 - `orca_with_staleness`: more conservative behavior when observations are stale or degraded.
 - `cbf_qp`: experimental CBF safety-filter baseline with deterministic projection, optional SciPy solver mode, obstacle barriers, and stale-track inflation; not a calibrated leaderboard anchor.
 - `mpc_local`: experimental local predictive sampling baseline with bounded lookahead, smoothness costs, obstacle scoring, candidate-risk diagnostics, and stale-track risk inflation.
+- `mpc_nonlinear`: experimental clean-room nonlinear MPC trajectory-optimization baseline with multistart acceleration-control optimization, dynamic obstacle/intent penalties, and trajectory intent output.
 - `ego_swarm`: experimental clean-room EGO-Swarm-inspired trajectory-sharing baseline with smooth receding-horizon topologies and intent output; not a port of the upstream GPL implementation.
 - `ego_swarm_opt`: experimental clean-room EGO-Swarm-style optimized control-point trajectory baseline with topological seeds, smoothness/dynamic penalties, obstacle/swarm penalties, and intent output.
 

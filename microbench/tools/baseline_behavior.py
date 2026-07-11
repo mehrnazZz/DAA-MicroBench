@@ -22,6 +22,7 @@ BASELINE_BEHAVIOR_METHODS = (
     "orca_with_staleness",
     "cbf_qp",
     "mpc_local",
+    "mpc_nonlinear",
     "ego_swarm",
     "ego_swarm_opt",
     "velocity_obstacle",
@@ -57,7 +58,7 @@ GUARDRAIL_FIELDS = (
     "planner_error_count",
     "planner_fallback_count",
 )
-EXPERIMENTAL_SOFT_GUARDRAIL_METHODS = {"cbf_qp", "mpc_local", "ego_swarm_opt"}
+EXPERIMENTAL_SOFT_GUARDRAIL_METHODS = {"cbf_qp", "mpc_local", "mpc_nonlinear", "ego_swarm_opt"}
 SOFT_GUARDRAIL_FIELDS = {"planner_timeout_count", "planner_fallback_count"}
 
 
@@ -172,6 +173,37 @@ def _planner_output_contracts(methods: list[str]) -> list[dict[str, Any]]:
             )
         except Exception as exc:
             checks.append(_check("mpc_local_debug_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
+
+    if "mpc_nonlinear" in methods:
+        try:
+            planner = make_planner("mpc_nonlinear")
+            planner.reset(0)
+            out = planner.compute_cmd(_planner_input(neighbors=[_neighbor()], planar=False))
+            info = getattr(out, "debug_info", {})
+            intent = getattr(out, "intent_out", None)
+            checks.append(
+                _check(
+                    "mpc_nonlinear_debug_contract",
+                    int(info.get("mpc_nonlinear_horizon_steps", 0)) >= 2
+                    and str(info.get("mpc_nonlinear_solver_status", ""))
+                    and info.get("mpc_nonlinear_min_swarm_clearance_m") is not None
+                    and float(info.get("mpc_nonlinear_cost_reduction", 0.0)) >= -1e-6
+                    and info.get("mpc_nonlinear_planar") is False
+                    and intent is not None
+                    and getattr(intent, "kind", "") == "MPC_NONLINEAR_TRAJECTORY",
+                    {
+                        "mpc_nonlinear_horizon_steps": info.get("mpc_nonlinear_horizon_steps"),
+                        "mpc_nonlinear_solver": info.get("mpc_nonlinear_solver"),
+                        "mpc_nonlinear_solver_status": info.get("mpc_nonlinear_solver_status"),
+                        "mpc_nonlinear_cost_reduction": info.get("mpc_nonlinear_cost_reduction"),
+                        "mpc_nonlinear_min_swarm_clearance_m": info.get("mpc_nonlinear_min_swarm_clearance_m"),
+                        "mpc_nonlinear_planar": info.get("mpc_nonlinear_planar"),
+                        "intent_kind": getattr(intent, "kind", None),
+                    },
+                )
+            )
+        except Exception as exc:
+            checks.append(_check("mpc_nonlinear_debug_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
 
     if "ego_swarm" in methods:
         try:

@@ -476,10 +476,18 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
             cp = unpack(x)
             return float(self._cost_and_gradient(planner_input, cp, basis, reference_cp, need_grad=False)["total"])
 
+        def jac(x: np.ndarray) -> np.ndarray:
+            cp = unpack(x)
+            grad = np.asarray(self._cost_and_gradient(planner_input, cp, basis, reference_cp, need_grad=True)["grad"], dtype=float)
+            if planner_input.planar:
+                grad[:, 1] = 0.0
+            return grad[1:-1].reshape(-1)
+
         try:
             result = minimize(
                 objective,
                 interior0,
+                jac=jac,
                 method="L-BFGS-B",
                 options={"maxiter": max(1, self.scipy_maxiter), "ftol": 1e-5, "maxls": 12},
             )

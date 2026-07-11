@@ -128,6 +128,44 @@ mpc_local:
   low_speed_weight: 0.05
   direction_scales: [1.0, 0.5]
 
+mpc_nonlinear:
+  horizon_s: 2.4
+  step_dt_s: 0.4
+  horizon_steps: 6
+  max_neighbors: 8
+  max_initializations: 4
+  solver: "projected_gradient"  # "projected_gradient", "auto", or "scipy_l_bfgs_b"
+  opt_iterations: 8
+  scipy_maxiter: 35
+  gradient_step_accel: 0.18
+  line_search_shrink: 0.55
+  safety_margin_m: 0.3
+  obstacle_margin_m: 0.25
+  near_clearance_m: 1.75
+  goal_slowdown_radius_m: 6.0
+  stale_inflation_gain: 0.65
+  stale_age_cap_s: 1.5
+  intent_age_inflation_gain: 0.3
+  track_uncertainty_speed_gain: 0.1
+  tracking_weight: 0.35
+  velocity_tracking_weight: 0.45
+  terminal_weight: 6.0
+  progress_weight: 0.8
+  control_weight: 0.04
+  jerk_weight: 0.2
+  speed_limit_weight: 45.0
+  accel_limit_weight: 30.0
+  collision_weight: 6000.0
+  clearance_weight: 120.0
+  obstacle_collision_weight: 7500.0
+  obstacle_clearance_weight: 150.0
+  intent_collision_weight: 5200.0
+  intent_clearance_weight: 110.0
+  warm_start_weight: 0.05
+  intent_ttl_s: 1.0
+  intent_tube_margin_m: 0.3
+  max_intent_points: 10
+
 ego_swarm:
   horizon_s: 3.2
   rollout_dt_s: 0.4

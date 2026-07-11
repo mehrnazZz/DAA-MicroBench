@@ -22,6 +22,7 @@ DEFAULT_ADVANCED_COMPARISON_METHODS = (
     "orca_with_staleness",
     "cbf_qp",
     "mpc_local",
+    "mpc_nonlinear",
     "ego_swarm",
     "ego_swarm_opt",
     "velocity_obstacle",

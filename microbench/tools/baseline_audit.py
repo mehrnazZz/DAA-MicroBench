@@ -20,6 +20,7 @@ PUBLIC_ALPHA_REFERENCE_METHODS = (
 EXPERIMENTAL_METHODS = (
     "cbf_qp",
     "mpc_local",
+    "mpc_nonlinear",
     "ego_swarm_opt",
     "velocity_obstacle",
     "reciprocal_velocity_obstacle",
