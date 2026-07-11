@@ -21,6 +21,7 @@ from microbench.types import RunSpec
 
 
 BASELINE_LEADERBOARD_SCHEMA_VERSION = "0.2"
+MAX_RUNS_STRATEGIES = ("prefix", "balanced")
 
 SERIOUS_BASELINE_METHODS = (
     "baseline_goal",
@@ -69,6 +70,42 @@ def _spec_key(spec: RunSpec) -> tuple[str, str, str, str, str]:
         str(int(spec.n_agents)),
         str(int(spec.seed)),
     )
+
+
+def _balanced_group_key(spec: RunSpec) -> tuple[str, str]:
+    return (Path(spec.scenario_path).stem, str(spec.method))
+
+
+def _select_specs(
+    specs: list[RunSpec],
+    *,
+    max_runs: int | None,
+    strategy: str = "prefix",
+) -> list[RunSpec]:
+    if max_runs is None:
+        return list(specs)
+    limit = max(0, int(max_runs))
+    if strategy not in MAX_RUNS_STRATEGIES:
+        raise ValueError(f"unknown max-runs strategy: {strategy!r}")
+    if strategy == "prefix" or limit >= len(specs):
+        return list(specs[:limit])
+
+    groups: dict[tuple[str, str], list[RunSpec]] = {}
+    for spec in specs:
+        groups.setdefault(_balanced_group_key(spec), []).append(spec)
+
+    selected: list[RunSpec] = []
+    while len(selected) < limit:
+        added_this_round = False
+        for group in groups.values():
+            if group:
+                selected.append(group.pop(0))
+                added_this_round = True
+                if len(selected) >= limit:
+                    break
+        if not added_this_round:
+            break
+    return selected
 
 
 def _row_key(row: dict[str, Any]) -> tuple[str, str, str, str, str]:
@@ -237,6 +274,7 @@ def _run_suite(
     seeds: list[int] | None,
     comm_profiles: list[str] | None,
     max_runs: int | None,
+    max_runs_strategy: str,
     stretch: bool,
     resume: bool,
     deadline_at: float | None,
@@ -272,8 +310,7 @@ def _run_suite(
                         )
 
     planned_run_count = len(specs)
-    if max_runs is not None:
-        specs = specs[: max(0, int(max_runs))]
+    specs = _select_specs(specs, max_runs=max_runs, strategy=max_runs_strategy)
     selected_run_count = len(specs)
 
     results_csv = run_dir / "results.csv"
@@ -357,6 +394,7 @@ def _run_suite(
         "summary_csv": str(summary_csv),
         "suite_manifest": str(generated["manifest_path"]),
         "truncated_by_max_runs": truncated_by_max_runs,
+        "max_runs_strategy": str(max_runs_strategy),
         "stopped_by_wall_time": stopped_by_wall_time,
         "resume": bool(resume),
         "run_timeout_s": None if run_timeout_s is None else float(run_timeout_s),
@@ -379,6 +417,7 @@ def _run_suite(
         "timeout_run_count": hard_timeout_count,
         "new_timeout_run_count": newly_timed_out,
         "truncated_by_max_runs": truncated_by_max_runs,
+        "max_runs_strategy": str(max_runs_strategy),
         "stopped_by_wall_time": stopped_by_wall_time,
         "selected_complete": selected_complete,
         "complete": complete,
@@ -403,6 +442,7 @@ def run_baseline_leaderboard(
     seeds: tuple[int, ...] | list[int] | None = None,
     comm_profiles: tuple[str, ...] | list[str] | None = None,
     max_runs: int | None = None,
+    max_runs_strategy: str = "prefix",
     stretch: bool = False,
     resume: bool = False,
     max_wall_time_s: float | None = None,
@@ -416,6 +456,8 @@ def run_baseline_leaderboard(
     unknown = sorted(set(suite_values) - official)
     if unknown:
         raise ValueError(f"unknown official suite(s): {','.join(unknown)}")
+    if max_runs_strategy not in MAX_RUNS_STRATEGIES:
+        raise ValueError(f"unknown max-runs strategy: {max_runs_strategy!r}")
 
     started = time.perf_counter()
     deadline_at = started + float(max_wall_time_s) if max_wall_time_s is not None else None
@@ -428,6 +470,7 @@ def run_baseline_leaderboard(
             seeds=list(seeds) if seeds is not None else None,
             comm_profiles=list(comm_profiles) if comm_profiles is not None else None,
             max_runs=max_runs,
+            max_runs_strategy=str(max_runs_strategy),
             stretch=bool(stretch),
             resume=bool(resume),
             deadline_at=deadline_at,
@@ -451,6 +494,7 @@ def run_baseline_leaderboard(
         "timeout_run_count": timeout_run_count,
         "resume": bool(resume),
         "max_wall_time_s": None if max_wall_time_s is None else float(max_wall_time_s),
+        "max_runs_strategy": str(max_runs_strategy),
         "run_timeout_s": None if run_timeout_s is None else float(run_timeout_s),
         "wall_runtime_s": round(time.perf_counter() - started, 6),
         "out_dir": str(out),
@@ -473,6 +517,7 @@ def run_baseline_leaderboard(
                 "summary_csv": _rel(entry["summary_csv"], out),
                 "suite_manifest": _rel(entry["suite_manifest"], out),
                 "truncated_by_max_runs": entry["truncated_by_max_runs"],
+                "max_runs_strategy": entry["max_runs_strategy"],
                 "stopped_by_wall_time": entry["stopped_by_wall_time"],
                 "selected_complete": entry["selected_complete"],
                 "complete": entry["complete"],

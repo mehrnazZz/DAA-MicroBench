@@ -250,7 +250,7 @@ python -m microbench.cli optimizer-suite-review \
   --require-pass
 ```
 
-This delegates the actual runs to `baseline-leaderboard`, writes the normal leaderboard artifacts, and adds `optimizer_suite_review.json` with method summaries, guardrail/collision/incomplete-row findings, and Foxglove rerun/export commands for the most interesting review cases. To materialize full traces for those review cases, add `--save-review-traces`. For publication-scale optimizer claims, use the full generated stress suites without a run cap:
+This delegates the actual runs to `baseline-leaderboard`, writes the normal leaderboard artifacts, and adds `optimizer_suite_review.json` with method summaries, guardrail/collision/incomplete-row findings, and Foxglove rerun/export commands for the most interesting review cases. Capped optimizer reviews use `--max-runs-strategy balanced` by default so checkpoint rows spread across scenario/method groups instead of only taking the first suite entries. To materialize full traces for those review cases, add `--save-review-traces`. For publication-scale optimizer claims, use the full generated stress suites without a run cap:
 
 ```bash
 python -m microbench.cli optimizer-suite-review \
@@ -279,6 +279,8 @@ python -m microbench.cli baseline-leaderboard \
   --resume \
   --require-pass
 ```
+
+Plain `baseline-leaderboard --max-runs` keeps its historical prefix cap by default. Add `--max-runs-strategy balanced` when you want a development checkpoint to spread across scenario/method groups.
 
 Each suite also writes `leaderboard_progress.json`. For publication-grade claims, the aggregate report should have `ok: true`, `complete: true`, `timeout_run_count: 0`, and no `truncated_by_max_runs` or `stopped_by_wall_time` suite entries.
 

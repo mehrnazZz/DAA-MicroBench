@@ -40,6 +40,7 @@ from microbench.tools import (
     DEFAULT_ADVANCED_COMPARISON_SEED,
     DEFAULT_OPTIMIZER_REVIEW_SUITES,
     OPTIMIZER_REVIEW_METHODS,
+    MAX_RUNS_STRATEGIES,
     build_baseline_audit,
     build_current_schema_candidate,
     compare_current_schema_golden,
@@ -553,6 +554,7 @@ def _baseline_leaderboard(args) -> None:
         seeds=_parse_int_list(args.seeds) if args.seeds else None,
         comm_profiles=_parse_str_list(args.comm) if args.comm else None,
         max_runs=args.max_runs,
+        max_runs_strategy=str(args.max_runs_strategy),
         stretch=bool(args.stretch),
         resume=bool(args.resume),
         max_wall_time_s=args.max_wall_time_s,
@@ -569,6 +571,7 @@ def _baseline_leaderboard(args) -> None:
         "complete": bool(report.get("complete", False)),
         "selected_complete": bool(report.get("selected_complete", False)),
         "timeout_run_count": int(report.get("timeout_run_count") or 0),
+        "max_runs_strategy": report.get("max_runs_strategy"),
         "python_version": sys.version.split()[0],
         "platform": platform.platform(),
         "git_commit": _git_commit(),
@@ -794,6 +797,7 @@ def _optimizer_suite_review(args) -> None:
         seeds=_parse_int_list(args.seeds) if args.seeds else None,
         comm_profiles=_parse_str_list(args.comm) if args.comm else None,
         max_runs=args.max_runs,
+        max_runs_strategy=str(args.max_runs_strategy),
         stretch=bool(args.stretch),
         resume=bool(args.resume),
         max_wall_time_s=args.max_wall_time_s,
@@ -1344,6 +1348,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_bl.add_argument("--seeds", default=None, help="Optional seed override list/range, e.g. 0:2")
     p_bl.add_argument("--comm", default=None, help="Optional comm-profile override list")
     p_bl.add_argument("--max-runs", type=int, default=None, help="Optional per-suite run cap for smoke checks")
+    p_bl.add_argument(
+        "--max-runs-strategy",
+        choices=MAX_RUNS_STRATEGIES,
+        default="prefix",
+        help="How to choose runs when --max-runs truncates a suite matrix",
+    )
     p_bl.add_argument("--resume", action="store_true", help="Resume from existing per-suite results.csv rows")
     p_bl.add_argument(
         "--max-wall-time-s",
@@ -1491,6 +1501,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_osr.add_argument("--seeds", default=None, help="Optional seed override list/range, e.g. 0:2")
     p_osr.add_argument("--comm", default=None, help="Optional comm-profile override list")
     p_osr.add_argument("--max-runs", type=int, default=None, help="Optional per-suite run cap for smoke checks")
+    p_osr.add_argument(
+        "--max-runs-strategy",
+        choices=MAX_RUNS_STRATEGIES,
+        default="balanced",
+        help="How to choose runs when --max-runs truncates a suite matrix",
+    )
     p_osr.add_argument("--resume", action="store_true", help="Resume from existing per-suite results.csv rows")
     p_osr.add_argument(
         "--max-wall-time-s",

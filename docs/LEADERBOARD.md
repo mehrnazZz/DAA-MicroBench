@@ -163,7 +163,7 @@ python -m microbench.cli optimizer-suite-review \
   --require-pass
 ```
 
-It delegates runs to `baseline-leaderboard`, then writes `optimizer_suite_review.json` with method summaries, review findings, and Foxglove rerun/export commands for the most interesting cases. Use `--save-review-traces` to write full `trace_episode.jsonl` artifacts for those cases. Remove `--max-runs` and use `--suites official_alpha,official_3d_stress,official_agentic_stress --require-complete` before making publication-scale optimizer claims.
+It delegates runs to `baseline-leaderboard`, then writes `optimizer_suite_review.json` with method summaries, review findings, and Foxglove rerun/export commands for the most interesting cases. Capped optimizer reviews use balanced run selection by default, so checkpoints cover scenario/method groups more evenly than a prefix-only cap. Use `--save-review-traces` to write full `trace_episode.jsonl` artifacts for those cases. Remove `--max-runs` and use `--suites official_alpha,official_3d_stress,official_agentic_stress --require-complete` before making publication-scale optimizer claims.
 
 Optionally publish the same run to W&B as dashboard tables:
 
@@ -197,6 +197,7 @@ python -m microbench.cli baseline-leaderboard \
 ```
 
 Checkpointed runs write per-suite `leaderboard_progress.json` files. Official submissions should not be partial: require `complete: true`, `selected_complete: true`, `timeout_run_count: 0`, and no suite-level `stopped_by_wall_time`.
+For general `baseline-leaderboard` development caps, use `--max-runs-strategy balanced` when the cap should cover multiple scenario/method groups instead of the default prefix of the planned matrix.
 
 ## Reproducibility Rules
 

@@ -30,6 +30,8 @@ def test_optimizer_suite_review_runs_capped_suite_and_writes_report(tmp_path: Pa
     assert report["official_acceptance_ok"] is True
     assert report["selected_complete"] is True
     assert report["publication_complete"] is False
+    assert report["max_runs_strategy"] == "balanced"
+    assert report["baseline_leaderboard"]["max_runs_strategy"] == "balanced"
     assert report["methods"] == ["baseline_goal"]
     assert report["suites"] == ["official_smoke_generated"]
     assert report["method_summaries"][0]["run_count"] == 1

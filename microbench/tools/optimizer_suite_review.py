@@ -360,6 +360,7 @@ def run_optimizer_suite_review(
     seeds: tuple[int, ...] | list[int] | None = None,
     comm_profiles: tuple[str, ...] | list[str] | None = None,
     max_runs: int | None = None,
+    max_runs_strategy: str = "balanced",
     stretch: bool = False,
     resume: bool = False,
     max_wall_time_s: float | None = None,
@@ -382,6 +383,7 @@ def run_optimizer_suite_review(
         seeds=seeds,
         comm_profiles=comm_profiles,
         max_runs=max_runs,
+        max_runs_strategy=max_runs_strategy,
         stretch=stretch,
         resume=resume,
         max_wall_time_s=max_wall_time_s,
@@ -412,6 +414,7 @@ def run_optimizer_suite_review(
             "findings": findings,
             "review_cases": trace_cases,
             "save_review_traces": bool(save_review_traces),
+            "max_runs_strategy": str(max_runs_strategy),
             "score_note": "Uses baseline-leaderboard score_v0; inspect per-suite metrics and Foxglove traces before promotion claims.",
             "next_steps": [
                 "Run without --max-runs for complete publication evidence when local runtime budget allows.",

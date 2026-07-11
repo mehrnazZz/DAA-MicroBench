@@ -18,6 +18,7 @@ from microbench.tools.baseline_evidence import (
     write_baseline_reference_evidence,
 )
 from microbench.tools.baseline_leaderboard import (
+    MAX_RUNS_STRATEGIES,
     SERIOUS_BASELINE_METHODS,
     run_baseline_leaderboard,
 )
@@ -55,6 +56,7 @@ __all__ = [
     "DEFAULT_ADVANCED_COMPARISON_SCENARIO",
     "DEFAULT_ADVANCED_COMPARISON_SEED",
     "mine_worst_cases",
+    "MAX_RUNS_STRATEGIES",
     "DEFAULT_OPTIMIZER_REVIEW_SUITES",
     "OPTIMIZER_REVIEW_METHODS",
     "run_baseline_leaderboard",

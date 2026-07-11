@@ -11,9 +11,47 @@ import pytest
 
 import microbench.tools.baseline_leaderboard as baseline_leaderboard
 from microbench.tools.baseline_leaderboard import run_baseline_leaderboard
+from microbench.types import RunSpec
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _dummy_spec(scenario: str, method: str, seed: int) -> RunSpec:
+    return RunSpec(
+        scenario_path=f"{scenario}.yaml",
+        method=method,
+        n_agents=4,
+        seed=seed,
+        comm_profile="ideal_50hz",
+        out_dir="unused",
+        save_trace=False,
+    )
+
+
+def test_balanced_max_runs_strategy_spreads_across_scenarios_and_methods() -> None:
+    specs = [
+        _dummy_spec(scenario, method, seed)
+        for scenario in ("s0", "s1", "s2")
+        for method in ("m0", "m1")
+        for seed in (0, 1)
+    ]
+
+    prefix = baseline_leaderboard._select_specs(specs, max_runs=4, strategy="prefix")
+    balanced = baseline_leaderboard._select_specs(specs, max_runs=4, strategy="balanced")
+
+    assert [(Path(s.scenario_path).stem, s.method, s.seed) for s in prefix] == [
+        ("s0", "m0", 0),
+        ("s0", "m0", 1),
+        ("s0", "m1", 0),
+        ("s0", "m1", 1),
+    ]
+    assert [(Path(s.scenario_path).stem, s.method, s.seed) for s in balanced] == [
+        ("s0", "m0", 0),
+        ("s0", "m1", 0),
+        ("s1", "m0", 0),
+        ("s1", "m1", 0),
+    ]
 
 
 def test_baseline_leaderboard_runs_capped_official_suite_and_ranks(tmp_path: Path) -> None:
@@ -28,6 +66,7 @@ def test_baseline_leaderboard_runs_capped_official_suite_and_ranks(tmp_path: Pat
     )
 
     assert report["schema_version"] == "0.2"
+    assert report["max_runs_strategy"] == "prefix"
     assert report["ok"] is True
     assert report["complete"] is False
     assert report["selected_complete"] is True
