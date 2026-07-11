@@ -9,6 +9,7 @@ from microbench.planners.base import ILocalPlanner
 from microbench.planners.baseline_goal import BaselineGoalPlanner
 from microbench.planners.cbf_qp import CbfQpPlanner
 from microbench.planners.ego_swarm import EgoSwarmPlanner
+from microbench.planners.ego_swarm_opt import EgoSwarmOptimizingPlanner
 from microbench.planners.intent_dummy import IntentDummyPlanner
 from microbench.planners.learned_tiny import LearnedTinyPlanner
 from microbench.planners.mpc_local import MpcLocalPlanner
@@ -78,6 +79,11 @@ def _make_ego_swarm() -> ILocalPlanner:
     return EgoSwarmPlanner(cfg=defaults.get("ego_swarm", {}))
 
 
+def _make_ego_swarm_opt() -> ILocalPlanner:
+    defaults = load_defaults()
+    return EgoSwarmOptimizingPlanner(cfg=defaults.get("ego_swarm_opt", {}))
+
+
 def _make_velocity_obstacle() -> ILocalPlanner:
     defaults = load_defaults()
     return VelocityObstaclePlanner(cfg=defaults.get("velocity_obstacle", {}))
@@ -95,6 +101,7 @@ _FACTORIES: dict[str, Callable[[], ILocalPlanner]] = {
     "cbf_qp": _make_cbf_qp,
     "mpc_local": _make_mpc_local,
     "ego_swarm": _make_ego_swarm,
+    "ego_swarm_opt": _make_ego_swarm_opt,
     "velocity_obstacle": _make_velocity_obstacle,
     "reciprocal_velocity_obstacle": _make_reciprocal_velocity_obstacle,
     "template": TemplatePlanner,
@@ -252,6 +259,29 @@ _METADATA: dict[str, PlannerMetadata] = {
             "Not a port of the GPL ROS/C++ EGO-Swarm implementation.",
             "Uses DAA Microbench local tracks and AABB obstacles rather than onboard mapping or B-spline optimization.",
             "Experimental; not a stable-v1 leaderboard anchor until calibrated on official stress suites.",
+        ),
+    ),
+    "ego_swarm_opt": PlannerMetadata(
+        method="ego_swarm_opt",
+        display_name="EGO-Swarm-style optimized trajectory-sharing baseline",
+        planner_type="decentralized_control_point_trajectory_optimization",
+        role="experimental_baseline",
+        status="experimental",
+        dimensions=("2d", "3d"),
+        observation_sources=("local_neighbors", "v2v", "sensor", "fused", "intent"),
+        uses_v2v=True,
+        uses_local_sensing=True,
+        uses_intent=True,
+        uses_obstacles=True,
+        description=(
+            "Clean-room EGO-Swarm-style baseline that seeds topological local trajectories, "
+            "optimizes smooth control points against dynamic feasibility, swarm clearance, "
+            "obstacle clearance, and warm-start costs, then advertises the optimized trajectory."
+        ),
+        limitations=(
+            "Not a port of the GPL ROS/C++ EGO-Swarm implementation.",
+            "Optimizes DAA Microbench control points against supplied local tracks and AABB obstacles; it is not an onboard ESDF mapper.",
+            "Experimental; needs official dense-3D and degraded-intent calibration before becoming a reference baseline.",
         ),
     ),
     "reciprocal_velocity_obstacle": PlannerMetadata(

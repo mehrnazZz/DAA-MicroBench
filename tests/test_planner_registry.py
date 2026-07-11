@@ -10,6 +10,7 @@ import pytest
 from microbench.planners import canonical_method, list_methods, make_planner, planner_metadata
 from microbench.planners.cbf_qp import CbfQpPlanner
 from microbench.planners.ego_swarm import EgoSwarmPlanner
+from microbench.planners.ego_swarm_opt import EgoSwarmOptimizingPlanner
 from microbench.planners.learned_tiny import LearnedTinyPlanner
 from microbench.planners.learned_policy_spec import LearnedPolicySpecPlanner
 from microbench.planners.mpc_local import MpcLocalPlanner
@@ -26,6 +27,7 @@ def test_orca_heuristic_is_canonical_and_orca_expert_is_alias() -> None:
     assert "cbf_qp" in list_methods()
     assert "mpc_local" in list_methods()
     assert "ego_swarm" in list_methods()
+    assert "ego_swarm_opt" in list_methods()
     assert "velocity_obstacle" in list_methods()
     assert "reciprocal_velocity_obstacle" in list_methods()
     assert "learned_tiny" in list_methods()
@@ -37,6 +39,7 @@ def test_orca_heuristic_is_canonical_and_orca_expert_is_alias() -> None:
     assert isinstance(make_planner("cbf_qp"), CbfQpPlanner)
     assert isinstance(make_planner("mpc_local"), MpcLocalPlanner)
     assert isinstance(make_planner("ego_swarm"), EgoSwarmPlanner)
+    assert isinstance(make_planner("ego_swarm_opt"), EgoSwarmOptimizingPlanner)
     assert isinstance(make_planner("velocity_obstacle"), VelocityObstaclePlanner)
     assert isinstance(make_planner("reciprocal_velocity_obstacle"), ReciprocalVelocityObstaclePlanner)
     assert isinstance(make_planner("learned_tiny"), LearnedTinyPlanner)
@@ -68,6 +71,10 @@ def test_planner_metadata_includes_public_baseline_contract() -> None:
     assert by_method["ego_swarm"]["planner_type"] == "decentralized_trajectory_optimization"
     assert by_method["ego_swarm"]["uses_intent"] is True
     assert by_method["ego_swarm"]["uses_obstacles"] is True
+    assert by_method["ego_swarm_opt"]["role"] == "experimental_baseline"
+    assert by_method["ego_swarm_opt"]["planner_type"] == "decentralized_control_point_trajectory_optimization"
+    assert by_method["ego_swarm_opt"]["uses_intent"] is True
+    assert by_method["ego_swarm_opt"]["uses_obstacles"] is True
     assert by_method["velocity_obstacle"]["role"] == "experimental_baseline"
     assert by_method["velocity_obstacle"]["planner_type"] == "velocity_obstacle_sampling"
     assert by_method["velocity_obstacle"]["uses_obstacles"] is True
@@ -121,6 +128,7 @@ def test_list_methods_cli_can_emit_metadata_json() -> None:
     assert by_method["cbf_qp"]["status"] == "experimental"
     assert by_method["mpc_local"]["status"] == "experimental"
     assert by_method["ego_swarm"]["status"] == "experimental"
+    assert by_method["ego_swarm_opt"]["status"] == "experimental"
     assert by_method["velocity_obstacle"]["status"] == "experimental"
     assert by_method["reciprocal_velocity_obstacle"]["status"] == "experimental"
     assert by_method["learned_tiny"]["learned"] is True

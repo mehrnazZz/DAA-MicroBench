@@ -18,7 +18,7 @@ python -m microbench.cli baseline-leaderboard --out-dir runs_baseline_leaderboar
 The public-alpha baseline gate is intentionally stricter than "the code imports":
 
 - required public-alpha reference baselines: `orca_heuristic`, `orca_with_staleness`, `priority_yield`, `negotiation_yield`
-- experimental but runnable baselines: `cbf_qp`, `mpc_local`, `ego_swarm`, `velocity_obstacle`, `reciprocal_velocity_obstacle`, `learned_tiny`
+- experimental but runnable baselines: `cbf_qp`, `mpc_local`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, `reciprocal_velocity_obstacle`, `learned_tiny`
 - illustrative or template methods: `baseline_goal`, `intent_dummy`, `template`
 
 Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pass`, and `baseline-promotion --require-calibrated` before inviting external baseline comparisons. Stable v1 still requires promotion work; `baseline-audit --require-stable-v1-ready` and `baseline-promotion --require-stable-v1-ready` are expected to fail while experimental baselines remain experimental.
@@ -33,6 +33,7 @@ Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pas
 | `cbf_qp` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | CBF safety-filter baseline with deterministic projection, optional SciPy solver mode, obstacle barriers, and stale-track inflation. |
 | `mpc_local` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Deterministic short-horizon predictive sampling baseline with candidate-risk diagnostics and stale-track inflation. |
 | `ego_swarm` | experimental baseline | local neighbor tracks, intent trajectories, V2V/sensor/fused observations, obstacles | 2D, 3D | Clean-room EGO-Swarm-inspired receding-horizon trajectory-sharing baseline. |
+| `ego_swarm_opt` | experimental baseline | local neighbor tracks, intent trajectories, V2V/sensor/fused observations, obstacles | 2D, 3D | Clean-room EGO-Swarm-style optimized control-point trajectory-sharing baseline. |
 | `velocity_obstacle` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Deterministic finite-horizon velocity-obstacle cone sampler with candidate-risk diagnostics. |
 | `reciprocal_velocity_obstacle` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Hybrid reciprocal/HRVO-style cone sampler with responsibility and apex-shift diagnostics. |
 | `learned_tiny` | experimental learned baseline | frozen JSON weights, goal, local neighbor tracks, V2V/sensor/fused observations | 2D, 3D | Tiny learned-model fixture for packaging, disclosure, adapter, and benchmark-result plumbing. |
@@ -61,6 +62,7 @@ Experimental baselines are runnable but not leaderboard anchors yet:
 - `cbf_qp`
 - `mpc_local`
 - `ego_swarm`
+- `ego_swarm_opt`
 - `velocity_obstacle`
 - `reciprocal_velocity_obstacle`
 - `learned_tiny`
@@ -91,7 +93,7 @@ python -m microbench.cli baseline-smoke \
   --require-pass
 ```
 
-This runs every non-template built-in baseline on one planar and one 3D generated smoke scenario, checks finite key metrics, planner errors, public-alpha guardrails, 2D/3D coverage, agent-message signals for `priority_yield`, proposal/ACK signals for `negotiation_yield`, and public debug/intent output contracts for `cbf_qp`, `mpc_local`, `learned_tiny`, and `intent_dummy`. Experimental `cbf_qp` and `mpc_local` soft timeout/fallback counts are reported but do not block public-alpha smoke by themselves; any such counts still block stable-v1 promotion.
+This runs every non-template built-in baseline on one planar and one 3D generated smoke scenario, checks finite key metrics, planner errors, public-alpha guardrails, 2D/3D coverage, agent-message signals for `priority_yield`, proposal/ACK signals for `negotiation_yield`, and public debug/intent output contracts for `cbf_qp`, `mpc_local`, `ego_swarm`, `ego_swarm_opt`, `learned_tiny`, and `intent_dummy`. Experimental `cbf_qp`, `mpc_local`, and `ego_swarm_opt` soft timeout/fallback counts are reported but do not block public-alpha smoke by themselves; any such counts still block stable-v1 promotion.
 
 Experimental promotion calibration:
 
@@ -209,7 +211,7 @@ python -m microbench.cli advanced-baseline-comparison \
   --require-pass
 ```
 
-This runs `orca_heuristic`, `orca_with_staleness`, `cbf_qp`, `mpc_local`, `ego_swarm`, `velocity_obstacle`, and `reciprocal_velocity_obstacle` on the same `urban_conflict_3d` scenario, with the same seed, agent count, duration override, and communication profile. It writes `advanced_baseline_comparison.json`, `baseline_report.json`, `results.csv`, `summary.csv`, and a copied scenario file under `_comparison_scenario/`. Use it as a quick apples-to-apples advanced-baseline artifact before spending time on the full official leaderboard.
+This runs `orca_heuristic`, `orca_with_staleness`, `cbf_qp`, `mpc_local`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, and `reciprocal_velocity_obstacle` on the same `urban_conflict_3d` scenario, with the same seed, agent count, duration override, and communication profile. It writes `advanced_baseline_comparison.json`, `baseline_report.json`, `results.csv`, `summary.csv`, and a copied scenario file under `_comparison_scenario/`. Use it as a quick apples-to-apples advanced-baseline artifact before spending time on the full official leaderboard.
 
 Build an all-official-suite baseline leaderboard:
 
@@ -358,7 +360,7 @@ Observed local calibration on tiny generated suites before public-alpha tuning:
 - passing that review is evidence for promotion discussion, not promotion by itself; CBF still needs stronger solver/fallback validation, and MPC still needs broader compute and dense-3D stress characterization before either should become a public reference baseline
 - `baseline-evidence` adds cheap CBF, MPC, VO, and RVO targeted checks; passing it is a local evidence point, not a substitute for generated-suite stress characterization
 
-## EGO-Swarm-Inspired Trajectory-Sharing Baseline
+## EGO-Swarm-Inspired Trajectory-Sharing Baselines
 
 `ego_swarm` is a clean-room EGO-Swarm-inspired local planner. The upstream EGO-Swarm project is a decentralized, asynchronous quadrotor swarm system for unknown cluttered environments, and its public repository is GPLv3. DAA Microbench does not vendor or port that code. Instead, this baseline adapts the published idea to the benchmark contract: each agent samples smooth receding-horizon trajectory topologies, scores goal progress, smoothness, dynamic feasibility, static obstacle clearance, and predicted swarm clearance, then publishes the selected trajectory as an intent message.
 
@@ -381,6 +383,33 @@ Requirements before promoting it to a reference baseline:
 - obstacle-rich scenario evidence beyond AABB proximity penalties
 - compute p95 bands on dense 3D scenes
 - docs that clearly distinguish the clean-room benchmark baseline from the upstream GPL implementation
+
+`ego_swarm_opt` is the stronger clean-room optimizer variant. It starts from the same decentralized trajectory-sharing idea, but instead of only scoring sampled arcs, it creates topological control-point seeds and optimizes the control points against a continuous cost with smoothness, path length, velocity/acceleration-limit, swarm-clearance, obstacle-clearance, warm-start, and intent-sharing terms. The default solver is deterministic projected-gradient so the baseline remains dependency-free; `solver: auto` or `solver: scipy_l_bfgs_b` can use SciPy L-BFGS-B when available and then fall back to projected-gradient if needed.
+
+Useful optimizer debug fields include:
+
+- `ego_swarm_opt_solver`
+- `ego_swarm_opt_solver_status`
+- `ego_swarm_opt_control_points`
+- `ego_swarm_opt_curve_samples`
+- `ego_swarm_opt_initializations`
+- `ego_swarm_opt_best_topology`
+- `ego_swarm_opt_initial_cost`
+- `ego_swarm_opt_final_cost`
+- `ego_swarm_opt_cost_reduction`
+- `ego_swarm_opt_dynamic_penalty`
+- `ego_swarm_opt_min_swarm_clearance_m`
+- `ego_swarm_opt_min_obstacle_clearance_m`
+- `ego_swarm_opt_intent_points`
+
+Use `ego_swarm_opt` when comparing against `mpc_local`: `mpc_local` is a sampled velocity-command predictive baseline, while `ego_swarm_opt` optimizes a planned trajectory and publishes it as intent. That distinction is exactly what the advanced comparison lane is meant to expose.
+
+Additional promotion requirements for `ego_swarm_opt`:
+
+- compare against `mpc_local` on the same 3D conflict lane and full generated suites
+- calibrate compute p95 bands separately for projected-gradient and SciPy solver modes
+- verify degraded/stale intent behavior under packet loss and delayed V2V
+- add denser obstacle-field evidence once richer maps or obstacle sets are available
 
 ## Velocity-Obstacle Baselines
 

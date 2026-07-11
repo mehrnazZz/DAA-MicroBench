@@ -31,6 +31,7 @@ SERIOUS_BASELINE_METHODS = (
     "cbf_qp",
     "mpc_local",
     "ego_swarm",
+    "ego_swarm_opt",
     "priority_yield",
     "negotiation_yield",
     "learned_tiny",

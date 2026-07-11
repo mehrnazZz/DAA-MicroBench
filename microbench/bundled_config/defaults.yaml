@@ -157,6 +157,43 @@ ego_swarm:
   intent_tube_margin_m: 0.35
   max_intent_points: 10
 
+ego_swarm_opt:
+  horizon_s: 3.2
+  rollout_dt_s: 0.4
+  control_points: 5
+  curve_samples: 7
+  max_neighbors: 8
+  max_initializations: 3
+  solver: "projected_gradient"  # "projected_gradient", "auto", or "scipy_l_bfgs_b"
+  opt_iterations: 3
+  scipy_maxiter: 35
+  gradient_step_m: 0.08
+  line_search_shrink: 0.55
+  offset_scales_m: [0.0, 2.5, 5.0]
+  vertical_offset_scales_m: [2.0, 4.0]
+  safety_margin_m: 0.35
+  obstacle_margin_m: 0.25
+  near_clearance_m: 1.85
+  goal_slowdown_radius_m: 6.0
+  stale_inflation_gain: 0.7
+  stale_age_cap_s: 1.5
+  intent_age_inflation_gain: 0.35
+  track_uncertainty_speed_gain: 0.1
+  goal_weight: 3.0
+  reference_weight: 0.08
+  smoothness_weight: 2.2
+  path_length_weight: 0.05
+  velocity_limit_weight: 35.0
+  acceleration_limit_weight: 18.0
+  swarm_collision_weight: 5200.0
+  swarm_clearance_weight: 120.0
+  obstacle_collision_weight: 6800.0
+  obstacle_clearance_weight: 150.0
+  warm_start_weight: 0.12
+  intent_ttl_s: 1.0
+  intent_tube_margin_m: 0.35
+  max_intent_points: 12
+
 velocity_obstacle: &velocity_obstacle_defaults
   time_horizon_s: 3.0
   obstacle_time_horizon_s: 3.0

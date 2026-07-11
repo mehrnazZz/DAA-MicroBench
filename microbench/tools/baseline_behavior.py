@@ -23,6 +23,7 @@ BASELINE_BEHAVIOR_METHODS = (
     "cbf_qp",
     "mpc_local",
     "ego_swarm",
+    "ego_swarm_opt",
     "velocity_obstacle",
     "reciprocal_velocity_obstacle",
     "learned_tiny",
@@ -56,7 +57,7 @@ GUARDRAIL_FIELDS = (
     "planner_error_count",
     "planner_fallback_count",
 )
-EXPERIMENTAL_SOFT_GUARDRAIL_METHODS = {"cbf_qp", "mpc_local"}
+EXPERIMENTAL_SOFT_GUARDRAIL_METHODS = {"cbf_qp", "mpc_local", "ego_swarm_opt"}
 SOFT_GUARDRAIL_FIELDS = {"planner_timeout_count", "planner_fallback_count"}
 
 
@@ -199,6 +200,37 @@ def _planner_output_contracts(methods: list[str]) -> list[dict[str, Any]]:
             )
         except Exception as exc:
             checks.append(_check("ego_swarm_debug_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
+
+    if "ego_swarm_opt" in methods:
+        try:
+            planner = make_planner("ego_swarm_opt")
+            planner.reset(0)
+            out = planner.compute_cmd(_planner_input(neighbors=[_neighbor()], planar=False))
+            info = getattr(out, "debug_info", {})
+            intent = getattr(out, "intent_out", None)
+            checks.append(
+                _check(
+                    "ego_swarm_opt_debug_contract",
+                    int(info.get("ego_swarm_opt_control_points", 0)) >= 5
+                    and str(info.get("ego_swarm_opt_solver_status", ""))
+                    and info.get("ego_swarm_opt_min_swarm_clearance_m") is not None
+                    and float(info.get("ego_swarm_opt_cost_reduction", 0.0)) >= -1e-6
+                    and info.get("ego_swarm_opt_planar") is False
+                    and intent is not None
+                    and getattr(intent, "kind", "") == "EGO_SWARM_OPT_TRAJECTORY",
+                    {
+                        "ego_swarm_opt_control_points": info.get("ego_swarm_opt_control_points"),
+                        "ego_swarm_opt_solver": info.get("ego_swarm_opt_solver"),
+                        "ego_swarm_opt_solver_status": info.get("ego_swarm_opt_solver_status"),
+                        "ego_swarm_opt_cost_reduction": info.get("ego_swarm_opt_cost_reduction"),
+                        "ego_swarm_opt_min_swarm_clearance_m": info.get("ego_swarm_opt_min_swarm_clearance_m"),
+                        "ego_swarm_opt_planar": info.get("ego_swarm_opt_planar"),
+                        "intent_kind": getattr(intent, "kind", None),
+                    },
+                )
+            )
+        except Exception as exc:
+            checks.append(_check("ego_swarm_opt_debug_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
 
     if "velocity_obstacle" in methods:
         try:

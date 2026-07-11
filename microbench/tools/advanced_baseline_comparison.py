@@ -23,6 +23,7 @@ DEFAULT_ADVANCED_COMPARISON_METHODS = (
     "cbf_qp",
     "mpc_local",
     "ego_swarm",
+    "ego_swarm_opt",
     "velocity_obstacle",
     "reciprocal_velocity_obstacle",
 )
