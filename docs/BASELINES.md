@@ -317,6 +317,15 @@ python -m microbench.cli baseline-evidence \
   --require-pass
 ```
 
+To also generate compact Foxglove-ready trace JSONL artifacts for the optimizer-grade pair:
+
+```bash
+python -m microbench.cli baseline-evidence \
+  --out-dir runs_optimizer_evidence \
+  --save-optimizer-traces \
+  --require-pass
+```
+
 For `cbf_qp`, this records feasible projection behavior, forced fallback behavior with residual violation reporting, stale-track barrier inflation, and optional solver-path status. Passing it supports continued public-alpha use, but the report intentionally recommends keeping CBF experimental until solver backends and infeasible-constraint behavior are validated beyond these targeted cases.
 
 ## MPC-Local Predictive Baseline
@@ -351,7 +360,7 @@ Requirements before promoting it to a reference baseline:
 - broader tests for degraded observations, dense 3D scenes, candidate capping, candidate-risk accounting, and public `PlannerInput`/`PlannerOutput` behavior
 - optional stronger shooting-method or solver-backed variant if needed
 
-`baseline-evidence` exercises a dense nonplanar local scene with nearby traffic and an obstacle, checks candidate capping/debug signals, verifies stale-track risk inflation, and records per-call p50/p95 timing for the sampled planner call. Passing it supports public-alpha comparison, but the report intentionally recommends keeping MPC experimental until dense-3D compute bands and stress behavior are calibrated on official suites.
+`baseline-evidence` exercises dense nonplanar local scenes with nearby traffic, stale tracks, intent trajectories, and obstacles. For `mpc_local`, it checks candidate capping/debug signals, verifies stale-track risk inflation, and records per-call p50/p95 timing for the sampled planner call. For `mpc_nonlinear` and `ego_swarm_opt`, it checks optimizer-grade dense-3D signals, degraded intent/V2V risk inflation, SciPy-or-fallback solver status, dense-3D timing bands, and optional Foxglove-ready JSONL trace artifacts. Passing it supports public-alpha comparison, but the report intentionally recommends keeping these methods experimental until dense-3D compute bands and stress behavior are calibrated on official suites.
 
 `mpc_nonlinear` is the optimizer-grade MPC counterpart to `mpc_local`. It uses finite-horizon multiple shooting over bounded acceleration controls with a double-integrator translational model, multistart avoidance seeds, warm starts, dynamic obstacle predictions, intent-trajectory penalties, static AABB obstacle penalties, smoothness/jerk costs, terminal tracking, and trajectory intent output. The default solver is deterministic projected-gradient so it runs without optional dependencies; `solver: auto` or `solver: scipy_l_bfgs_b` can use SciPy L-BFGS-B when available.
 
@@ -388,7 +397,7 @@ Observed local calibration on tiny generated suites before public-alpha tuning:
 - a single `official_3d_stress` `mpc_local` row can still take tens of seconds wall-clock locally, so it remains outside default CI smoke
 - a 20-second stable-metadata prep review with `baseline-review --methods cbf_qp,mpc_local --duration-s 20` passes the selected 3D/degraded review lanes for both methods, but reports `needs_reference_role_decision` because both remain `experimental_baseline`
 - passing that review is evidence for promotion discussion, not promotion by itself; CBF still needs stronger solver/fallback validation, and MPC still needs broader compute and dense-3D stress characterization before either should become a public reference baseline
-- `baseline-evidence` adds cheap CBF, MPC, VO, and RVO targeted checks; passing it is a local evidence point, not a substitute for generated-suite stress characterization
+- `baseline-evidence` adds cheap CBF, MPC, NMPC, EGO-Swarm optimizer, VO, and RVO targeted checks; passing it is a local evidence point, not a substitute for generated-suite stress characterization
 
 ## EGO-Swarm-Inspired Trajectory-Sharing Baselines
 

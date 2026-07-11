@@ -715,6 +715,10 @@ def _baseline_evidence(args) -> None:
     report = run_baseline_reference_evidence(
         mpc_profile_iters=int(args.mpc_profile_iters),
         mpc_p95_max_ms=float(args.max_mpc_p95_ms),
+        optimizer_profile_iters=int(args.optimizer_profile_iters),
+        optimizer_p95_max_ms=float(args.max_optimizer_p95_ms),
+        artifact_dir=args.out_dir,
+        save_optimizer_traces=bool(args.save_optimizer_traces),
     )
     report_path = Path(args.out_dir) / "baseline_evidence.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1346,10 +1350,22 @@ def build_parser() -> argparse.ArgumentParser:
     p_bp.add_argument("--require-calibrated", action="store_true", help="Fail if public-alpha calibration evidence is missing")
     p_bp.add_argument("--require-stable-v1-ready", action="store_true", help="Fail if stable-v1 promotion blockers remain")
 
-    p_be = sub.add_parser("baseline-evidence", help="Run targeted CBF/MPC/VO/RVO reference-evidence checks")
+    p_be = sub.add_parser("baseline-evidence", help="Run targeted CBF/MPC/NMPC/EGO-Swarm/VO/RVO reference-evidence checks")
     p_be.add_argument("--out-dir", required=True, help="Fresh output directory for evidence artifacts")
     p_be.add_argument("--mpc-profile-iters", type=int, default=20, help="Dense 3D MPC timing samples")
     p_be.add_argument("--max-mpc-p95-ms", type=float, default=50.0, help="Allowed dense 3D MPC p95 per-call latency")
+    p_be.add_argument("--optimizer-profile-iters", type=int, default=8, help="Dense 3D optimizer-grade timing samples")
+    p_be.add_argument(
+        "--max-optimizer-p95-ms",
+        type=float,
+        default=80.0,
+        help="Allowed dense 3D optimizer-grade p95 per-call latency",
+    )
+    p_be.add_argument(
+        "--save-optimizer-traces",
+        action="store_true",
+        help="Write trace_episode.jsonl artifacts for mpc_nonlinear and ego_swarm_opt evidence episodes",
+    )
     p_be.add_argument("--json", action="store_true", help="Emit machine-readable evidence report")
     p_be.add_argument("--require-pass", action="store_true", help="Fail if any evidence check fails")
 
