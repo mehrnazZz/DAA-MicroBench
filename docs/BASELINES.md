@@ -18,7 +18,7 @@ python -m microbench.cli baseline-leaderboard --out-dir runs_baseline_leaderboar
 The public-alpha baseline gate is intentionally stricter than "the code imports":
 
 - required public-alpha reference baselines: `orca_heuristic`, `orca_with_staleness`, `priority_yield`, `negotiation_yield`
-- experimental but runnable baselines: `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, `reciprocal_velocity_obstacle`, `learned_tiny`
+- experimental but runnable baselines: `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, `reciprocal_velocity_obstacle`, `learned_tiny`
 - illustrative or template methods: `baseline_goal`, `intent_dummy`, `template`
 
 Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pass`, and `baseline-promotion --require-calibrated` before inviting external baseline comparisons. Stable v1 still requires promotion work; `baseline-audit --require-stable-v1-ready` and `baseline-promotion --require-stable-v1-ready` are expected to fail while experimental baselines remain experimental.
@@ -35,6 +35,7 @@ Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pas
 | `mpc_nonlinear` | experimental baseline | local neighbor tracks, intent trajectories, V2V/sensor/fused observations, obstacles | 2D, 3D | Clean-room nonlinear MPC trajectory-optimization baseline over bounded acceleration controls. |
 | `dmpc_best_response` | experimental baseline | local neighbor tracks, intent trajectories, agent-message plan broadcasts, V2V/sensor/fused observations, obstacles | 2D, 3D | Distributed-MPC-style best-response baseline with coupled intent constraints and stale/missing plan fallback. |
 | `bvc_tube_dmpc` | experimental baseline | local neighbor tracks, intent trajectories, agent-message plan broadcasts, V2V/sensor/fused observations, obstacles | 2D, 3D | Tube-based DMPC baseline with hard buffered Voronoi-cell halfspace tubes and obstacle halfspace constraints. |
+| `dynamic_tube_dmpc` | experimental baseline | local neighbor tracks, intent trajectories, agent-message plan broadcasts, V2V/sensor/fused observations, obstacles | 2D, 3D | Paper-specific Dai/Liao/Chen dynamic tube-DMPC baseline with condensed acceleration QP, elastic tube reconstruction, risk-triggered collision constraints, and local tube halfspaces. |
 | `rmader` | experimental baseline | local neighbor tracks, intent trajectories, agent-message plan broadcasts, V2V/sensor/fused observations, obstacles | 2D, 3D | Clean-room RMADER/MADER-style baseline with cubic B-spline plans, MINVO interval polyhedra, hard separating hyperplanes, and delay-check publication. |
 | `ego_swarm` | experimental baseline | local neighbor tracks, intent trajectories, V2V/sensor/fused observations, obstacles | 2D, 3D | Clean-room EGO-Swarm-inspired receding-horizon trajectory-sharing baseline. |
 | `ego_swarm_opt` | experimental baseline | local neighbor tracks, intent trajectories, V2V/sensor/fused observations, obstacles | 2D, 3D | Clean-room EGO-Swarm-style optimized control-point trajectory-sharing baseline. |
@@ -68,6 +69,7 @@ Experimental baselines are runnable but not leaderboard anchors yet:
 - `mpc_nonlinear`
 - `dmpc_best_response`
 - `bvc_tube_dmpc`
+- `dynamic_tube_dmpc`
 - `rmader`
 - `ego_swarm`
 - `ego_swarm_opt`
@@ -101,7 +103,7 @@ python -m microbench.cli baseline-smoke \
   --require-pass
 ```
 
-This runs every non-template built-in baseline except contract-only heavy optimizer probes on one planar and one 3D generated smoke scenario, checks finite key metrics, planner errors, public-alpha guardrails, 2D/3D coverage, agent-message signals for `priority_yield`, proposal/ACK signals for `negotiation_yield`, and public debug/intent output contracts for `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `learned_tiny`, and `intent_dummy`. `bvc_tube_dmpc` and `rmader` are contract-only in this smoke gate because per-tick hard-tube and MINVO/hyperplane solves belong in optimizer evidence and leaderboard runs. Experimental `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, and `ego_swarm_opt` soft timeout/fallback counts are reported but do not block public-alpha smoke by themselves; any such counts still block stable-v1 promotion.
+This runs every non-template built-in baseline except contract-only heavy optimizer probes on one planar and one 3D generated smoke scenario, checks finite key metrics, planner errors, public-alpha guardrails, 2D/3D coverage, agent-message signals for `priority_yield`, proposal/ACK signals for `negotiation_yield`, and public debug/intent output contracts for `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `learned_tiny`, and `intent_dummy`. `bvc_tube_dmpc`, `dynamic_tube_dmpc`, and `rmader` are contract-only in this smoke gate because per-tick hard-tube, condensed-QP, and MINVO/hyperplane solves belong in optimizer evidence and leaderboard runs. Experimental `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, and `ego_swarm_opt` soft timeout/fallback counts are reported but do not block public-alpha smoke by themselves; any such counts still block stable-v1 promotion.
 
 Experimental promotion calibration:
 
@@ -219,7 +221,7 @@ python -m microbench.cli advanced-baseline-comparison \
   --require-pass
 ```
 
-This runs `orca_heuristic`, `orca_with_staleness`, `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, and `reciprocal_velocity_obstacle` on the same `urban_conflict_3d` scenario, with the same seed, agent count, duration override, and communication profile. It writes `advanced_baseline_comparison.json`, `baseline_report.json`, `results.csv`, `summary.csv`, and a copied scenario file under `_comparison_scenario/`. Use it as a quick apples-to-apples advanced-baseline artifact before spending time on the full official leaderboard.
+This runs `orca_heuristic`, `orca_with_staleness`, `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, and `reciprocal_velocity_obstacle` on the same `urban_conflict_3d` scenario, with the same seed, agent count, duration override, and communication profile. It writes `advanced_baseline_comparison.json`, `baseline_report.json`, `results.csv`, `summary.csv`, and a copied scenario file under `_comparison_scenario/`. Use it as a quick apples-to-apples advanced-baseline artifact before spending time on the full official leaderboard.
 
 Build an all-official-suite baseline leaderboard:
 
@@ -389,7 +391,7 @@ Requirements before promoting it to a reference baseline:
 - broader tests for degraded observations, dense 3D scenes, candidate capping, candidate-risk accounting, and public `PlannerInput`/`PlannerOutput` behavior
 - optional stronger shooting-method or solver-backed variant if needed
 
-`baseline-evidence` exercises dense nonplanar local scenes with nearby traffic, stale tracks, intent trajectories, and obstacles. For `mpc_local`, it checks candidate capping/debug signals, verifies stale-track risk inflation, and records per-call p50/p95 timing for the sampled planner call. For `mpc_nonlinear`, `bvc_tube_dmpc`, `rmader`, and `ego_swarm_opt`, it checks optimizer-grade dense-3D signals, hard BVC tube/cell constraint reporting, RMADER MINVO/hyperplane commit and delay-check fallback reporting, degraded intent/V2V risk inflation where applicable, SciPy-or-fallback solver status for supported solvers, dense-3D timing bands, and optional Foxglove-ready JSONL trace artifacts. Passing it supports public-alpha comparison, but the report intentionally recommends keeping these methods experimental until dense-3D compute bands and stress behavior are calibrated on official suites.
+`baseline-evidence` exercises dense nonplanar local scenes with nearby traffic, stale tracks, intent trajectories, and obstacles. For `mpc_local`, it checks candidate capping/debug signals, verifies stale-track risk inflation, and records per-call p50/p95 timing for the sampled planner call. For `mpc_nonlinear`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, `rmader`, and `ego_swarm_opt`, it checks optimizer-grade dense-3D signals, hard BVC tube/cell constraint reporting, dynamic tube reconstruction and risk-triggered collision constraint reporting, RMADER MINVO/hyperplane commit and delay-check fallback reporting, degraded intent/V2V risk inflation where applicable, SciPy-or-fallback solver status for supported solvers, dense-3D timing bands, and optional Foxglove-ready JSONL trace artifacts. Passing it supports public-alpha comparison, but the report intentionally recommends keeping these methods experimental until dense-3D compute bands and stress behavior are calibrated on official suites.
 
 `mpc_nonlinear` is the optimizer-grade MPC counterpart to `mpc_local`. It uses finite-horizon multiple shooting over bounded acceleration controls with a double-integrator translational model, multistart avoidance seeds, warm starts, dynamic obstacle predictions, intent-trajectory penalties, static AABB obstacle penalties, smoothness/jerk costs, terminal tracking, and trajectory intent output. The default solver is deterministic projected-gradient so it runs without optional dependencies; `solver: auto` or `solver: scipy_l_bfgs_b` can use SciPy L-BFGS-B when available.
 
@@ -474,6 +476,35 @@ Additional promotion requirements for `bvc_tube_dmpc`:
 - characterize whether cell/tube constraints are too conservative in realistic noncooperative intruder and urban obstacle cases
 - decide whether to add an optional external QP/SOCP backend for larger cell-constrained horizon programs
 
+`dynamic_tube_dmpc` is the paper-specific dynamic tube-DMPC baseline following Dai, Liao, and Chen, "Safe Swarm Navigation in Constrained Environments: A Dynamic Tube-Based Distributed MPC Approach" (*Drones*, 2026). It implements the paper's double-integrator prediction model, condensed acceleration-QP objective, risk-triggered linearized collision constraints, elastic virtual-tube reconstruction, local tube halfspace constraints, norm-bounded acceleration/velocity projection, and assumed predicted trajectory broadcasting.
+
+Useful dynamic tube-DMPC debug fields include:
+
+- `dynamic_tube_dmpc_solver`
+- `dynamic_tube_dmpc_solver_status`
+- `dynamic_tube_dmpc_horizon_steps`
+- `dynamic_tube_dmpc_qp_variables`
+- `dynamic_tube_dmpc_qp_constraint_count`
+- `dynamic_tube_dmpc_risk_agent_count`
+- `dynamic_tube_dmpc_first_risk_step`
+- `dynamic_tube_dmpc_collision_constraint_count`
+- `dynamic_tube_dmpc_tube_reconstruction_active`
+- `dynamic_tube_dmpc_tube_update_trigger`
+- `dynamic_tube_dmpc_tube_connected`
+- `dynamic_tube_dmpc_tube_max_shift_m`
+- `dynamic_tube_dmpc_tube_constraint_count`
+- `dynamic_tube_dmpc_equations`
+- `dynamic_tube_dmpc_agent_messages`
+
+Use `dynamic_tube_dmpc` when you want to compare the Dai/Liao/Chen dynamic-tube formulation against the more generic `bvc_tube_dmpc`, `dmpc_best_response`, `rmader`, and `ego_swarm_opt` baselines. It is adapted to DAA Microbench's local velocity-command interface and AABB obstacle representation; it is not a drop-in copy of the authors' MATLAB implementation.
+
+Additional promotion requirements for `dynamic_tube_dmpc`:
+
+- add generated virtual-tube traversal scenarios that match the paper's static and dynamic tube experiments
+- calibrate dense-swarm behavior for 10-12 agents with tube radii and dynamic obstacle intrusions close to the paper
+- characterize solve time and fallback behavior separately for cached receding-horizon ticks and full QP replans
+- add side-by-side Foxglove traces against `bvc_tube_dmpc`, `dmpc_best_response`, `rmader`, and `ego_swarm_opt`
+
 `rmader` is the robust MADER-family trajectory-sharing baseline. It builds a cubic B-spline local plan, converts every interval into continuous MINVO polyhedra, constructs hard separating hyperplanes against dynamic neighbor/intent hulls and static AABB obstacle hulls, smooths the control polygon under velocity/acceleration/jerk diagnostics, and publishes candidate plus committed trajectories through the intent message bus. The delay check gates commitment on the hard MINVO separation recheck; if the candidate is unsafe, the planner keeps a prior committed trajectory when available or falls back to a braking trajectory.
 
 Useful RMADER debug fields include:
@@ -507,7 +538,7 @@ Observed local calibration on tiny generated suites before public-alpha tuning:
 - a single `official_3d_stress` `mpc_local` row can still take tens of seconds wall-clock locally, so it remains outside default CI smoke
 - a 20-second stable-metadata prep review with `baseline-review --methods cbf_qp,mpc_local --duration-s 20` passes the selected 3D/degraded review lanes for both methods, but reports `needs_reference_role_decision` because both remain `experimental_baseline`
 - passing that review is evidence for promotion discussion, not promotion by itself; CBF still needs stronger solver/fallback validation, and MPC still needs broader compute and dense-3D stress characterization before either should become a public reference baseline
-- `baseline-evidence` adds cheap CBF, MPC, NMPC, BVC tube-DMPC, RMADER, EGO-Swarm optimizer, VO, and RVO targeted checks; passing it is a local evidence point, not a substitute for generated-suite stress characterization
+- `baseline-evidence` adds cheap CBF, MPC, NMPC, BVC tube-DMPC, dynamic tube-DMPC, RMADER, EGO-Swarm optimizer, VO, and RVO targeted checks; passing it is a local evidence point, not a substitute for generated-suite stress characterization
 
 ## EGO-Swarm-Inspired Trajectory-Sharing Baselines
 

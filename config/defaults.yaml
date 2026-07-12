@@ -250,6 +250,49 @@ bvc_tube_dmpc:
   max_intent_points: 12
   coordination_message_ttl_s: 0.75
 
+dynamic_tube_dmpc:
+  step_dt_s: 0.2
+  horizon_steps: 15
+  replan_period_s: 0.2
+  max_neighbors: 12
+  r_min_prime_m: 0.4
+  localization_sigma_m: 0.03
+  collision_probability_delta: 0.0027
+  theta_vertical: 2.0
+  safety_margin_m: 0.0
+  risk_activation_margin_m: 0.0
+  obstacle_margin_m: 0.5
+  hard_tolerance_m: 0.04
+  tube_radius_m: 0.8
+  environment_margin_m: 1.0
+  tube_waypoints: 25
+  sensing_horizon_m: 6.0
+  local_subgoal_advance_m: 4.0
+  tube_update_period_s: 0.4
+  obstacle_motion_trigger_m: 0.25
+  task_trigger_distance_m: 1.5
+  elastic_delta_safe_m: 1.5
+  elastic_gamma: 0.16
+  elastic_zeta: 0.05
+  elastic_step_m: 0.22
+  elastic_max_shift_m: 2.0
+  gaussian_kernel_radius: 2
+  gaussian_sigma: 1.0
+  temporal_smoothing_alpha: 0.65
+  position_weight: 0.8
+  terminal_weight: 5.5
+  control_weight: 0.06
+  input_delta_weight: 0.28
+  qp_regularization: 0.00001
+  qp_iterations: 65
+  projection_iterations: 5
+  line_search_shrink: 0.55
+  step_scale: 0.92
+  intent_ttl_s: 1.0
+  intent_tube_margin_m: 0.35
+  max_intent_points: 16
+  coordination_message_ttl_s: 0.75
+
 rmader:
   horizon_s: 2.4
   control_points: 8

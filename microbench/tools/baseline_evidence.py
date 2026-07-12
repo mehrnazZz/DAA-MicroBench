@@ -10,6 +10,7 @@ import numpy as np
 
 from microbench.planners.cbf_qp import CbfQpPlanner
 from microbench.planners.bvc_tube_dmpc import BvcTubeDmpcPlanner
+from microbench.planners.dynamic_tube_dmpc import DynamicTubeDmpcPlanner
 from microbench.planners.ego_swarm_opt import EgoSwarmOptimizingPlanner
 from microbench.planners.mpc_local import MpcLocalPlanner
 from microbench.planners.mpc_nonlinear import NonlinearMpcPlanner
@@ -912,6 +913,78 @@ def _bvc_tube_dmpc_evidence_checks() -> list[dict[str, Any]]:
     return checks
 
 
+def _dynamic_tube_dmpc_evidence_checks() -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+    risk_input = _planner_input(
+        ego=_agent(pos=(0.0, 0.0, 0.0), vel=(1.0, 0.0, 0.0), goal=(10.0, 0.0, 0.0), radius=0.2, v_max=1.0),
+        goal_dir=(1.0, 0.0, 0.0),
+        neighbors=[_neighbor(idx=1, pos=(1.0, 0.0, 0.0), vel=(-1.0, 0.0, 0.0), radius=0.2)],
+        planar=False,
+    )
+    planner = DynamicTubeDmpcPlanner(cfg={"horizon_steps": 6, "qp_iterations": 18, "projection_iterations": 4, "tube_waypoints": 11})
+    planner.reset(0)
+    out = planner.compute_cmd(risk_input)
+    debug = out.debug_info
+    checks.append(
+        _check(
+            "dynamic_tube_dmpc",
+            "dynamic_tube_dmpc_risk_triggered_qp_signals",
+            bool(
+                debug.get("dynamic_tube_dmpc_planar") is False
+                and int(debug.get("dynamic_tube_dmpc_qp_variables", 0)) >= 6
+                and int(debug.get("dynamic_tube_dmpc_tube_constraint_count", 0)) > 0
+                and int(debug.get("dynamic_tube_dmpc_collision_constraint_count", 0)) > 0
+                and int(debug.get("dynamic_tube_dmpc_risk_agent_count", 0)) > 0
+                and debug.get("dynamic_tube_dmpc_first_risk_step") is not None
+                and str(debug.get("dynamic_tube_dmpc_solver_status", ""))
+                and "24-27" in str(debug.get("dynamic_tube_dmpc_equations", ""))
+                and out.intent_out is not None
+                and out.intent_out.kind == "DYNAMIC_TUBE_DMPC_TRAJECTORY"
+                and len(out.messages_out) >= 1
+                and _finite_vec(out.v_cmd)
+            ),
+            {"v_cmd": [float(x) for x in out.v_cmd], "debug_info": debug},
+        )
+    )
+
+    obstacle_input = _planner_input(
+        ego=_agent(pos=(0.0, 0.0, 0.0), vel=(0.0, 0.0, 0.0), goal=(10.0, 0.0, 0.0), radius=0.2, v_max=1.0),
+        goal_dir=(1.0, 0.0, 0.0),
+        obstacles=[
+            AABBObs(
+                center=np.asarray([3.0, 0.0, 0.0], dtype=np.float32),
+                half=np.asarray([0.35, 0.5, 0.5], dtype=np.float32),
+            )
+        ],
+        planar=False,
+    )
+    deform_planner = DynamicTubeDmpcPlanner(
+        cfg={"horizon_steps": 6, "qp_iterations": 18, "projection_iterations": 4, "tube_waypoints": 11}
+    )
+    deform_planner.reset(0)
+    deform_out = deform_planner.compute_cmd(obstacle_input)
+    deform_debug = deform_out.debug_info
+    checks.append(
+        _check(
+            "dynamic_tube_dmpc",
+            "dynamic_tube_dmpc_elastic_tube_reconstruction_signals",
+            bool(
+                deform_debug.get("dynamic_tube_dmpc_tube_reconstruction_active") is True
+                and int(deform_debug.get("dynamic_tube_dmpc_active_obstacle_count", 0)) > 0
+                and float(deform_debug.get("dynamic_tube_dmpc_tube_max_shift_m", 0.0)) > 0.0
+                and deform_debug.get("dynamic_tube_dmpc_tube_connected") is True
+                and "28-32" in str(deform_debug.get("dynamic_tube_dmpc_equations", ""))
+                and deform_out.intent_out is not None
+                and deform_out.intent_out.kind == "DYNAMIC_TUBE_DMPC_TRAJECTORY"
+                and len(deform_out.messages_out) >= 1
+                and _finite_vec(deform_out.v_cmd)
+            ),
+            {"v_cmd": [float(x) for x in deform_out.v_cmd], "debug_info": deform_debug},
+        )
+    )
+    return checks
+
+
 def _vo_conflict_input(*, stale_age_s: float = 1.0, planar: bool = True, priority: int | None = None) -> PlannerInput:
     ego = _agent(
         idx=2,
@@ -1047,6 +1120,7 @@ def run_baseline_reference_evidence(
             save_traces=save_optimizer_traces,
         ),
         *_bvc_tube_dmpc_evidence_checks(),
+        *_dynamic_tube_dmpc_evidence_checks(),
         *_rmader_evidence_checks(),
         *_vo_evidence_checks(),
     ]
@@ -1059,6 +1133,7 @@ def run_baseline_reference_evidence(
             "mpc_local",
             "mpc_nonlinear",
             "bvc_tube_dmpc",
+            "dynamic_tube_dmpc",
             "rmader",
             "ego_swarm_opt",
             "velocity_obstacle",
@@ -1072,6 +1147,7 @@ def run_baseline_reference_evidence(
             "mpc_check_count": sum(1 for check in checks if check["method"] == "mpc_local"),
             "mpc_nonlinear_check_count": sum(1 for check in checks if check["method"] == "mpc_nonlinear"),
             "bvc_tube_dmpc_check_count": sum(1 for check in checks if check["method"] == "bvc_tube_dmpc"),
+            "dynamic_tube_dmpc_check_count": sum(1 for check in checks if check["method"] == "dynamic_tube_dmpc"),
             "rmader_check_count": sum(1 for check in checks if check["method"] == "rmader"),
             "ego_swarm_opt_check_count": sum(1 for check in checks if check["method"] == "ego_swarm_opt"),
             "vo_check_count": sum(1 for check in checks if check["method"] == "velocity_obstacle"),
@@ -1087,6 +1163,7 @@ def run_baseline_reference_evidence(
             "mpc_local": "keep_experimental_until_dense_3d_compute_bands_and_stress_behavior_are_calibrated_on_official_suites",
             "mpc_nonlinear": "keep_experimental_until_optimizer_grade_dense_3d_degraded_intent_and_solver_mode_evidence_is_calibrated_on_official_suites",
             "bvc_tube_dmpc": "keep_experimental_until_hard_cell_tube_behavior_is_calibrated_on_official_dense_3d_and_heterogeneous_policy_suites",
+            "dynamic_tube_dmpc": "keep_experimental_until_static_and_dynamic_virtual_tube_scenarios_are_calibrated_against_the_dai_liao_chen_2026_paper",
             "rmader": "keep_experimental_until_minvo_hyperplane_delay_check_behavior_is_calibrated_on_official_dense_3d_and_degraded_v2v_suites",
             "ego_swarm_opt": "keep_experimental_until_optimizer_grade_dense_3d_degraded_intent_and_solver_mode_evidence_is_calibrated_on_official_suites",
             "velocity_obstacle": "keep_experimental_until_all_suite_vo_evidence_is_calibrated_against_orca_and_rvo",

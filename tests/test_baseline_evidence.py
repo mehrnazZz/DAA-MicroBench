@@ -26,6 +26,7 @@ def test_baseline_evidence_cbf_mpc_checks_pass_with_promotion_blockers() -> None
         "mpc_local",
         "mpc_nonlinear",
         "bvc_tube_dmpc",
+        "dynamic_tube_dmpc",
         "rmader",
         "ego_swarm_opt",
         "velocity_obstacle",
@@ -46,6 +47,8 @@ def test_baseline_evidence_cbf_mpc_checks_pass_with_promotion_blockers() -> None
     assert ("mpc_nonlinear", "mpc_nonlinear_dense_3d_profile_p95_bounded") in names
     assert ("bvc_tube_dmpc", "bvc_tube_dmpc_hard_cell_commit_signals") in names
     assert ("bvc_tube_dmpc", "bvc_tube_dmpc_dense_tube_constraints_reported") in names
+    assert ("dynamic_tube_dmpc", "dynamic_tube_dmpc_risk_triggered_qp_signals") in names
+    assert ("dynamic_tube_dmpc", "dynamic_tube_dmpc_elastic_tube_reconstruction_signals") in names
     assert ("rmader", "rmader_minvo_hyperplane_commit_signals") in names
     assert ("rmader", "rmader_dense_delay_check_fallback_reported") in names
     assert ("ego_swarm_opt", "ego_swarm_opt_dense_3d_optimizer_signals") in names
@@ -59,6 +62,7 @@ def test_baseline_evidence_cbf_mpc_checks_pass_with_promotion_blockers() -> None
     assert "keep_experimental" in report["promotion_recommendations"]["mpc_local"]
     assert "keep_experimental" in report["promotion_recommendations"]["mpc_nonlinear"]
     assert "keep_experimental" in report["promotion_recommendations"]["bvc_tube_dmpc"]
+    assert "keep_experimental" in report["promotion_recommendations"]["dynamic_tube_dmpc"]
     assert "keep_experimental" in report["promotion_recommendations"]["rmader"]
     assert "keep_experimental" in report["promotion_recommendations"]["ego_swarm_opt"]
     assert "keep_experimental" in report["promotion_recommendations"]["velocity_obstacle"]

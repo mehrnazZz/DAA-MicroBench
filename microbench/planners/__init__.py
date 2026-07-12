@@ -10,6 +10,7 @@ from microbench.planners.baseline_goal import BaselineGoalPlanner
 from microbench.planners.bvc_tube_dmpc import BvcTubeDmpcPlanner
 from microbench.planners.cbf_qp import CbfQpPlanner
 from microbench.planners.dmpc_best_response import DistributedMpcBestResponsePlanner
+from microbench.planners.dynamic_tube_dmpc import DynamicTubeDmpcPlanner
 from microbench.planners.ego_swarm import EgoSwarmPlanner
 from microbench.planners.ego_swarm_opt import EgoSwarmOptimizingPlanner
 from microbench.planners.intent_dummy import IntentDummyPlanner
@@ -93,6 +94,11 @@ def _make_bvc_tube_dmpc() -> ILocalPlanner:
     return BvcTubeDmpcPlanner(cfg=defaults.get("bvc_tube_dmpc", {}))
 
 
+def _make_dynamic_tube_dmpc() -> ILocalPlanner:
+    defaults = load_defaults()
+    return DynamicTubeDmpcPlanner(cfg=defaults.get("dynamic_tube_dmpc", {}))
+
+
 def _make_rmader() -> ILocalPlanner:
     defaults = load_defaults()
     return RmaderPlanner(cfg=defaults.get("rmader", {}))
@@ -127,6 +133,7 @@ _FACTORIES: dict[str, Callable[[], ILocalPlanner]] = {
     "mpc_nonlinear": _make_mpc_nonlinear,
     "dmpc_best_response": _make_dmpc_best_response,
     "bvc_tube_dmpc": _make_bvc_tube_dmpc,
+    "dynamic_tube_dmpc": _make_dynamic_tube_dmpc,
     "rmader": _make_rmader,
     "ego_swarm": _make_ego_swarm,
     "ego_swarm_opt": _make_ego_swarm_opt,
@@ -315,6 +322,31 @@ _METADATA: dict[str, PlannerMetadata] = {
             "Not an official port of a BVC/B-UAVC or Schoellig-lab DMPC implementation.",
             "Uses DAA Microbench local tracks, intent trajectories, and AABB obstacles rather than raw onboard perception.",
             "Experimental; needs dense-3D stress and heterogeneous-policy calibration before becoming a reference baseline.",
+        ),
+    ),
+    "dynamic_tube_dmpc": PlannerMetadata(
+        method="dynamic_tube_dmpc",
+        display_name="Dynamic tube-DMPC baseline",
+        planner_type="dynamic_tube_distributed_mpc_qp",
+        role="experimental_baseline",
+        status="experimental",
+        dimensions=("2d", "3d"),
+        observation_sources=("local_neighbors", "v2v", "sensor", "fused", "intent", "agent_messages", "obstacles"),
+        uses_v2v=True,
+        uses_local_sensing=True,
+        uses_intent=True,
+        uses_agent_messages=True,
+        uses_obstacles=True,
+        description=(
+            "Paper-specific dynamic tube-based DMPC baseline following Dai/Liao/Chen 2026: "
+            "condensed double-integrator QP over acceleration controls, elastic virtual-tube "
+            "reconstruction, risk-triggered linearized collision constraints, local tube "
+            "halfspace constraints, and assumed predicted trajectory broadcasts."
+        ),
+        limitations=(
+            "Adapted to DAA Microbench's local velocity-command contract and AABB obstacle model.",
+            "Uses a benchmark-native dense projected-QP solver rather than the authors' MATLAB implementation.",
+            "Experimental; needs dense virtual-tube scenario calibration before becoming a reference baseline.",
         ),
     ),
     "rmader": PlannerMetadata(

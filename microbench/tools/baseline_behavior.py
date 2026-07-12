@@ -10,7 +10,7 @@ import numpy as np
 from microbench.metrics import append_result, write_summary
 from microbench.planners import make_planner
 from microbench.scenarios import materialize_official_suite
-from microbench.types import AgentState, NeighborObs, PlannerInput, RunSpec
+from microbench.types import AABBObs, AgentState, NeighborObs, PlannerInput, RunSpec
 from microbench.runner import run_episode
 
 
@@ -25,6 +25,7 @@ BASELINE_BEHAVIOR_METHODS = (
     "mpc_nonlinear",
     "dmpc_best_response",
     "bvc_tube_dmpc",
+    "dynamic_tube_dmpc",
     "rmader",
     "ego_swarm",
     "ego_swarm_opt",
@@ -67,6 +68,7 @@ EXPERIMENTAL_SOFT_GUARDRAIL_METHODS = {
     "mpc_nonlinear",
     "dmpc_best_response",
     "bvc_tube_dmpc",
+    "dynamic_tube_dmpc",
     "rmader",
     "ego_swarm_opt",
 }
@@ -76,6 +78,10 @@ CONTRACT_ONLY_METHODS = {
     # Keep the default smoke path cheap; targeted evidence and leaderboard
     # tools cover episode-level behavior.
     "bvc_tube_dmpc",
+    # Dynamic tube-DMPC solves the paper-specific condensed QP over persistent
+    # tube constraints. Episode-scale evidence belongs in optimizer and
+    # leaderboard lanes.
+    "dynamic_tube_dmpc",
     # RMADER is an optimizer-grade MINVO/hyperplane baseline. A direct contract
     # probe catches API regressions cheaply; full episode evidence belongs in a
     # capped optimizer review lane rather than the public-alpha smoke loop.
@@ -125,11 +131,17 @@ def _agent(pos: tuple[float, float, float], vel: tuple[float, float, float] = (0
     )
 
 
-def _planner_input(*, neighbors: list[NeighborObs] | None = None, planar: bool = True) -> PlannerInput:
+def _planner_input(
+    *,
+    neighbors: list[NeighborObs] | None = None,
+    obstacles: list[AABBObs] | None = None,
+    planar: bool = True,
+) -> PlannerInput:
     return PlannerInput(
         ego=_agent((0.0, 0.0, 0.0), vel=(2.0, 0.0, 0.0)),
         goal_dir=np.asarray([1.0, 0.0, 0.0], dtype=np.float32),
         neighbors=list(neighbors or []),
+        obstacles=list(obstacles or []),
         dt=0.02,
         t=0.0,
         planar=planar,
@@ -144,6 +156,13 @@ def _neighbor() -> NeighborObs:
         radius=0.5,
         msg_age_sec=0.0,
         valid=True,
+    )
+
+
+def _obstacle() -> AABBObs:
+    return AABBObs(
+        center=np.asarray([3.0, 0.0, 0.0], dtype=np.float32),
+        half=np.asarray([0.35, 0.5, 0.5], dtype=np.float32),
     )
 
 
@@ -331,6 +350,46 @@ def _planner_output_contracts(methods: list[str]) -> list[dict[str, Any]]:
             )
         except Exception as exc:
             checks.append(_check("bvc_tube_dmpc_debug_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
+
+    if "dynamic_tube_dmpc" in methods:
+        try:
+            planner = make_planner("dynamic_tube_dmpc")
+            planner.reset(0)
+            out = planner.compute_cmd(_planner_input(neighbors=[_neighbor()], obstacles=[_obstacle()], planar=False))
+            info = getattr(out, "debug_info", {})
+            intent = getattr(out, "intent_out", None)
+            checks.append(
+                _check(
+                    "dynamic_tube_dmpc_debug_contract",
+                    int(info.get("dynamic_tube_dmpc_horizon_steps", 0)) >= 2
+                    and int(info.get("dynamic_tube_dmpc_qp_variables", 0)) >= 6
+                    and int(info.get("dynamic_tube_dmpc_tube_constraint_count", 0)) > 0
+                    and int(info.get("dynamic_tube_dmpc_collision_constraint_count", 0)) > 0
+                    and int(info.get("dynamic_tube_dmpc_risk_agent_count", 0)) > 0
+                    and str(info.get("dynamic_tube_dmpc_solver_status", ""))
+                    and info.get("dynamic_tube_dmpc_tube_reconstruction_active") is True
+                    and info.get("dynamic_tube_dmpc_planar") is False
+                    and "24-27" in str(info.get("dynamic_tube_dmpc_equations", ""))
+                    and intent is not None
+                    and getattr(intent, "kind", "") == "DYNAMIC_TUBE_DMPC_TRAJECTORY"
+                    and int(info.get("dynamic_tube_dmpc_agent_messages", 0)) >= 1,
+                    {
+                        "dynamic_tube_dmpc_horizon_steps": info.get("dynamic_tube_dmpc_horizon_steps"),
+                        "dynamic_tube_dmpc_solver": info.get("dynamic_tube_dmpc_solver"),
+                        "dynamic_tube_dmpc_solver_status": info.get("dynamic_tube_dmpc_solver_status"),
+                        "dynamic_tube_dmpc_qp_constraint_count": info.get("dynamic_tube_dmpc_qp_constraint_count"),
+                        "dynamic_tube_dmpc_tube_constraint_count": info.get("dynamic_tube_dmpc_tube_constraint_count"),
+                        "dynamic_tube_dmpc_collision_constraint_count": info.get(
+                            "dynamic_tube_dmpc_collision_constraint_count"
+                        ),
+                        "dynamic_tube_dmpc_tube_max_shift_m": info.get("dynamic_tube_dmpc_tube_max_shift_m"),
+                        "dynamic_tube_dmpc_risk_agent_count": info.get("dynamic_tube_dmpc_risk_agent_count"),
+                        "intent_kind": getattr(intent, "kind", None),
+                    },
+                )
+            )
+        except Exception as exc:
+            checks.append(_check("dynamic_tube_dmpc_debug_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
 
     if "ego_swarm" in methods:
         try:
