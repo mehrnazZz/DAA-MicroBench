@@ -24,6 +24,7 @@ BASELINE_BEHAVIOR_METHODS = (
     "mpc_local",
     "mpc_nonlinear",
     "dmpc_best_response",
+    "rmader",
     "ego_swarm",
     "ego_swarm_opt",
     "velocity_obstacle",
@@ -64,9 +65,16 @@ EXPERIMENTAL_SOFT_GUARDRAIL_METHODS = {
     "mpc_local",
     "mpc_nonlinear",
     "dmpc_best_response",
+    "rmader",
     "ego_swarm_opt",
 }
 SOFT_GUARDRAIL_FIELDS = {"planner_timeout_count", "planner_fallback_count"}
+CONTRACT_ONLY_METHODS = {
+    # RMADER is an optimizer-grade MINVO/hyperplane baseline. A direct contract
+    # probe catches API regressions cheaply; full episode evidence belongs in a
+    # capped optimizer review lane rather than the public-alpha smoke loop.
+    "rmader",
+}
 
 
 def _as_list(values: tuple[str, ...] | list[str] | None, default: tuple[str, ...]) -> list[str]:
@@ -249,6 +257,41 @@ def _planner_output_contracts(methods: list[str]) -> list[dict[str, Any]]:
                 _check("dmpc_best_response_debug_contract", False, {"error": f"{type(exc).__name__}: {exc}"})
             )
 
+    if "rmader" in methods:
+        try:
+            planner = make_planner("rmader")
+            planner.reset(0)
+            out = planner.compute_cmd(_planner_input(neighbors=[_neighbor()], planar=False))
+            info = getattr(out, "debug_info", {})
+            intent = getattr(out, "intent_out", None)
+            checks.append(
+                _check(
+                    "rmader_debug_contract",
+                    int(info.get("rmader_minvo_intervals", 0)) >= 4
+                    and int(info.get("rmader_minvo_control_points_per_interval", 0)) == 4
+                    and int(info.get("rmader_hard_constraint_count", 0)) > 0
+                    and str(info.get("rmader_solver_status", ""))
+                    and info.get("rmader_delay_check_fallback") in {"none", "previous_committed", "braking_trajectory"}
+                    and info.get("rmader_planar") is False
+                    and intent is not None
+                    and getattr(intent, "kind", "") == "RMADER_MINVO_TRAJECTORY"
+                    and int(info.get("rmader_agent_messages", 0)) >= 2,
+                    {
+                        "rmader_minvo_intervals": info.get("rmader_minvo_intervals"),
+                        "rmader_solver": info.get("rmader_solver"),
+                        "rmader_solver_status": info.get("rmader_solver_status"),
+                        "rmader_hard_constraint_count": info.get("rmader_hard_constraint_count"),
+                        "rmader_max_hyperplane_violation_m": info.get("rmader_max_hyperplane_violation_m"),
+                        "rmader_delay_check_passed": info.get("rmader_delay_check_passed"),
+                        "rmader_planar": info.get("rmader_planar"),
+                        "rmader_agent_messages": info.get("rmader_agent_messages"),
+                        "intent_kind": getattr(intent, "kind", None),
+                    },
+                )
+            )
+        except Exception as exc:
+            checks.append(_check("rmader_debug_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
+
     if "ego_swarm" in methods:
         try:
             planner = make_planner("ego_swarm")
@@ -421,6 +464,8 @@ def run_baseline_behavior_smoke(
 ) -> dict[str, Any]:
     out = Path(out_dir)
     methods_list = _as_list(methods, BASELINE_BEHAVIOR_METHODS)
+    episode_methods = [method for method in methods_list if method not in CONTRACT_ONLY_METHODS]
+    contract_only_methods = [method for method in methods_list if method in CONTRACT_ONLY_METHODS]
     scenario_id_list = _as_list(scenario_ids, BASELINE_BEHAVIOR_SCENARIOS)
 
     results_csv = out / "results.csv"
@@ -442,7 +487,7 @@ def run_baseline_behavior_smoke(
 
     rows: list[dict[str, Any]] = []
     for scenario_id in scenario_id_list:
-        for method in methods_list:
+        for method in episode_methods:
             spec = RunSpec(
                 scenario_path=str(scenario_paths[scenario_id]),
                 method=method,
@@ -459,8 +504,19 @@ def run_baseline_behavior_smoke(
     summary_csv = write_summary(out)
 
     checks: list[dict[str, Any]] = []
-    expected_runs = len(methods_list) * len(scenario_id_list)
-    checks.append(_check("run_count", len(rows) == expected_runs, {"expected": expected_runs, "actual": len(rows)}))
+    expected_runs = len(episode_methods) * len(scenario_id_list)
+    checks.append(
+        _check(
+            "run_count",
+            len(rows) == expected_runs,
+            {
+                "expected": expected_runs,
+                "actual": len(rows),
+                "episode_methods": episode_methods,
+                "contract_only_methods": contract_only_methods,
+            },
+        )
+    )
 
     missing_finite: list[dict[str, Any]] = []
     for row in rows:
@@ -584,6 +640,8 @@ def run_baseline_behavior_smoke(
         "schema_version": BASELINE_BEHAVIOR_SCHEMA_VERSION,
         "suite": BASELINE_BEHAVIOR_SUITE,
         "methods": methods_list,
+        "episode_methods": episode_methods,
+        "contract_only_methods": contract_only_methods,
         "scenario_ids": scenario_id_list,
         "n_agents": int(n_agents),
         "seed": int(seed),

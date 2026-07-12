@@ -12,6 +12,7 @@ from microbench.planners.cbf_qp import CbfQpPlanner
 from microbench.planners.ego_swarm_opt import EgoSwarmOptimizingPlanner
 from microbench.planners.mpc_local import MpcLocalPlanner
 from microbench.planners.mpc_nonlinear import NonlinearMpcPlanner
+from microbench.planners.rmader import RmaderPlanner
 from microbench.planners.velocity_obstacle import ReciprocalVelocityObstaclePlanner, VelocityObstaclePlanner
 from microbench.runner import run_episode
 from microbench.types import AABBObs, AgentContext, AgentState, IntentObs, NeighborObs, PlannerInput, RunSpec
@@ -780,6 +781,81 @@ def _optimizer_evidence_checks(
     return checks
 
 
+def _rmader_evidence_checks() -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+    accepted = _planner_input(
+        ego=_agent(pos=(0.0, 0.0, 0.0), vel=(0.0, 0.0, 0.0), goal=(10.0, 0.0, 0.0)),
+        goal_dir=(1.0, 0.0, 0.0),
+        neighbors=[_neighbor(idx=1, pos=(4.0, 0.0, 0.0))],
+        planar=False,
+    )
+    accepted_planner = RmaderPlanner(
+        cfg={
+            "horizon_s": 2.4,
+            "control_points": 8,
+            "samples_per_interval": 2,
+            "max_initializations": 1,
+            "opt_iterations": 3,
+            "hard_projection_iterations": 3,
+            "jerk_limit_mps3": 100.0,
+        }
+    )
+    accepted_planner.reset(0)
+    accepted_out = accepted_planner.compute_cmd(accepted)
+    accepted_debug = accepted_out.debug_info
+    checks.append(
+        _check(
+            "rmader",
+            "rmader_minvo_hyperplane_commit_signals",
+            bool(
+                accepted_debug.get("rmader_planar") is False
+                and int(accepted_debug.get("rmader_minvo_intervals", 0)) >= 4
+                and int(accepted_debug.get("rmader_minvo_control_points_per_interval", 0)) == 4
+                and int(accepted_debug.get("rmader_hard_constraint_count", 0)) > 0
+                and accepted_debug.get("rmader_candidate_hard_constraint_ok") is True
+                and accepted_debug.get("rmader_delay_check_passed") is True
+                and accepted_out.intent_out is not None
+                and accepted_out.intent_out.kind == "RMADER_MINVO_TRAJECTORY"
+                and len(accepted_out.messages_out) >= 2
+                and _finite_vec(accepted_out.v_cmd)
+            ),
+            {"v_cmd": [float(x) for x in accepted_out.v_cmd], "debug_info": accepted_debug},
+        )
+    )
+
+    dense_planner = RmaderPlanner(
+        cfg={
+            "horizon_s": 2.4,
+            "control_points": 8,
+            "samples_per_interval": 2,
+            "max_initializations": 3,
+            "opt_iterations": 3,
+            "hard_projection_iterations": 3,
+            "jerk_limit_mps3": 100.0,
+        }
+    )
+    dense_planner.reset(0)
+    dense_out = dense_planner.compute_cmd(_optimizer_dense_input())
+    dense_debug = dense_out.debug_info
+    checks.append(
+        _check(
+            "rmader",
+            "rmader_dense_delay_check_fallback_reported",
+            bool(
+                int(dense_debug.get("rmader_hard_constraint_count", 0)) > 0
+                and dense_debug.get("rmader_delay_check_fallback") in {"none", "previous_committed", "braking_trajectory"}
+                and dense_debug.get("rmader_candidate_max_hyperplane_violation_m") is not None
+                and dense_out.intent_out is not None
+                and dense_out.intent_out.kind == "RMADER_MINVO_TRAJECTORY"
+                and len(dense_out.messages_out) >= 2
+                and _finite_vec(dense_out.v_cmd)
+            ),
+            {"v_cmd": [float(x) for x in dense_out.v_cmd], "debug_info": dense_debug},
+        )
+    )
+    return checks
+
+
 def _vo_conflict_input(*, stale_age_s: float = 1.0, planar: bool = True, priority: int | None = None) -> PlannerInput:
     ego = _agent(
         idx=2,
@@ -914,6 +990,7 @@ def run_baseline_reference_evidence(
             artifact_dir=artifact_dir,
             save_traces=save_optimizer_traces,
         ),
+        *_rmader_evidence_checks(),
         *_vo_evidence_checks(),
     ]
     failed = [check for check in checks if not check["ok"]]
@@ -924,6 +1001,7 @@ def run_baseline_reference_evidence(
             "cbf_qp",
             "mpc_local",
             "mpc_nonlinear",
+            "rmader",
             "ego_swarm_opt",
             "velocity_obstacle",
             "reciprocal_velocity_obstacle",
@@ -935,6 +1013,7 @@ def run_baseline_reference_evidence(
             "cbf_check_count": sum(1 for check in checks if check["method"] == "cbf_qp"),
             "mpc_check_count": sum(1 for check in checks if check["method"] == "mpc_local"),
             "mpc_nonlinear_check_count": sum(1 for check in checks if check["method"] == "mpc_nonlinear"),
+            "rmader_check_count": sum(1 for check in checks if check["method"] == "rmader"),
             "ego_swarm_opt_check_count": sum(1 for check in checks if check["method"] == "ego_swarm_opt"),
             "vo_check_count": sum(1 for check in checks if check["method"] == "velocity_obstacle"),
             "rvo_check_count": sum(1 for check in checks if check["method"] == "reciprocal_velocity_obstacle"),
@@ -948,6 +1027,7 @@ def run_baseline_reference_evidence(
             "cbf_qp": "keep_experimental_until_solver_backends_and_infeasible_constraint_behavior_are_validated_beyond_targeted_cases",
             "mpc_local": "keep_experimental_until_dense_3d_compute_bands_and_stress_behavior_are_calibrated_on_official_suites",
             "mpc_nonlinear": "keep_experimental_until_optimizer_grade_dense_3d_degraded_intent_and_solver_mode_evidence_is_calibrated_on_official_suites",
+            "rmader": "keep_experimental_until_minvo_hyperplane_delay_check_behavior_is_calibrated_on_official_dense_3d_and_degraded_v2v_suites",
             "ego_swarm_opt": "keep_experimental_until_optimizer_grade_dense_3d_degraded_intent_and_solver_mode_evidence_is_calibrated_on_official_suites",
             "velocity_obstacle": "keep_experimental_until_all_suite_vo_evidence_is_calibrated_against_orca_and_rvo",
             "reciprocal_velocity_obstacle": "keep_experimental_until_hrvo_responsibility_and_degraded_track_behavior_are_calibrated_on_official_suites",

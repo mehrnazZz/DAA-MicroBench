@@ -25,6 +25,7 @@ def test_baseline_evidence_cbf_mpc_checks_pass_with_promotion_blockers() -> None
         "cbf_qp",
         "mpc_local",
         "mpc_nonlinear",
+        "rmader",
         "ego_swarm_opt",
         "velocity_obstacle",
         "reciprocal_velocity_obstacle",
@@ -42,6 +43,8 @@ def test_baseline_evidence_cbf_mpc_checks_pass_with_promotion_blockers() -> None
     assert ("mpc_nonlinear", "mpc_nonlinear_degraded_intent_and_v2v_inflate_risk") in names
     assert ("mpc_nonlinear", "mpc_nonlinear_scipy_or_fallback_solver_reports_status") in names
     assert ("mpc_nonlinear", "mpc_nonlinear_dense_3d_profile_p95_bounded") in names
+    assert ("rmader", "rmader_minvo_hyperplane_commit_signals") in names
+    assert ("rmader", "rmader_dense_delay_check_fallback_reported") in names
     assert ("ego_swarm_opt", "ego_swarm_opt_dense_3d_optimizer_signals") in names
     assert ("ego_swarm_opt", "ego_swarm_opt_degraded_intent_and_v2v_inflate_risk") in names
     assert ("ego_swarm_opt", "ego_swarm_opt_scipy_or_fallback_solver_reports_status") in names
@@ -52,6 +55,7 @@ def test_baseline_evidence_cbf_mpc_checks_pass_with_promotion_blockers() -> None
     assert "keep_experimental" in report["promotion_recommendations"]["cbf_qp"]
     assert "keep_experimental" in report["promotion_recommendations"]["mpc_local"]
     assert "keep_experimental" in report["promotion_recommendations"]["mpc_nonlinear"]
+    assert "keep_experimental" in report["promotion_recommendations"]["rmader"]
     assert "keep_experimental" in report["promotion_recommendations"]["ego_swarm_opt"]
     assert "keep_experimental" in report["promotion_recommendations"]["velocity_obstacle"]
     assert "keep_experimental" in report["promotion_recommendations"]["reciprocal_velocity_obstacle"]

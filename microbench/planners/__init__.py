@@ -18,6 +18,7 @@ from microbench.planners.mpc_nonlinear import NonlinearMpcPlanner
 from microbench.planners.negotiation_yield import NegotiationYieldPlanner
 from microbench.planners.orca_expert import OrcaExpertPlanner
 from microbench.planners.priority_yield import PriorityYieldPlanner
+from microbench.planners.rmader import RmaderPlanner
 from microbench.planners.template_planner import TemplatePlanner
 from microbench.planners.velocity_obstacle import ReciprocalVelocityObstaclePlanner, VelocityObstaclePlanner
 
@@ -86,6 +87,11 @@ def _make_dmpc_best_response() -> ILocalPlanner:
     return DistributedMpcBestResponsePlanner(cfg=defaults.get("dmpc_best_response", {}))
 
 
+def _make_rmader() -> ILocalPlanner:
+    defaults = load_defaults()
+    return RmaderPlanner(cfg=defaults.get("rmader", {}))
+
+
 def _make_ego_swarm() -> ILocalPlanner:
     defaults = load_defaults()
     return EgoSwarmPlanner(cfg=defaults.get("ego_swarm", {}))
@@ -114,6 +120,7 @@ _FACTORIES: dict[str, Callable[[], ILocalPlanner]] = {
     "mpc_local": _make_mpc_local,
     "mpc_nonlinear": _make_mpc_nonlinear,
     "dmpc_best_response": _make_dmpc_best_response,
+    "rmader": _make_rmader,
     "ego_swarm": _make_ego_swarm,
     "ego_swarm_opt": _make_ego_swarm_opt,
     "velocity_obstacle": _make_velocity_obstacle,
@@ -277,6 +284,30 @@ _METADATA: dict[str, PlannerMetadata] = {
             "Implements asynchronous one-best-response-round-per-simulator-tick coordination rather than a centralized joint solve.",
             "Uses DAA Microbench local tracks, intent trajectories, and AABB obstacles rather than raw onboard mapping.",
             "Experimental; needs dense-3D communication-limited calibration before becoming a reference baseline.",
+        ),
+    ),
+    "rmader": PlannerMetadata(
+        method="rmader",
+        display_name="RMADER MINVO robust trajectory baseline",
+        planner_type="rmader_minvo_hyperplane_trajectory_optimization",
+        role="experimental_baseline",
+        status="experimental",
+        dimensions=("2d", "3d"),
+        observation_sources=("local_neighbors", "v2v", "sensor", "fused", "intent", "agent_messages"),
+        uses_v2v=True,
+        uses_local_sensing=True,
+        uses_intent=True,
+        uses_agent_messages=True,
+        uses_obstacles=True,
+        description=(
+            "Clean-room RMADER/MADER-style baseline with cubic B-spline plans, continuous MINVO "
+            "interval polyhedra, hard separating hyperplanes against dynamic and static hulls, "
+            "kinematic feasibility checks, and robust publish/check/commit trajectory sharing."
+        ),
+        limitations=(
+            "Not a ROS/Gurobi port of the MIT ACL implementation; it is adapted to the DAA Microbench velocity-command contract.",
+            "Uses supplied local tracks, intent trajectories, and AABB obstacles rather than onboard mapping or raw perception.",
+            "Experimental; needs dense-3D delay/loss stress calibration before becoming a reference baseline.",
         ),
     ),
     "velocity_obstacle": PlannerMetadata(

@@ -215,6 +215,45 @@ dmpc_best_response:
   emit_agent_messages: true
   coordination_message_ttl_s: 0.75
 
+rmader:
+  horizon_s: 2.4
+  control_points: 8
+  samples_per_interval: 2
+  max_neighbors: 8
+  max_initializations: 3
+  opt_iterations: 3
+  hard_projection_iterations: 3
+  gradient_step_m: 0.16
+  line_search_shrink: 0.55
+  hard_projection_relaxation: 0.92
+  safety_margin_m: 0.35
+  obstacle_margin_m: 0.3
+  minvo_epsilon_m: 0.12
+  hard_safety_tolerance_m: 0.05
+  near_clearance_m: 1.7
+  goal_slowdown_radius_m: 6.0
+  stale_inflation_gain: 0.75
+  stale_age_cap_s: 1.5
+  intent_age_inflation_gain: 0.35
+  track_uncertainty_speed_gain: 0.12
+  jerk_limit_mps3: 8.0
+  offset_scales_m: [0.0, 2.5, 5.0]
+  vertical_offset_scales_m: [2.0, 4.0]
+  reference_weight: 0.08
+  warm_start_weight: 0.16
+  smoothness_weight: 2.7
+  path_length_weight: 0.05
+  terminal_weight: 4.0
+  soft_clearance_weight: 120.0
+  hard_violation_weight: 18000.0
+  kinematic_violation_weight: 4000.0
+  intent_ttl_s: 1.0
+  intent_tube_margin_m: 0.35
+  max_intent_points: 14
+  delay_check_enabled: true
+  delay_check_tolerance_m: 0.08
+  coordination_message_ttl_s: 0.75
+
 ego_swarm:
   horizon_s: 3.2
   rollout_dt_s: 0.4

@@ -433,7 +433,7 @@ python -m microbench.cli advanced-baseline-comparison \
   --require-pass
 ```
 
-This runs ORCA, stale-aware ORCA, CBF-QP, MPC-local, nonlinear MPC, sampled EGO-Swarm-inspired trajectory sharing, optimized EGO-Swarm-style control-point planning, VO, and RVO on the same `urban_conflict_3d` lane and writes `advanced_baseline_comparison.json`, `baseline_report.json`, `results.csv`, and `summary.csv`. Use it as a quick apples-to-apples advanced-baseline artifact; the all-suite leaderboard remains the publication-grade benchmark evidence.
+This runs ORCA, stale-aware ORCA, CBF-QP, MPC-local, nonlinear MPC, distributed MPC, RMADER, sampled EGO-Swarm-inspired trajectory sharing, optimized EGO-Swarm-style control-point planning, VO, and RVO on the same `urban_conflict_3d` lane and writes `advanced_baseline_comparison.json`, `baseline_report.json`, `results.csv`, and `summary.csv`. Use it as a quick apples-to-apples advanced-baseline artifact; the all-suite leaderboard remains the publication-grade benchmark evidence.
 
 Run the generated agentic stress suite:
 
@@ -524,6 +524,7 @@ Expected baseline sanity behavior:
 - `mpc_local`: experimental local predictive sampling baseline with bounded lookahead, smoothness costs, obstacle scoring, candidate-risk diagnostics, and stale-track risk inflation.
 - `mpc_nonlinear`: experimental clean-room nonlinear MPC trajectory-optimization baseline with multistart acceleration-control optimization, dynamic obstacle/intent penalties, and trajectory intent output.
 - `dmpc_best_response`: experimental distributed-MPC-style best-response baseline that treats neighbor intent trajectories as coupled constraints, falls back to inflated constant-velocity tracks for stale/missing plans, and republishes its plan for the next coordination round.
+- `rmader`: experimental clean-room RMADER/MADER-style baseline with cubic B-spline plans, continuous MINVO interval polyhedra, hard separating hyperplanes, delay-check publication, and trajectory intent output.
 - `ego_swarm`: experimental clean-room EGO-Swarm-inspired trajectory-sharing baseline with smooth receding-horizon topologies and intent output; not a port of the upstream GPL implementation.
 - `ego_swarm_opt`: experimental clean-room EGO-Swarm-style optimized control-point trajectory baseline with topological seeds, smoothness/dynamic penalties, obstacle/swarm penalties, and intent output.
 

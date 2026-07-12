@@ -33,6 +33,7 @@ SERIOUS_BASELINE_METHODS = (
     "mpc_local",
     "mpc_nonlinear",
     "dmpc_best_response",
+    "rmader",
     "ego_swarm",
     "ego_swarm_opt",
     "priority_yield",
