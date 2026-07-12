@@ -24,6 +24,7 @@ BASELINE_BEHAVIOR_METHODS = (
     "mpc_local",
     "mpc_nonlinear",
     "dmpc_best_response",
+    "bvc_tube_dmpc",
     "rmader",
     "ego_swarm",
     "ego_swarm_opt",
@@ -65,11 +66,16 @@ EXPERIMENTAL_SOFT_GUARDRAIL_METHODS = {
     "mpc_local",
     "mpc_nonlinear",
     "dmpc_best_response",
+    "bvc_tube_dmpc",
     "rmader",
     "ego_swarm_opt",
 }
 SOFT_GUARDRAIL_FIELDS = {"planner_timeout_count", "planner_fallback_count"}
 CONTRACT_ONLY_METHODS = {
+    # BVC tube-DMPC is optimizer-grade and solves a hard moving-cell tube.
+    # Keep the default smoke path cheap; targeted evidence and leaderboard
+    # tools cover episode-level behavior.
+    "bvc_tube_dmpc",
     # RMADER is an optimizer-grade MINVO/hyperplane baseline. A direct contract
     # probe catches API regressions cheaply; full episode evidence belongs in a
     # capped optimizer review lane rather than the public-alpha smoke loop.
@@ -291,6 +297,40 @@ def _planner_output_contracts(methods: list[str]) -> list[dict[str, Any]]:
             )
         except Exception as exc:
             checks.append(_check("rmader_debug_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
+
+    if "bvc_tube_dmpc" in methods:
+        try:
+            planner = make_planner("bvc_tube_dmpc")
+            planner.reset(0)
+            out = planner.compute_cmd(_planner_input(neighbors=[_neighbor()], planar=False))
+            info = getattr(out, "debug_info", {})
+            intent = getattr(out, "intent_out", None)
+            checks.append(
+                _check(
+                    "bvc_tube_dmpc_debug_contract",
+                    int(info.get("bvc_tube_dmpc_horizon_steps", 0)) >= 2
+                    and int(info.get("bvc_tube_dmpc_cell_constraint_count", 0)) > 0
+                    and int(info.get("bvc_tube_dmpc_neighbor_constraint_count", 0)) > 0
+                    and str(info.get("bvc_tube_dmpc_solver_status", ""))
+                    and info.get("bvc_tube_dmpc_planar") is False
+                    and intent is not None
+                    and getattr(intent, "kind", "") == "BVC_TUBE_DMPC_TRAJECTORY"
+                    and int(info.get("bvc_tube_dmpc_agent_messages", 0)) >= 1,
+                    {
+                        "bvc_tube_dmpc_horizon_steps": info.get("bvc_tube_dmpc_horizon_steps"),
+                        "bvc_tube_dmpc_solver": info.get("bvc_tube_dmpc_solver"),
+                        "bvc_tube_dmpc_solver_status": info.get("bvc_tube_dmpc_solver_status"),
+                        "bvc_tube_dmpc_cell_constraint_count": info.get("bvc_tube_dmpc_cell_constraint_count"),
+                        "bvc_tube_dmpc_max_cell_violation_m": info.get("bvc_tube_dmpc_max_cell_violation_m"),
+                        "bvc_tube_dmpc_fallback": info.get("bvc_tube_dmpc_fallback"),
+                        "bvc_tube_dmpc_planar": info.get("bvc_tube_dmpc_planar"),
+                        "bvc_tube_dmpc_agent_messages": info.get("bvc_tube_dmpc_agent_messages"),
+                        "intent_kind": getattr(intent, "kind", None),
+                    },
+                )
+            )
+        except Exception as exc:
+            checks.append(_check("bvc_tube_dmpc_debug_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
 
     if "ego_swarm" in methods:
         try:

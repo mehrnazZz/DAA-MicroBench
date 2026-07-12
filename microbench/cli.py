@@ -1429,7 +1429,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_be = sub.add_parser(
         "baseline-evidence",
-        help="Run targeted CBF/MPC/NMPC/RMADER/EGO-Swarm/VO/RVO reference-evidence checks",
+        help="Run targeted CBF/MPC/NMPC/BVC tube-DMPC/RMADER/EGO-Swarm/VO/RVO reference-evidence checks",
     )
     p_be.add_argument("--out-dir", required=True, help="Fresh output directory for evidence artifacts")
     p_be.add_argument("--mpc-profile-iters", type=int, default=20, help="Dense 3D MPC timing samples")

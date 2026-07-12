@@ -46,6 +46,9 @@ def test_baseline_audit_public_alpha_contract() -> None:
     assert by_method["dmpc_best_response"]["readiness"] == "experimental_runnable"
     assert by_method["dmpc_best_response"]["checks"]["docs_mentioned"] is True
     assert by_method["dmpc_best_response"]["checks"]["tests_mentioned"] is True
+    assert by_method["bvc_tube_dmpc"]["readiness"] == "experimental_runnable"
+    assert by_method["bvc_tube_dmpc"]["checks"]["docs_mentioned"] is True
+    assert by_method["bvc_tube_dmpc"]["checks"]["tests_mentioned"] is True
     assert by_method["rmader"]["readiness"] == "experimental_runnable"
     assert by_method["rmader"]["checks"]["docs_mentioned"] is True
     assert by_method["rmader"]["checks"]["tests_mentioned"] is True

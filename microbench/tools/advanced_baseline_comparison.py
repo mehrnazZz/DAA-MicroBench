@@ -24,6 +24,7 @@ DEFAULT_ADVANCED_COMPARISON_METHODS = (
     "mpc_local",
     "mpc_nonlinear",
     "dmpc_best_response",
+    "bvc_tube_dmpc",
     "rmader",
     "ego_swarm",
     "ego_swarm_opt",

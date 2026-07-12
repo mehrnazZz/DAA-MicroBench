@@ -215,6 +215,41 @@ dmpc_best_response:
   emit_agent_messages: true
   coordination_message_ttl_s: 0.75
 
+bvc_tube_dmpc:
+  horizon_s: 2.8
+  step_dt_s: 0.4
+  horizon_steps: 7
+  replan_period_s: 0.2
+  max_neighbors: 10
+  max_initializations: 4
+  opt_iterations: 5
+  projection_iterations: 5
+  gradient_step_m: 0.18
+  line_search_shrink: 0.55
+  safety_margin_m: 0.35
+  obstacle_margin_m: 0.3
+  hard_tolerance_m: 0.04
+  near_clearance_m: 1.5
+  goal_slowdown_radius_m: 6.0
+  stale_inflation_gain: 0.75
+  stale_age_cap_s: 1.5
+  intent_age_inflation_gain: 0.35
+  track_uncertainty_speed_gain: 0.12
+  offset_scales_m: [0.0, 2.0, 4.0]
+  vertical_offset_scales_m: [1.8, 3.2]
+  reference_weight: 0.08
+  warm_start_weight: 0.12
+  terminal_weight: 5.0
+  progress_weight: 0.6
+  smoothness_weight: 2.4
+  path_length_weight: 0.04
+  tube_violation_weight: 25000.0
+  kinematic_violation_weight: 3500.0
+  intent_ttl_s: 1.0
+  intent_tube_margin_m: 0.35
+  max_intent_points: 12
+  coordination_message_ttl_s: 0.75
+
 rmader:
   horizon_s: 2.4
   control_points: 8

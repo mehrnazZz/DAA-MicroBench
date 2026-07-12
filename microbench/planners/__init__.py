@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 from microbench.config import deep_merge, load_defaults
 from microbench.planners.base import ILocalPlanner
 from microbench.planners.baseline_goal import BaselineGoalPlanner
+from microbench.planners.bvc_tube_dmpc import BvcTubeDmpcPlanner
 from microbench.planners.cbf_qp import CbfQpPlanner
 from microbench.planners.dmpc_best_response import DistributedMpcBestResponsePlanner
 from microbench.planners.ego_swarm import EgoSwarmPlanner
@@ -87,6 +88,11 @@ def _make_dmpc_best_response() -> ILocalPlanner:
     return DistributedMpcBestResponsePlanner(cfg=defaults.get("dmpc_best_response", {}))
 
 
+def _make_bvc_tube_dmpc() -> ILocalPlanner:
+    defaults = load_defaults()
+    return BvcTubeDmpcPlanner(cfg=defaults.get("bvc_tube_dmpc", {}))
+
+
 def _make_rmader() -> ILocalPlanner:
     defaults = load_defaults()
     return RmaderPlanner(cfg=defaults.get("rmader", {}))
@@ -120,6 +126,7 @@ _FACTORIES: dict[str, Callable[[], ILocalPlanner]] = {
     "mpc_local": _make_mpc_local,
     "mpc_nonlinear": _make_mpc_nonlinear,
     "dmpc_best_response": _make_dmpc_best_response,
+    "bvc_tube_dmpc": _make_bvc_tube_dmpc,
     "rmader": _make_rmader,
     "ego_swarm": _make_ego_swarm,
     "ego_swarm_opt": _make_ego_swarm_opt,
@@ -284,6 +291,30 @@ _METADATA: dict[str, PlannerMetadata] = {
             "Implements asynchronous one-best-response-round-per-simulator-tick coordination rather than a centralized joint solve.",
             "Uses DAA Microbench local tracks, intent trajectories, and AABB obstacles rather than raw onboard mapping.",
             "Experimental; needs dense-3D communication-limited calibration before becoming a reference baseline.",
+        ),
+    ),
+    "bvc_tube_dmpc": PlannerMetadata(
+        method="bvc_tube_dmpc",
+        display_name="BVC tube-DMPC baseline",
+        planner_type="tube_dmpc_buffered_voronoi_cells",
+        role="experimental_baseline",
+        status="experimental",
+        dimensions=("2d", "3d"),
+        observation_sources=("local_neighbors", "v2v", "sensor", "fused", "intent", "agent_messages"),
+        uses_v2v=True,
+        uses_local_sensing=True,
+        uses_intent=True,
+        uses_agent_messages=True,
+        uses_obstacles=True,
+        description=(
+            "Clean-room tube-based distributed MPC baseline that builds time-indexed buffered "
+            "Voronoi-cell halfspace tubes, projects planned waypoints into hard non-overlapping "
+            "cells, and publishes the selected tube trajectory as intent."
+        ),
+        limitations=(
+            "Not an official port of a BVC/B-UAVC or Schoellig-lab DMPC implementation.",
+            "Uses DAA Microbench local tracks, intent trajectories, and AABB obstacles rather than raw onboard perception.",
+            "Experimental; needs dense-3D stress and heterogeneous-policy calibration before becoming a reference baseline.",
         ),
     ),
     "rmader": PlannerMetadata(

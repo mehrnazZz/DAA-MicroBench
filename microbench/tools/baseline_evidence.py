@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 
 from microbench.planners.cbf_qp import CbfQpPlanner
+from microbench.planners.bvc_tube_dmpc import BvcTubeDmpcPlanner
 from microbench.planners.ego_swarm_opt import EgoSwarmOptimizingPlanner
 from microbench.planners.mpc_local import MpcLocalPlanner
 from microbench.planners.mpc_nonlinear import NonlinearMpcPlanner
@@ -856,6 +857,61 @@ def _rmader_evidence_checks() -> list[dict[str, Any]]:
     return checks
 
 
+def _bvc_tube_dmpc_evidence_checks() -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+    accepted = _planner_input(
+        ego=_agent(pos=(0.0, 0.0, 0.0), vel=(0.0, 0.0, 0.0), goal=(10.0, 0.0, 0.0)),
+        goal_dir=(1.0, 0.0, 0.0),
+        neighbors=[_neighbor(idx=1, pos=(4.0, 0.0, 0.0))],
+        planar=False,
+    )
+    planner = BvcTubeDmpcPlanner(cfg={"horizon_steps": 5, "max_initializations": 4, "opt_iterations": 4})
+    planner.reset(0)
+    out = planner.compute_cmd(accepted)
+    debug = out.debug_info
+    checks.append(
+        _check(
+            "bvc_tube_dmpc",
+            "bvc_tube_dmpc_hard_cell_commit_signals",
+            bool(
+                debug.get("bvc_tube_dmpc_planar") is False
+                and int(debug.get("bvc_tube_dmpc_horizon_steps", 0)) >= 2
+                and int(debug.get("bvc_tube_dmpc_neighbor_constraint_count", 0)) > 0
+                and debug.get("bvc_tube_dmpc_candidate_hard_cell_ok") is True
+                and debug.get("bvc_tube_dmpc_hard_cell_ok") is True
+                and debug.get("bvc_tube_dmpc_min_cell_slack_m") is not None
+                and out.intent_out is not None
+                and out.intent_out.kind == "BVC_TUBE_DMPC_TRAJECTORY"
+                and len(out.messages_out) >= 1
+                and _finite_vec(out.v_cmd)
+            ),
+            {"v_cmd": [float(x) for x in out.v_cmd], "debug_info": debug},
+        )
+    )
+
+    dense_planner = BvcTubeDmpcPlanner(cfg={"horizon_steps": 5, "max_initializations": 4, "opt_iterations": 4})
+    dense_planner.reset(0)
+    dense_out = dense_planner.compute_cmd(_optimizer_dense_input())
+    dense_debug = dense_out.debug_info
+    checks.append(
+        _check(
+            "bvc_tube_dmpc",
+            "bvc_tube_dmpc_dense_tube_constraints_reported",
+            bool(
+                int(dense_debug.get("bvc_tube_dmpc_cell_constraint_count", 0)) > 0
+                and dense_debug.get("bvc_tube_dmpc_candidate_max_cell_violation_m") is not None
+                and dense_debug.get("bvc_tube_dmpc_fallback") in {"none", "braking_trajectory"}
+                and dense_out.intent_out is not None
+                and dense_out.intent_out.kind == "BVC_TUBE_DMPC_TRAJECTORY"
+                and len(dense_out.messages_out) >= 1
+                and _finite_vec(dense_out.v_cmd)
+            ),
+            {"v_cmd": [float(x) for x in dense_out.v_cmd], "debug_info": dense_debug},
+        )
+    )
+    return checks
+
+
 def _vo_conflict_input(*, stale_age_s: float = 1.0, planar: bool = True, priority: int | None = None) -> PlannerInput:
     ego = _agent(
         idx=2,
@@ -990,6 +1046,7 @@ def run_baseline_reference_evidence(
             artifact_dir=artifact_dir,
             save_traces=save_optimizer_traces,
         ),
+        *_bvc_tube_dmpc_evidence_checks(),
         *_rmader_evidence_checks(),
         *_vo_evidence_checks(),
     ]
@@ -1001,6 +1058,7 @@ def run_baseline_reference_evidence(
             "cbf_qp",
             "mpc_local",
             "mpc_nonlinear",
+            "bvc_tube_dmpc",
             "rmader",
             "ego_swarm_opt",
             "velocity_obstacle",
@@ -1013,6 +1071,7 @@ def run_baseline_reference_evidence(
             "cbf_check_count": sum(1 for check in checks if check["method"] == "cbf_qp"),
             "mpc_check_count": sum(1 for check in checks if check["method"] == "mpc_local"),
             "mpc_nonlinear_check_count": sum(1 for check in checks if check["method"] == "mpc_nonlinear"),
+            "bvc_tube_dmpc_check_count": sum(1 for check in checks if check["method"] == "bvc_tube_dmpc"),
             "rmader_check_count": sum(1 for check in checks if check["method"] == "rmader"),
             "ego_swarm_opt_check_count": sum(1 for check in checks if check["method"] == "ego_swarm_opt"),
             "vo_check_count": sum(1 for check in checks if check["method"] == "velocity_obstacle"),
@@ -1027,6 +1086,7 @@ def run_baseline_reference_evidence(
             "cbf_qp": "keep_experimental_until_solver_backends_and_infeasible_constraint_behavior_are_validated_beyond_targeted_cases",
             "mpc_local": "keep_experimental_until_dense_3d_compute_bands_and_stress_behavior_are_calibrated_on_official_suites",
             "mpc_nonlinear": "keep_experimental_until_optimizer_grade_dense_3d_degraded_intent_and_solver_mode_evidence_is_calibrated_on_official_suites",
+            "bvc_tube_dmpc": "keep_experimental_until_hard_cell_tube_behavior_is_calibrated_on_official_dense_3d_and_heterogeneous_policy_suites",
             "rmader": "keep_experimental_until_minvo_hyperplane_delay_check_behavior_is_calibrated_on_official_dense_3d_and_degraded_v2v_suites",
             "ego_swarm_opt": "keep_experimental_until_optimizer_grade_dense_3d_degraded_intent_and_solver_mode_evidence_is_calibrated_on_official_suites",
             "velocity_obstacle": "keep_experimental_until_all_suite_vo_evidence_is_calibrated_against_orca_and_rvo",
