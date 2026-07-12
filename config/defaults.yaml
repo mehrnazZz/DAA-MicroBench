@@ -166,6 +166,55 @@ mpc_nonlinear:
   intent_tube_margin_m: 0.3
   max_intent_points: 10
 
+dmpc_best_response:
+  horizon_s: 2.6
+  step_dt_s: 0.4
+  horizon_steps: 7
+  max_neighbors: 8
+  max_initializations: 5
+  solver: "projected_gradient"  # "projected_gradient", "auto", or "scipy_l_bfgs_b"
+  opt_iterations: 8
+  scipy_maxiter: 40
+  gradient_step_accel: 0.16
+  line_search_shrink: 0.55
+  safety_margin_m: 0.35
+  obstacle_margin_m: 0.25
+  near_clearance_m: 1.85
+  goal_slowdown_radius_m: 6.0
+  stale_inflation_gain: 0.75
+  stale_age_cap_s: 1.5
+  intent_age_inflation_gain: 0.4
+  track_uncertainty_speed_gain: 0.12
+  tracking_weight: 0.32
+  velocity_tracking_weight: 0.42
+  terminal_weight: 6.0
+  progress_weight: 0.75
+  control_weight: 0.04
+  jerk_weight: 0.24
+  speed_limit_weight: 45.0
+  accel_limit_weight: 30.0
+  collision_weight: 7200.0
+  clearance_weight: 150.0
+  obstacle_collision_weight: 7800.0
+  obstacle_clearance_weight: 150.0
+  intent_collision_weight: 6800.0
+  intent_clearance_weight: 145.0
+  warm_start_weight: 0.16
+  intent_ttl_s: 1.0
+  intent_tube_margin_m: 0.35
+  max_intent_points: 12
+  coordination_mode: "sequential_best_response"
+  coordination_rounds: 1
+  intent_trust_horizon_s: 0.85
+  missing_intent_inflation_m: 0.35
+  stale_intent_inflation_m: 0.55
+  priority_responsibility_gain: 0.25
+  priority_inflation_gain: 0.15
+  intent_coupling_weight: 0.75
+  hard_constraint_slack_weight: 4500.0
+  emit_agent_messages: true
+  coordination_message_ttl_s: 0.75
+
 ego_swarm:
   horizon_s: 3.2
   rollout_dt_s: 0.4

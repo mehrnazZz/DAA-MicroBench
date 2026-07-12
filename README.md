@@ -523,6 +523,7 @@ Expected baseline sanity behavior:
 - `cbf_qp`: experimental CBF safety-filter baseline with deterministic projection, optional SciPy solver mode, obstacle barriers, and stale-track inflation; not a calibrated leaderboard anchor.
 - `mpc_local`: experimental local predictive sampling baseline with bounded lookahead, smoothness costs, obstacle scoring, candidate-risk diagnostics, and stale-track risk inflation.
 - `mpc_nonlinear`: experimental clean-room nonlinear MPC trajectory-optimization baseline with multistart acceleration-control optimization, dynamic obstacle/intent penalties, and trajectory intent output.
+- `dmpc_best_response`: experimental distributed-MPC-style best-response baseline that treats neighbor intent trajectories as coupled constraints, falls back to inflated constant-velocity tracks for stale/missing plans, and republishes its plan for the next coordination round.
 - `ego_swarm`: experimental clean-room EGO-Swarm-inspired trajectory-sharing baseline with smooth receding-horizon topologies and intent output; not a port of the upstream GPL implementation.
 - `ego_swarm_opt`: experimental clean-room EGO-Swarm-style optimized control-point trajectory baseline with topological seeds, smoothness/dynamic penalties, obstacle/swarm penalties, and intent output.
 

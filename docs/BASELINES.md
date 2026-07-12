@@ -18,7 +18,7 @@ python -m microbench.cli baseline-leaderboard --out-dir runs_baseline_leaderboar
 The public-alpha baseline gate is intentionally stricter than "the code imports":
 
 - required public-alpha reference baselines: `orca_heuristic`, `orca_with_staleness`, `priority_yield`, `negotiation_yield`
-- experimental but runnable baselines: `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, `reciprocal_velocity_obstacle`, `learned_tiny`
+- experimental but runnable baselines: `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, `reciprocal_velocity_obstacle`, `learned_tiny`
 - illustrative or template methods: `baseline_goal`, `intent_dummy`, `template`
 
 Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pass`, and `baseline-promotion --require-calibrated` before inviting external baseline comparisons. Stable v1 still requires promotion work; `baseline-audit --require-stable-v1-ready` and `baseline-promotion --require-stable-v1-ready` are expected to fail while experimental baselines remain experimental.
@@ -33,6 +33,7 @@ Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pas
 | `cbf_qp` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | CBF safety-filter baseline with deterministic projection, optional SciPy solver mode, obstacle barriers, and stale-track inflation. |
 | `mpc_local` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Deterministic short-horizon predictive sampling baseline with candidate-risk diagnostics and stale-track inflation. |
 | `mpc_nonlinear` | experimental baseline | local neighbor tracks, intent trajectories, V2V/sensor/fused observations, obstacles | 2D, 3D | Clean-room nonlinear MPC trajectory-optimization baseline over bounded acceleration controls. |
+| `dmpc_best_response` | experimental baseline | local neighbor tracks, intent trajectories, agent-message plan broadcasts, V2V/sensor/fused observations, obstacles | 2D, 3D | Distributed-MPC-style best-response baseline with coupled intent constraints and stale/missing plan fallback. |
 | `ego_swarm` | experimental baseline | local neighbor tracks, intent trajectories, V2V/sensor/fused observations, obstacles | 2D, 3D | Clean-room EGO-Swarm-inspired receding-horizon trajectory-sharing baseline. |
 | `ego_swarm_opt` | experimental baseline | local neighbor tracks, intent trajectories, V2V/sensor/fused observations, obstacles | 2D, 3D | Clean-room EGO-Swarm-style optimized control-point trajectory-sharing baseline. |
 | `velocity_obstacle` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Deterministic finite-horizon velocity-obstacle cone sampler with candidate-risk diagnostics. |
@@ -63,6 +64,7 @@ Experimental baselines are runnable but not leaderboard anchors yet:
 - `cbf_qp`
 - `mpc_local`
 - `mpc_nonlinear`
+- `dmpc_best_response`
 - `ego_swarm`
 - `ego_swarm_opt`
 - `velocity_obstacle`
@@ -95,7 +97,7 @@ python -m microbench.cli baseline-smoke \
   --require-pass
 ```
 
-This runs every non-template built-in baseline on one planar and one 3D generated smoke scenario, checks finite key metrics, planner errors, public-alpha guardrails, 2D/3D coverage, agent-message signals for `priority_yield`, proposal/ACK signals for `negotiation_yield`, and public debug/intent output contracts for `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `ego_swarm`, `ego_swarm_opt`, `learned_tiny`, and `intent_dummy`. Experimental `cbf_qp`, `mpc_local`, `mpc_nonlinear`, and `ego_swarm_opt` soft timeout/fallback counts are reported but do not block public-alpha smoke by themselves; any such counts still block stable-v1 promotion.
+This runs every non-template built-in baseline on one planar and one 3D generated smoke scenario, checks finite key metrics, planner errors, public-alpha guardrails, 2D/3D coverage, agent-message signals for `priority_yield`, proposal/ACK signals for `negotiation_yield`, and public debug/intent output contracts for `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `ego_swarm`, `ego_swarm_opt`, `learned_tiny`, and `intent_dummy`. Experimental `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, and `ego_swarm_opt` soft timeout/fallback counts are reported but do not block public-alpha smoke by themselves; any such counts still block stable-v1 promotion.
 
 Experimental promotion calibration:
 
@@ -213,7 +215,7 @@ python -m microbench.cli advanced-baseline-comparison \
   --require-pass
 ```
 
-This runs `orca_heuristic`, `orca_with_staleness`, `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, and `reciprocal_velocity_obstacle` on the same `urban_conflict_3d` scenario, with the same seed, agent count, duration override, and communication profile. It writes `advanced_baseline_comparison.json`, `baseline_report.json`, `results.csv`, `summary.csv`, and a copied scenario file under `_comparison_scenario/`. Use it as a quick apples-to-apples advanced-baseline artifact before spending time on the full official leaderboard.
+This runs `orca_heuristic`, `orca_with_staleness`, `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, and `reciprocal_velocity_obstacle` on the same `urban_conflict_3d` scenario, with the same seed, agent count, duration override, and communication profile. It writes `advanced_baseline_comparison.json`, `baseline_report.json`, `results.csv`, `summary.csv`, and a copied scenario file under `_comparison_scenario/`. Use it as a quick apples-to-apples advanced-baseline artifact before spending time on the full official leaderboard.
 
 Build an all-official-suite baseline leaderboard:
 
@@ -412,6 +414,33 @@ Additional promotion requirements for `mpc_nonlinear`:
 - calibrate compute p95 bands separately from `mpc_local`
 - test infeasible close-range conflicts where predicted single-agent clearance cannot be made positive under acceleration limits
 - add richer obstacle-field and degraded-intent evidence before treating it as a reference baseline
+
+`dmpc_best_response` is the distributed-MPC counterpart to `mpc_nonlinear`. It is still an ego-trajectory optimizer per drone, but it treats received neighbor intent trajectories as coupled trajectory constraints, inflates stale or missing plans, emits an `INTENT_TRAJECTORY` agent message in addition to the benchmark intent channel, and republishes its optimized trajectory for the next best-response round. This is an asynchronous one-round-per-simulator-tick distributed best response, not a centralized joint solve and not an ADMM/consensus optimizer.
+
+Useful distributed MPC debug fields include:
+
+- `dmpc_best_response_solver`
+- `dmpc_best_response_solver_status`
+- `dmpc_best_response_horizon_steps`
+- `dmpc_best_response_best_seed`
+- `dmpc_best_response_neighbor_intent_count_considered`
+- `dmpc_best_response_stale_intent_count`
+- `dmpc_best_response_missing_intent_count`
+- `dmpc_best_response_intent_primary_predictions`
+- `dmpc_best_response_fallback_cv_predictions`
+- `dmpc_best_response_coupled_constraints`
+- `dmpc_best_response_pairwise_slack_penalty`
+- `dmpc_best_response_min_coupled_clearance_m`
+- `dmpc_best_response_agent_messages`
+
+Use `dmpc_best_response` when you want to compare a reactive local NMPC (`mpc_nonlinear`) against a trajectory-sharing distributed-MPC formulation under the same planner contract. It should be judged on safety and completion metrics plus intent stability, plan staleness, communication load, and compute cost.
+
+Additional promotion requirements for `dmpc_best_response`:
+
+- calibrate dense-3D behavior under realistic V2V rate, delay, and packet loss
+- add side-by-side traces against `mpc_nonlinear` and `ego_swarm_opt`
+- add explicit plan-staleness and missing-intent ablations
+- evaluate whether a synchronous ADMM/consensus DMPC variant is needed as a separate method
 
 Observed local calibration on tiny generated suites before public-alpha tuning:
 

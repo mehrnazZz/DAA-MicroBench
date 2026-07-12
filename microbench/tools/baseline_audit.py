@@ -21,6 +21,7 @@ EXPERIMENTAL_METHODS = (
     "cbf_qp",
     "mpc_local",
     "mpc_nonlinear",
+    "dmpc_best_response",
     "ego_swarm_opt",
     "velocity_obstacle",
     "reciprocal_velocity_obstacle",

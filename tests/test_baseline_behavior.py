@@ -54,6 +54,7 @@ def test_baseline_behavior_smoke_output_contracts(tmp_path: Path) -> None:
             "cbf_qp",
             "mpc_local",
             "mpc_nonlinear",
+            "dmpc_best_response",
             "ego_swarm",
             "ego_swarm_opt",
             "velocity_obstacle",
@@ -64,10 +65,11 @@ def test_baseline_behavior_smoke_output_contracts(tmp_path: Path) -> None:
     )
 
     assert report["ok"] is True
-    assert report["run_count"] == 18
+    assert report["run_count"] == 20
     assert _check(report, "cbf_qp_debug_contract")["ok"] is True
     assert _check(report, "mpc_local_debug_contract")["ok"] is True
     assert _check(report, "mpc_nonlinear_debug_contract")["ok"] is True
+    assert _check(report, "dmpc_best_response_debug_contract")["ok"] is True
     assert _check(report, "ego_swarm_debug_contract")["ok"] is True
     assert _check(report, "ego_swarm_opt_debug_contract")["ok"] is True
     assert _check(report, "velocity_obstacle_debug_contract")["ok"] is True

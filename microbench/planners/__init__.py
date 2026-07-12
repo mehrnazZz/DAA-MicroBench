@@ -8,6 +8,7 @@ from microbench.config import deep_merge, load_defaults
 from microbench.planners.base import ILocalPlanner
 from microbench.planners.baseline_goal import BaselineGoalPlanner
 from microbench.planners.cbf_qp import CbfQpPlanner
+from microbench.planners.dmpc_best_response import DistributedMpcBestResponsePlanner
 from microbench.planners.ego_swarm import EgoSwarmPlanner
 from microbench.planners.ego_swarm_opt import EgoSwarmOptimizingPlanner
 from microbench.planners.intent_dummy import IntentDummyPlanner
@@ -80,6 +81,11 @@ def _make_mpc_nonlinear() -> ILocalPlanner:
     return NonlinearMpcPlanner(cfg=defaults.get("mpc_nonlinear", {}))
 
 
+def _make_dmpc_best_response() -> ILocalPlanner:
+    defaults = load_defaults()
+    return DistributedMpcBestResponsePlanner(cfg=defaults.get("dmpc_best_response", {}))
+
+
 def _make_ego_swarm() -> ILocalPlanner:
     defaults = load_defaults()
     return EgoSwarmPlanner(cfg=defaults.get("ego_swarm", {}))
@@ -107,6 +113,7 @@ _FACTORIES: dict[str, Callable[[], ILocalPlanner]] = {
     "cbf_qp": _make_cbf_qp,
     "mpc_local": _make_mpc_local,
     "mpc_nonlinear": _make_mpc_nonlinear,
+    "dmpc_best_response": _make_dmpc_best_response,
     "ego_swarm": _make_ego_swarm,
     "ego_swarm_opt": _make_ego_swarm_opt,
     "velocity_obstacle": _make_velocity_obstacle,
@@ -245,6 +252,31 @@ _METADATA: dict[str, PlannerMetadata] = {
             "Simplified translational NMPC for the benchmark contract, not a full quadrotor attitude/rotor model.",
             "Uses supplied local tracks, intent trajectories, and AABB obstacles rather than raw onboard sensing or mapping.",
             "Experimental; needs broader dense-3D and solver-mode calibration before becoming a reference baseline.",
+        ),
+    ),
+    "dmpc_best_response": PlannerMetadata(
+        method="dmpc_best_response",
+        display_name="Distributed MPC best-response baseline",
+        planner_type="distributed_mpc_best_response",
+        role="experimental_baseline",
+        status="experimental",
+        dimensions=("2d", "3d"),
+        observation_sources=("local_neighbors", "v2v", "sensor", "fused", "intent", "agent_messages"),
+        uses_v2v=True,
+        uses_local_sensing=True,
+        uses_intent=True,
+        uses_agent_messages=True,
+        uses_obstacles=True,
+        description=(
+            "Clean-room distributed-MPC-style best-response baseline. Each agent optimizes its own "
+            "finite-horizon trajectory, treats received neighbor intents as coupled trajectory "
+            "constraints, falls back to inflated constant-velocity tracks for stale or missing plans, "
+            "and republishes its optimized plan for the next coordination round."
+        ),
+        limitations=(
+            "Implements asynchronous one-best-response-round-per-simulator-tick coordination rather than a centralized joint solve.",
+            "Uses DAA Microbench local tracks, intent trajectories, and AABB obstacles rather than raw onboard mapping.",
+            "Experimental; needs dense-3D communication-limited calibration before becoming a reference baseline.",
         ),
     ),
     "velocity_obstacle": PlannerMetadata(

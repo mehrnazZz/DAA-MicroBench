@@ -23,6 +23,7 @@ BASELINE_BEHAVIOR_METHODS = (
     "cbf_qp",
     "mpc_local",
     "mpc_nonlinear",
+    "dmpc_best_response",
     "ego_swarm",
     "ego_swarm_opt",
     "velocity_obstacle",
@@ -58,7 +59,13 @@ GUARDRAIL_FIELDS = (
     "planner_error_count",
     "planner_fallback_count",
 )
-EXPERIMENTAL_SOFT_GUARDRAIL_METHODS = {"cbf_qp", "mpc_local", "mpc_nonlinear", "ego_swarm_opt"}
+EXPERIMENTAL_SOFT_GUARDRAIL_METHODS = {
+    "cbf_qp",
+    "mpc_local",
+    "mpc_nonlinear",
+    "dmpc_best_response",
+    "ego_swarm_opt",
+}
 SOFT_GUARDRAIL_FIELDS = {"planner_timeout_count", "planner_fallback_count"}
 
 
@@ -204,6 +211,43 @@ def _planner_output_contracts(methods: list[str]) -> list[dict[str, Any]]:
             )
         except Exception as exc:
             checks.append(_check("mpc_nonlinear_debug_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
+
+    if "dmpc_best_response" in methods:
+        try:
+            planner = make_planner("dmpc_best_response")
+            planner.reset(0)
+            out = planner.compute_cmd(_planner_input(neighbors=[_neighbor()], planar=False))
+            info = getattr(out, "debug_info", {})
+            intent = getattr(out, "intent_out", None)
+            checks.append(
+                _check(
+                    "dmpc_best_response_debug_contract",
+                    int(info.get("dmpc_best_response_horizon_steps", 0)) >= 2
+                    and str(info.get("dmpc_best_response_solver_status", ""))
+                    and info.get("dmpc_best_response_min_coupled_clearance_m") is not None
+                    and int(info.get("dmpc_best_response_coupled_constraints", 0)) > 0
+                    and info.get("dmpc_best_response_planar") is False
+                    and intent is not None
+                    and getattr(intent, "kind", "") == "DMPC_BEST_RESPONSE_TRAJECTORY"
+                    and int(info.get("dmpc_best_response_agent_messages", 0)) > 0,
+                    {
+                        "dmpc_best_response_horizon_steps": info.get("dmpc_best_response_horizon_steps"),
+                        "dmpc_best_response_solver": info.get("dmpc_best_response_solver"),
+                        "dmpc_best_response_solver_status": info.get("dmpc_best_response_solver_status"),
+                        "dmpc_best_response_coupled_constraints": info.get("dmpc_best_response_coupled_constraints"),
+                        "dmpc_best_response_min_coupled_clearance_m": info.get(
+                            "dmpc_best_response_min_coupled_clearance_m"
+                        ),
+                        "dmpc_best_response_planar": info.get("dmpc_best_response_planar"),
+                        "dmpc_best_response_agent_messages": info.get("dmpc_best_response_agent_messages"),
+                        "intent_kind": getattr(intent, "kind", None),
+                    },
+                )
+            )
+        except Exception as exc:
+            checks.append(
+                _check("dmpc_best_response_debug_contract", False, {"error": f"{type(exc).__name__}: {exc}"})
+            )
 
     if "ego_swarm" in methods:
         try:
