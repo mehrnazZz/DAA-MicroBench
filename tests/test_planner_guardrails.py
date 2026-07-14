@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
+import time
 from unittest.mock import patch
 
 import numpy as np
@@ -13,13 +14,26 @@ from microbench.runner import run_episode
 from microbench.types import PlannerOutput, RunSpec
 
 
-def _write_guardrail_scenario(path: Path, *, planar: bool = True, timeout_ms: float | None = None) -> None:
+def _write_guardrail_scenario(
+    path: Path,
+    *,
+    planar: bool = True,
+    timeout_ms: float | None = None,
+    method_timeout_ms: dict[str, float] | None = None,
+) -> None:
     timeout_block = ""
-    if timeout_ms is not None:
+    if timeout_ms is not None or method_timeout_ms:
+        timeout_value = 100.0 if timeout_ms is None else float(timeout_ms)
+        method_lines = ""
+        if method_timeout_ms:
+            method_lines = "\n  method_timeout_ms:\n" + "\n".join(
+                f"    {method}: {float(value)}" for method, value in method_timeout_ms.items()
+            )
         timeout_block = f"""
 planner_guardrails:
-  timeout_ms: {timeout_ms}
+  timeout_ms: {timeout_value}
   fallback_speed_scale: 0.5
+{method_lines}
 """
     world_block = (
         """
@@ -99,6 +113,12 @@ class _FiniteFastPlanner:
         self.seed = int(seed)
 
     def compute_cmd(self, planner_input):
+        return np.asarray(planner_input.goal_dir, dtype=float) * float(planner_input.ego.v_max)
+
+
+class _SlowFinitePlanner:
+    def compute_cmd(self, planner_input):
+        time.sleep(0.01)
         return np.asarray(planner_input.goal_dir, dtype=float) * float(planner_input.ego.v_max)
 
 
@@ -216,6 +236,34 @@ def test_runner_writes_timeout_guardrail_metrics_to_summary(tmp_path: Path) -> N
     assert float(summary["planner_timeout_count_mean"]) == float(row["planner_timeout_count"])
     assert float(summary["planner_error_count_mean"]) == 0.0
     assert float(summary["planner_fallback_count_mean"]) == float(row["planner_fallback_count"])
+
+
+def test_method_timeout_override_preserves_slow_method_output(tmp_path: Path) -> None:
+    scenario = tmp_path / "method_timeout_override.yaml"
+    _write_guardrail_scenario(
+        scenario,
+        planar=True,
+        timeout_ms=0.0,
+        method_timeout_ms={"slow_method": 1000.0},
+    )
+
+    engine = EpisodeEngine(
+        scenario_path=str(scenario),
+        method="slow_method",
+        n_agents=2,
+        seed=0,
+        comm_profile="ideal_50hz",
+        planner_factory=lambda _: _SlowFinitePlanner(),
+    )
+    step = engine.step()
+    engine.close()
+
+    assert step is not None
+    assert engine.planner_timeout_count == 0
+    assert engine.planner_fallback_count == 0
+    assert all("engine_guardrail" not in debug for debug in step.planner_debug)
+    for cmd, goal_dir in zip(step.v_cmds, step.goal_dirs):
+        assert float(np.dot(cmd, goal_dir)) > 0.0
 
 
 def test_external_style_heterogeneous_planners_receive_public_input_only(tmp_path: Path) -> None:

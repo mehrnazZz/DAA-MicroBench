@@ -122,11 +122,20 @@ def test_rmader_open_space_emits_minvo_intent_and_two_step_publication() -> None
     assert out.debug_info["rmader_planar"] is True
 
 
+def test_rmader_open_space_uses_meaningful_local_horizon_from_rest() -> None:
+    ego = _agent((0.0, 0.0, 0.0), goal=(50.0, 0.0, 0.0))
+
+    out = _tiny_rmader().compute_cmd(_planner_input(ego=ego))
+
+    assert out.debug_info["rmader_path_length_m"] >= 4.0
+    assert np.linalg.norm(out.v_cmd - ego.vel) <= ego.a_max * 0.02 + 1e-6
+
+
 def test_rmader_far_neighbor_uses_hard_minvo_hyperplanes() -> None:
     ego = _agent((0.0, 0.0, 0.0))
     planner = _tiny_rmader()
 
-    out = planner.compute_cmd(_planner_input(ego=ego, neighbors=[_neighbor()]))
+    out = planner.compute_cmd(_planner_input(ego=ego, neighbors=[_neighbor(pos=(8.0, 0.0, 0.0))]))
 
     info = out.debug_info
     assert info["rmader_neighbor_count_considered"] == 1

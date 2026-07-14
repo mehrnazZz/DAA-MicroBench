@@ -14,7 +14,7 @@ from microbench.core.collision import pairwise_stats
 from microbench.core.dynamics import apply_dynamics
 from microbench.core.neighbors import select_neighbors
 from microbench.core.perception import fuse_observations, sense_neighbors
-from microbench.planners import make_planner as default_make_planner
+from microbench.planners import canonical_method, make_planner as default_make_planner
 from microbench.scenarios import EventEngine, generate_spawns_goals, load_scenario
 from microbench.types import (
     AABBObs,
@@ -357,9 +357,41 @@ class EpisodeEngine:
         self.planner_error_count = 0
         self.planner_fallback_count = 0
         self.planner_timeout_ms = float(self.planner_guardrails_cfg.get("timeout_ms", 100.0))
+        self.planner_timeout_overrides_ms = [
+            self._planner_timeout_override_ms(agent_method) for agent_method in self.agent_methods
+        ]
         self.planner_fallback_speed_scale = float(self.planner_guardrails_cfg.get("fallback_speed_scale", 0.5))
         self.k = 0
         self._closed = False
+
+    def _planner_timeout_override_ms(self, method: str) -> float | None:
+        raw = self.planner_guardrails_cfg.get(
+            "method_timeout_ms",
+            self.planner_guardrails_cfg.get(
+                "method_timeouts_ms",
+                self.planner_guardrails_cfg.get("timeout_ms_by_method", {}),
+            ),
+        )
+        if not isinstance(raw, dict):
+            return None
+        candidates = [str(method), canonical_method(str(method))]
+        lowered = {str(k).strip().lower(): v for k, v in raw.items()}
+        for candidate in candidates:
+            key = str(candidate).strip()
+            if key in raw:
+                value = raw[key]
+                return None if value is None else float(value)
+            if key.lower() in lowered:
+                value = lowered[key.lower()]
+                return None if value is None else float(value)
+        return None
+
+    def _planner_timeout_ms_for_agent(self, agent_id: int) -> float:
+        if 0 <= int(agent_id) < len(self.planner_timeout_overrides_ms):
+            override = self.planner_timeout_overrides_ms[int(agent_id)]
+            if override is not None:
+                return float(override)
+        return float(self.planner_timeout_ms)
 
     def _build_agent_profile(self, agent_id: int) -> AgentProfile:
         agents_cfg = self.cfg.get("agents", {})
@@ -685,6 +717,7 @@ class EpisodeEngine:
         planner_debug: list[dict],
         reason: str,
         elapsed_ms: float,
+        timeout_ms: float | None = None,
         error: Exception | None = None,
     ) -> np.ndarray:
         self.planner_fallback_count += 1
@@ -695,7 +728,9 @@ class EpisodeEngine:
         debug = {
             "engine_guardrail": reason,
             "planner_elapsed_ms": float(elapsed_ms),
-            "planner_timeout_ms": float(self.planner_timeout_ms),
+            "planner_timeout_ms": float(
+                self._planner_timeout_ms_for_agent(agent_id) if timeout_ms is None else timeout_ms
+            ),
             "fallback_cmd": "away_from_risk",
         }
         if error is not None:
@@ -932,13 +967,15 @@ class EpisodeEngine:
 
             elapsed_ms = (time.perf_counter() - c0) * 1000.0
             self.planner_ms_samples.append(elapsed_ms)
-            if self.planner_timeout_ms >= 0.0 and elapsed_ms > self.planner_timeout_ms:
+            planner_timeout_ms = self._planner_timeout_ms_for_agent(i)
+            if planner_timeout_ms >= 0.0 and elapsed_ms > planner_timeout_ms:
                 v_cmds[i] = self._record_planner_fallback(
                     agent_id=i,
                     planner_input=p_input,
                     planner_debug=planner_debug,
                     reason="timeout",
                     elapsed_ms=elapsed_ms,
+                    timeout_ms=planner_timeout_ms,
                 )
                 continue
 

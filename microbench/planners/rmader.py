@@ -555,10 +555,9 @@ class RmaderPlanner(ILocalPlanner):
         direction = _normalize(v_pref if _norm(v_pref) > 1e-9 else to_goal)
         goal_dist = _norm(to_goal)
         current_speed = _norm(np.asarray(ego.vel, dtype=np.float32))
-        stop_reachable = 0.35 * current_speed * self.horizon_s + 0.12 * float(ego.a_max) * self.horizon_s * self.horizon_s
-        stop_reachable += 0.5 * float(ego.radius)
-        speed_reachable = 0.65 * float(ego.v_max) * self.horizon_s
-        horizon_dist = min(goal_dist, max(0.5, min(speed_reachable, stop_reachable)))
+        accel_reachable = current_speed * self.horizon_s + 0.5 * float(ego.a_max) * self.horizon_s * self.horizon_s
+        speed_reachable = float(ego.v_max) * self.horizon_s
+        horizon_dist = min(goal_dist, max(0.5, 0.85 * min(speed_reachable, accel_reachable)))
         target = goal.copy() if goal_dist <= horizon_dist else p0 + direction * horizon_dist
         if planner_input.planar:
             target[1] = p0[1]

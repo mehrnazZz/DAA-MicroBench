@@ -788,7 +788,7 @@ def _rmader_evidence_checks() -> list[dict[str, Any]]:
     accepted = _planner_input(
         ego=_agent(pos=(0.0, 0.0, 0.0), vel=(0.0, 0.0, 0.0), goal=(10.0, 0.0, 0.0)),
         goal_dir=(1.0, 0.0, 0.0),
-        neighbors=[_neighbor(idx=1, pos=(4.0, 0.0, 0.0))],
+        neighbors=[_neighbor(idx=1, pos=(8.0, 0.0, 0.0))],
         planar=False,
     )
     accepted_planner = RmaderPlanner(
