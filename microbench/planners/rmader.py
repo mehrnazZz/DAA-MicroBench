@@ -56,6 +56,13 @@ def _aabb_vertices(center: np.ndarray, half: np.ndarray) -> np.ndarray:
     return np.asarray(vertices, dtype=np.float32)
 
 
+def _aabb_gap_m(center_a: np.ndarray, half_a: np.ndarray, center_b: np.ndarray, half_b: np.ndarray) -> float:
+    sep = np.abs(np.asarray(center_a, dtype=np.float32) - np.asarray(center_b, dtype=np.float32))
+    sep -= np.asarray(half_a, dtype=np.float32) + np.asarray(half_b, dtype=np.float32)
+    outside = np.maximum(sep, 0.0)
+    return _norm(outside)
+
+
 def _closest_point_on_aabb(point: np.ndarray, obs: AABBObs) -> np.ndarray:
     center = np.asarray(obs.center, dtype=np.float32)
     half = np.asarray(obs.half, dtype=np.float32)
@@ -307,6 +314,7 @@ class RmaderPlanner(ILocalPlanner):
         self.hard_projection_relaxation = float(cfg.get("hard_projection_relaxation", 0.92))
         self.safety_margin_m = float(cfg.get("safety_margin_m", 0.35))
         self.obstacle_margin_m = float(cfg.get("obstacle_margin_m", 0.3))
+        self.obstacle_broadphase_margin_m = float(cfg.get("obstacle_broadphase_margin_m", 5.0))
         self.minvo_epsilon_m = float(cfg.get("minvo_epsilon_m", 0.12))
         self.hard_safety_tolerance_m = float(cfg.get("hard_safety_tolerance_m", 0.05))
         self.near_clearance_m = float(cfg.get("near_clearance_m", 1.7))
@@ -317,6 +325,7 @@ class RmaderPlanner(ILocalPlanner):
         self.max_intent_points = int(cfg.get("max_intent_points", 14))
         self.delay_check_enabled = bool(cfg.get("delay_check_enabled", True))
         self.delay_check_tolerance_m = float(cfg.get("delay_check_tolerance_m", 0.08))
+        self.early_reject_violation_m = float(cfg.get("early_reject_violation_m", 0.35))
         self.stale_age_cap_s = float(cfg.get("stale_age_cap_s", 1.5))
         self.stale_inflation_gain = float(cfg.get("stale_inflation_gain", 0.75))
         self.intent_age_inflation_gain = float(cfg.get("intent_age_inflation_gain", 0.35))
@@ -338,14 +347,17 @@ class RmaderPlanner(ILocalPlanner):
         self._last_control_points: np.ndarray | None = None
         self._last_label: str | None = None
         self._local_memory: dict[str, object] = {}
+        self._dynamic_hull_cache: dict[tuple[int, int, float], list[_IntervalHull]] = {}
 
     def reset(self, seed: int) -> None:
         self.seed = int(seed)
         self._last_control_points = None
         self._last_label = None
         self._local_memory.clear()
+        self._dynamic_hull_cache.clear()
 
     def compute_cmd(self, planner_input: PlannerInput) -> PlannerOutput:
+        self._dynamic_hull_cache.clear()
         ego = planner_input.ego
         current = np.asarray(ego.vel, dtype=np.float32).copy()
         if planner_input.planar:
@@ -506,12 +518,15 @@ class RmaderPlanner(ILocalPlanner):
             "rmader_accel_delta_norm": float(_norm(v_cmd - current)),
             "rmader_accel_delta_limit": float(float(ego.a_max) * float(planner_input.dt)),
         }
-        return PlannerOutput(
-            v_cmd=v_cmd.astype(float),
-            intent_out=intent,
-            messages_out=[candidate_msg, committed_msg],
-            debug_info=debug,
-        )
+        try:
+            return PlannerOutput(
+                v_cmd=v_cmd.astype(float),
+                intent_out=intent,
+                messages_out=[candidate_msg, committed_msg],
+                debug_info=debug,
+            )
+        finally:
+            self._dynamic_hull_cache.clear()
 
     def _memory(self, planner_input: PlannerInput) -> dict[str, object]:
         if planner_input.agent_context is not None:
@@ -685,11 +700,20 @@ class RmaderPlanner(ILocalPlanner):
 
     def _optimize_seed(self, planner_input: PlannerInput, seed: _Seed) -> _PlanResult:
         cp = self._project_kinematic(planner_input, np.asarray(seed.control_points, dtype=np.float32).copy())
-        cp, _ = self._project_hard_separation(planner_input, cp)
+        cp, projection_report = self._project_hard_separation(planner_input, cp)
         initial = self._objective(planner_input, cp, seed.control_points)
         previous = initial
         iterations = 0
         status = "projected_minvo_hyperplane_converged"
+        if projection_report.max_violation_m > max(float(self.early_reject_violation_m), self.delay_check_tolerance_m):
+            return self._plan_result(
+                label=seed.label,
+                cp=cp,
+                initial_cost=float(initial["total"]),
+                final=initial,
+                iterations=iterations,
+                status="projected_minvo_hyperplane_infeasible_initial",
+            )
 
         for _ in range(max(0, self.opt_iterations)):
             iterations += 1
@@ -822,7 +846,12 @@ class RmaderPlanner(ILocalPlanner):
 
     def _control_point_clearance_gradient(self, planner_input: PlannerInput, cp: np.ndarray) -> np.ndarray:
         grad = np.zeros_like(cp, dtype=np.float32)
-        hulls = self._build_interval_hulls(planner_input, self._segment_count(), self._segment_dt())
+        hulls = self._build_interval_hulls(
+            planner_input,
+            self._segment_count(),
+            self._segment_dt(),
+            own_minvo=self._minvo_intervals(cp),
+        )
         if not hulls:
             return grad
         fixed = self._fixed_mask(cp.shape[0])
@@ -950,7 +979,7 @@ class RmaderPlanner(ILocalPlanner):
         minvo: np.ndarray | None = None,
     ) -> _ConstraintReport:
         minvo = self._minvo_intervals(cp) if minvo is None else np.asarray(minvo, dtype=np.float32)
-        hulls = self._build_interval_hulls(planner_input, minvo.shape[0], self._segment_dt())
+        hulls = self._build_interval_hulls(planner_input, minvo.shape[0], self._segment_dt(), own_minvo=minvo)
         planes: list[_PlaneConstraint] = []
         max_violation = 0.0
         sum_violation = 0.0
@@ -1052,7 +1081,43 @@ class RmaderPlanner(ILocalPlanner):
                 best_delta = deltas[idx]
         return best_delta.astype(np.float32)
 
-    def _build_interval_hulls(self, planner_input: PlannerInput, num_segments: int, dt_segment: float) -> list[_IntervalHull]:
+    def _build_interval_hulls(
+        self,
+        planner_input: PlannerInput,
+        num_segments: int,
+        dt_segment: float,
+        *,
+        own_minvo: np.ndarray | None = None,
+    ) -> list[_IntervalHull]:
+        hulls: list[_IntervalHull] = list(self._dynamic_interval_hulls(planner_input, num_segments, dt_segment))
+        own_minvo_arr = None if own_minvo is None else np.asarray(own_minvo, dtype=np.float32)
+        for i in range(num_segments):
+            for obs_idx, obs in enumerate(planner_input.obstacles):
+                half = np.asarray(obs.half, dtype=np.float32) + float(planner_input.ego.radius) + self.obstacle_margin_m
+                center = np.asarray(obs.center, dtype=np.float32)
+                if not self._obstacle_relevant_to_interval(own_minvo_arr, i, center, half):
+                    continue
+                hulls.append(
+                    _IntervalHull(
+                        interval_idx=i,
+                        source_kind="obstacle_aabb",
+                        source_id=int(obs_idx),
+                        vertices=_aabb_vertices(center, half),
+                        inflation_m=float(planner_input.ego.radius) + self.obstacle_margin_m,
+                    )
+                )
+        return hulls
+
+    def _dynamic_interval_hulls(
+        self,
+        planner_input: PlannerInput,
+        num_segments: int,
+        dt_segment: float,
+    ) -> list[_IntervalHull]:
+        key = (id(planner_input), int(num_segments), round(float(dt_segment), 9))
+        cached = self._dynamic_hull_cache.get(key)
+        if cached is not None:
+            return cached
         hulls: list[_IntervalHull] = []
         intent_by_sender = {
             int(intent.sender_id): intent
@@ -1116,18 +1181,29 @@ class RmaderPlanner(ILocalPlanner):
                         inflation_m=float(inflation),
                     )
                 )
-            for obs_idx, obs in enumerate(planner_input.obstacles):
-                half = np.asarray(obs.half, dtype=np.float32) + float(planner_input.ego.radius) + self.obstacle_margin_m
-                hulls.append(
-                    _IntervalHull(
-                        interval_idx=i,
-                        source_kind="obstacle_aabb",
-                        source_id=int(obs_idx),
-                        vertices=_aabb_vertices(np.asarray(obs.center, dtype=np.float32), half),
-                        inflation_m=float(planner_input.ego.radius) + self.obstacle_margin_m,
-                    )
-                )
+        self._dynamic_hull_cache[key] = hulls
         return hulls
+
+    def _obstacle_relevant_to_interval(
+        self,
+        own_minvo: np.ndarray | None,
+        interval_idx: int,
+        obstacle_center: np.ndarray,
+        obstacle_half: np.ndarray,
+    ) -> bool:
+        if own_minvo is None or int(interval_idx) >= own_minvo.shape[0]:
+            return True
+        own = np.asarray(own_minvo[int(interval_idx)], dtype=np.float32)
+        if own.ndim != 2 or own.shape[0] == 0:
+            return True
+        own_min = np.min(own, axis=0)
+        own_max = np.max(own, axis=0)
+        own_center = 0.5 * (own_min + own_max)
+        own_half = 0.5 * (own_max - own_min)
+        return bool(
+            _aabb_gap_m(own_center, own_half, obstacle_center, obstacle_half)
+            <= max(0.0, float(self.obstacle_broadphase_margin_m))
+        )
 
     def _neighbor_prediction(self, nobs: NeighborObs, intent: IntentObs | None, t: float) -> np.ndarray:
         if intent is not None and intent.valid:

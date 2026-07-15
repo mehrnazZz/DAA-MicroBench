@@ -67,7 +67,7 @@ planner_guardrails:
   timeout_ms: 100.0       # soft timeout; slow outputs are discarded after the call returns
   fallback_speed_scale: 0.5
   method_timeout_ms:
-    rmader: 300.0         # optimizer-grade MINVO/hyperplane solve; keep its output instead of fallback
+    rmader: 400.0         # optimizer-grade MINVO/hyperplane solve; keep dense conflict outputs instead of fallback
 
 
 orca_heuristic: &orca_heuristic_defaults
@@ -308,8 +308,10 @@ rmader:
   hard_projection_relaxation: 0.92
   safety_margin_m: 0.35
   obstacle_margin_m: 0.3
+  obstacle_broadphase_margin_m: 5.0
   minvo_epsilon_m: 0.12
   hard_safety_tolerance_m: 0.05
+  early_reject_violation_m: 0.35
   near_clearance_m: 1.7
   goal_slowdown_radius_m: 6.0
   stale_inflation_gain: 0.75

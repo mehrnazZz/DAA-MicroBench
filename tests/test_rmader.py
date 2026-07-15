@@ -4,6 +4,7 @@ import numpy as np
 
 from microbench.planners.rmader import RmaderPlanner
 from microbench.types import (
+    AABBObs,
     AgentContext,
     AgentState,
     IntentObs,
@@ -170,6 +171,50 @@ def test_rmader_uses_intent_only_hulls() -> None:
     assert info["rmader_intent_count_considered"] == 1
     assert info["rmader_hard_constraint_count"] >= info["rmader_minvo_intervals"]
     assert info["rmader_candidate_max_hyperplane_violation_m"] is not None
+
+
+def test_rmader_static_obstacle_broadphase_filters_far_obstacles() -> None:
+    planner = _tiny_rmader()
+    ego = _agent((0.0, 0.0, 0.0), goal=(50.0, 0.0, 0.0))
+    inp = _planner_input(ego=ego, planar=False)
+    cp = planner._control_polygon(
+        inp, planner._local_target(inp), np.zeros(3, dtype=np.float32), "direct"
+    ).control_points
+    minvo = planner._minvo_intervals(cp)
+    far = AABBObs(center=np.asarray([30.0, 0.0, 0.0], dtype=np.float32), half=np.asarray([1.0, 1.0, 1.0]))
+    near = AABBObs(center=np.asarray([7.0, 0.0, 0.0], dtype=np.float32), half=np.asarray([1.0, 1.0, 1.0]))
+
+    far_hulls = planner._build_interval_hulls(
+        PlannerInput(
+            ego=ego,
+            goal_dir=np.asarray([1.0, 0.0, 0.0], dtype=np.float32),
+            neighbors=[],
+            obstacles=[far],
+            dt=0.02,
+            t=0.0,
+            planar=False,
+        ),
+        minvo.shape[0],
+        planner._segment_dt(),
+        own_minvo=minvo,
+    )
+    near_hulls = planner._build_interval_hulls(
+        PlannerInput(
+            ego=ego,
+            goal_dir=np.asarray([1.0, 0.0, 0.0], dtype=np.float32),
+            neighbors=[],
+            obstacles=[near],
+            dt=0.02,
+            t=0.0,
+            planar=False,
+        ),
+        minvo.shape[0],
+        planner._segment_dt(),
+        own_minvo=minvo,
+    )
+
+    assert [h.source_kind for h in far_hulls] == []
+    assert any(h.source_kind == "obstacle_aabb" for h in near_hulls)
 
 
 def test_rmader_preserves_3d_command_shape() -> None:
