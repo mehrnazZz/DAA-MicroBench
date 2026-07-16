@@ -14,6 +14,7 @@ from microbench.replay.foxglove_export import (
     _json_bytes,
     build_foxglove_frame_messages,
     build_foxglove_static_scene,
+    export_foxglove_comparison_mcap,
     export_foxglove_mcap,
 )
 from microbench.replay.trace_io import _load_trace
@@ -291,3 +292,28 @@ def test_foxglove_export_rejects_unknown_compression(tmp_path: Path) -> None:
         assert "Unsupported MCAP compression" in str(exc)
     else:
         raise AssertionError("expected ValueError for unsupported compression")
+
+
+def test_foxglove_comparison_export_writes_namespaced_topics(tmp_path: Path) -> None:
+    if importlib.util.find_spec("mcap") is None:
+        return
+    out_path = tmp_path / "comparison.mcap"
+    export_foxglove_comparison_mcap(
+        [str(GOLDEN_TRACE), str(GOLDEN_TRACE)],
+        str(out_path),
+        labels=["mpc_nonlinear", "ego_swarm_opt"],
+        trail_frames=4,
+        max_sensing_links=4,
+    )
+
+    from mcap.reader import make_reader
+
+    with out_path.open("rb") as stream:
+        summary = make_reader(stream).get_summary()
+    assert summary is not None
+    topics = {channel.topic for channel in summary.channels.values()}
+    assert "/tf" in topics
+    assert "/daa/comparison/mpc_nonlinear/agents" in topics
+    assert "/daa/comparison/mpc_nonlinear/intents" in topics
+    assert "/daa/comparison/ego_swarm_opt/agents" in topics
+    assert "/daa/comparison/ego_swarm_opt/intents" in topics

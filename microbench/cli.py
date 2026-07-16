@@ -16,7 +16,7 @@ from microbench.planners import list_methods, planner_metadata
 from microbench.types import RunSpec
 from microbench.runner import run_episode
 from microbench.metrics import append_result, write_summary
-from microbench.replay import export_foxglove_mcap, render_episode_report
+from microbench.replay import export_foxglove_comparison_mcap, export_foxglove_mcap, render_episode_report
 from microbench.dataset import generate_dataset, expand_scenarios, expand_list, sanity_check_shard
 from microbench.logging import wandb_logger
 from microbench.rl.calibration import run_rl_policy_calibration
@@ -108,6 +108,22 @@ def _parse_int_list(spec: str) -> list[int]:
 
 def _parse_str_list(spec: str) -> list[str]:
     return [x.strip() for x in spec.split(",") if x.strip()]
+
+
+def _parse_label_trace_args(items: list[str]) -> tuple[list[str], list[str]]:
+    labels: list[str] = []
+    traces: list[str] = []
+    for item in items:
+        if "=" not in item:
+            raise ValueError(f"trace entries must use label=path form: {item!r}")
+        label, path = item.split("=", 1)
+        label = label.strip()
+        path = path.strip()
+        if not label or not path:
+            raise ValueError(f"trace entries must include a non-empty label and path: {item!r}")
+        labels.append(label)
+        traces.append(path)
+    return labels, traces
 
 
 def _expand_scenarios(spec: str) -> list[str]:
@@ -1250,6 +1266,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_foxglove.add_argument("--max-sensing-links", type=int, default=200, help="Maximum sensing/V2V links per frame")
     p_foxglove.add_argument("--compression", choices=("none", "lz4", "zstd"), default="zstd", help="MCAP chunk compression")
 
+    p_foxglove_cmp = sub.add_parser(
+        "foxglove-comparison-export",
+        help="Export multiple traces into one namespaced Foxglove MCAP log",
+    )
+    p_foxglove_cmp.add_argument(
+        "--trace",
+        action="append",
+        required=True,
+        help="Trace entry in label=trace_episode.jsonl form; repeat once per comparison panel",
+    )
+    p_foxglove_cmp.add_argument("--out", required=True, help="Output MCAP path")
+    p_foxglove_cmp.add_argument(
+        "--topic-root",
+        default="/daa/comparison",
+        help="Root topic prefix for namespaced scene topics",
+    )
+    p_foxglove_cmp.add_argument("--trail-frames", type=int, default=200, help="Number of history frames in trail entities")
+    p_foxglove_cmp.add_argument("--max-sensing-links", type=int, default=200, help="Maximum sensing/V2V links per frame")
+    p_foxglove_cmp.add_argument(
+        "--compression",
+        choices=("none", "lz4", "zstd"),
+        default="zstd",
+        help="MCAP chunk compression",
+    )
+
     p_ds = sub.add_parser("generate-dataset", help="Generate diffusion training dataset shards")
     p_ds.add_argument("--scenario", required=True, help="Scenario path(s) or globs (comma-separated)")
     p_ds.add_argument("--method", default="orca_heuristic")
@@ -1717,6 +1758,22 @@ def main() -> None:
         except RuntimeError as exc:
             raise SystemExit(str(exc))
         print(f"done: Foxglove MCAP saved to {out}")
+        return
+    if args.cmd == "foxglove-comparison-export":
+        try:
+            labels, traces = _parse_label_trace_args(args.trace)
+            out = export_foxglove_comparison_mcap(
+                traces,
+                args.out,
+                labels=labels,
+                topic_root=args.topic_root,
+                trail_frames=args.trail_frames,
+                max_sensing_links=args.max_sensing_links,
+                compression=args.compression,
+            )
+        except (RuntimeError, ValueError) as exc:
+            raise SystemExit(str(exc))
+        print(f"done: Foxglove comparison MCAP saved to {out}")
         return
     if args.cmd == "generate-dataset":
         defaults = load_defaults()

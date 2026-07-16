@@ -125,6 +125,17 @@ python -m microbench.cli foxglove-export \
 
 Install `daa-microbench[foxglove]` first. The MCAP contains `/tf`, environment/static scene entities, agent scene entities, executed trails, sensing links, sensor/range volumes, future intent trajectories when present, frame diagnostics, and events for Foxglove Studio.
 
+For a single file that compares several baselines in Foxglove panels:
+
+```bash
+python -m microbench.cli foxglove-comparison-export \
+  --trace mpc_nonlinear=runs/<run_id>/episodes/<mpc_episode>/trace_episode.jsonl \
+  --trace ego_swarm_opt=runs/<run_id>/episodes/<ego_episode>/trace_episode.jsonl \
+  --out runs/<run_id>/baseline_comparison.mcap
+```
+
+The comparison export writes per-method topics under `/daa/comparison/<method>/...` and shared namespaced transforms on `/tf`.
+
 Render a multi-panel episode report from a saved trace:
 
 ```bash

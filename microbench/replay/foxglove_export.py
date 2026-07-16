@@ -1153,6 +1153,47 @@ def _json_bytes(payload: dict[str, Any]) -> bytes:
     return json.dumps(_json_sanitize(payload), separators=(",", ":"), allow_nan=False).encode("utf-8")
 
 
+def _topic_token(value: str) -> str:
+    token = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in str(value).strip())
+    token = token.strip("._-/")
+    return token or "trace"
+
+
+def _namespace_frames(payload: Any, namespace: str) -> Any:
+    if isinstance(payload, dict):
+        out: dict[str, Any] = {}
+        for key, value in payload.items():
+            if key in {"frame_id", "parent_frame_id", "child_frame_id"} and isinstance(value, str) and value:
+                out[key] = f"{namespace}/{value}"
+            elif key == "id" and isinstance(value, str) and value:
+                out[key] = f"{namespace}/{value}"
+            else:
+                out[key] = _namespace_frames(value, namespace)
+        return out
+    if isinstance(payload, list):
+        return [_namespace_frames(v, namespace) for v in payload]
+    return payload
+
+
+def _comparison_trace_specs(trace_paths: list[str], labels: list[str] | None) -> list[tuple[str, str]]:
+    if not trace_paths:
+        raise ValueError("at least one trace path is required")
+    if labels is not None and len(labels) != len(trace_paths):
+        raise ValueError("--labels count must match --traces count")
+
+    specs: list[tuple[str, str]] = []
+    used: set[str] = set()
+    for idx, trace_path in enumerate(trace_paths):
+        meta, _frames = _load_trace(trace_path)
+        raw_label = labels[idx] if labels is not None else str(meta.get("method") or Path(trace_path).parent.name or idx)
+        label = _topic_token(raw_label)
+        if label in used:
+            label = _topic_token(f"{label}_{idx}")
+        used.add(label)
+        specs.append((label, trace_path))
+    return specs
+
+
 def export_foxglove_mcap(
     trace_path: str,
     out_path: str,
@@ -1233,6 +1274,144 @@ def export_foxglove_mcap(
                 "data": event,
             }
             writer.add_message(events_ch, t_ns, _json_bytes(payload), t_ns)
+
+        writer.finish()
+    return opath
+
+
+def export_foxglove_comparison_mcap(
+    trace_paths: list[str],
+    out_path: str,
+    *,
+    labels: list[str] | None = None,
+    topic_root: str = "/daa/comparison",
+    trail_frames: int = 200,
+    max_sensing_links: int = 200,
+    compression: str = "zstd",
+) -> Path:
+    """Write one MCAP with multiple traces separated by method-scoped topics."""
+    Writer, CompressionType = _require_mcap()
+    specs = _comparison_trace_specs(trace_paths, labels)
+    opath = Path(out_path)
+    opath.parent.mkdir(parents=True, exist_ok=True)
+    compression_name = str(compression).upper()
+    try:
+        compression_type = getattr(CompressionType, compression_name)
+    except AttributeError as exc:
+        raise ValueError(f"Unsupported MCAP compression {compression!r}; choose none, lz4, or zstd") from exc
+
+    root = "/" + str(topic_root).strip("/")
+    with opath.open("wb") as stream:
+        writer = Writer(stream, compression=compression_type)
+        writer.start(profile="foxglove", library="daa-microbench")
+        scene_schema = writer.register_schema("foxglove.SceneUpdate", SCHEMA_ENCODING, _json_bytes(SCENE_UPDATE_SCHEMA))
+        tf_schema = writer.register_schema("foxglove.FrameTransforms", SCHEMA_ENCODING, _json_bytes(FRAME_TRANSFORMS_SCHEMA))
+        diagnostics_schema = writer.register_schema("daa.FrameDiagnostics", SCHEMA_ENCODING, _json_bytes(FRAME_DIAGNOSTICS_SCHEMA))
+        event_schema = writer.register_schema("daa.Event", SCHEMA_ENCODING, _json_bytes(EVENT_SCHEMA))
+        tf_ch = writer.register_channel("/tf", MESSAGE_ENCODING, tf_schema)
+
+        writer.add_metadata(
+            "daa_microbench_comparison",
+            {
+                "trace_count": str(len(specs)),
+                "labels": ",".join(label for label, _ in specs),
+                "topic_root": root,
+                "coordinate_mapping": "foxglove=(x, daa_z, daa_y_altitude)",
+                "frame_namespace": "each trace prefixes frame ids with its comparison label",
+            },
+        )
+
+        for label, trace_path in specs:
+            meta, frames = _load_trace(trace_path)
+            namespace = label
+            start_t_sec = float(frames[0].get("t", 0.0))
+            prefix = f"{root}/{label}"
+            channels = {
+                "static": writer.register_channel(f"{prefix}/static", MESSAGE_ENCODING, scene_schema),
+                "agents": writer.register_channel(f"{prefix}/agents", MESSAGE_ENCODING, scene_schema),
+                "trails": writer.register_channel(f"{prefix}/trails", MESSAGE_ENCODING, scene_schema),
+                "sensing_links": writer.register_channel(f"{prefix}/sensing_links", MESSAGE_ENCODING, scene_schema),
+                "intents": writer.register_channel(f"{prefix}/intents", MESSAGE_ENCODING, scene_schema),
+                "perception": writer.register_channel(f"{prefix}/perception", MESSAGE_ENCODING, scene_schema),
+                "diagnostics": writer.register_channel(f"{prefix}/diagnostics", MESSAGE_ENCODING, diagnostics_schema),
+                "events": writer.register_channel(f"{prefix}/events", MESSAGE_ENCODING, event_schema),
+            }
+            writer.add_metadata(
+                f"daa_microbench_comparison_{label}",
+                {
+                    "trace_path": str(trace_path),
+                    "scenario": str(meta.get("scenario_name", meta.get("scenario", "unknown"))),
+                    "method": str(meta.get("method", label)),
+                    "label": label,
+                    "comm_profile": str(meta.get("comm_profile", "unknown")),
+                    "start_t_sec": f"{start_t_sec:.9f}",
+                    "frame_count": str(len(frames)),
+                    "topic_prefix": prefix,
+                },
+            )
+            writer.add_message(
+                channels["static"],
+                0,
+                _json_bytes(_namespace_frames(build_foxglove_static_scene(meta), namespace)),
+                0,
+            )
+
+            for frame_idx, frame in enumerate(frames):
+                t_ns = _relative_ns(float(frame.get("t", 0.0)), start_t_sec)
+                messages = build_foxglove_frame_messages(
+                    meta=meta,
+                    frames=frames,
+                    frame_idx=frame_idx,
+                    start_t_sec=start_t_sec,
+                    trail_frames=trail_frames,
+                    max_sensing_links=max_sensing_links,
+                )
+                writer.add_message(tf_ch, t_ns, _json_bytes(_namespace_frames(messages["transforms"], namespace)), t_ns)
+                writer.add_message(
+                    channels["agents"],
+                    t_ns,
+                    _json_bytes(_namespace_frames(messages["agents"], namespace)),
+                    t_ns,
+                )
+                writer.add_message(
+                    channels["trails"],
+                    t_ns,
+                    _json_bytes(_namespace_frames(messages["trails"], namespace)),
+                    t_ns,
+                )
+                writer.add_message(
+                    channels["sensing_links"],
+                    t_ns,
+                    _json_bytes(_namespace_frames(messages["sensing_links"], namespace)),
+                    t_ns,
+                )
+                writer.add_message(
+                    channels["intents"],
+                    t_ns,
+                    _json_bytes(_namespace_frames(messages["intents"], namespace)),
+                    t_ns,
+                )
+                writer.add_message(
+                    channels["perception"],
+                    t_ns,
+                    _json_bytes(_namespace_frames(messages["perception"], namespace)),
+                    t_ns,
+                )
+                diagnostics = dict(messages["diagnostics"])
+                diagnostics["comparison_label"] = label
+                writer.add_message(channels["diagnostics"], t_ns, _json_bytes(diagnostics), t_ns)
+
+            for event in _event_rows(trace_path, meta):
+                if "t" not in event:
+                    continue
+                t_ns = _relative_ns(float(event.get("t", start_t_sec)), start_t_sec)
+                payload = {
+                    "timestamp": _timestamp_from_ns(t_ns),
+                    "type": str(event.get("type", "event")),
+                    "t_sec": float(event.get("t", 0.0)),
+                    "data": {"comparison_label": label, **event},
+                }
+                writer.add_message(channels["events"], t_ns, _json_bytes(payload), t_ns)
 
         writer.finish()
     return opath

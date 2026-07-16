@@ -44,6 +44,24 @@ def test_advanced_baseline_comparison_runs_compact_shared_lane(tmp_path: Path) -
     assert Path(report["scenario_path"]).exists()
 
 
+def test_advanced_baseline_comparison_save_traces_writes_full_episode_trace(tmp_path: Path) -> None:
+    out_dir = tmp_path / "comparison_traces"
+    report = run_advanced_baseline_comparison(
+        out_dir=out_dir,
+        methods=["reciprocal_velocity_obstacle"],
+        duration_s=0.4,
+        n_agents=4,
+        seed=2,
+        comm_profile="ideal_50hz",
+        save_traces=True,
+    )
+
+    assert report["ok"] is True
+    traces = sorted((out_dir / "episodes").glob("*/trace_episode.jsonl"))
+    assert len(traces) == 1
+    assert traces[0].stat().st_size > 0
+
+
 def test_advanced_baseline_comparison_cli_json(tmp_path: Path) -> None:
     out_dir = tmp_path / "cli_comparison"
     proc = subprocess.run(

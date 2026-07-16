@@ -83,11 +83,17 @@ def _prepare_scenario(
     scenario: str | Path,
     out_dir: Path,
     duration_s: float | None,
+    save_traces: bool,
 ) -> tuple[Path, Path, float | None]:
     source = resolve_config_path(str(scenario))
     cfg = load_yaml(source)
     if duration_s is not None:
         cfg.setdefault("scenario", {})["duration_s"] = float(duration_s)
+    if save_traces:
+        logging_cfg = cfg.setdefault("logging", {})
+        logging_cfg["save_trace"] = True
+        logging_cfg["trace_save_failures_only"] = False
+        logging_cfg["trace_agents_mode"] = "all"
     effective_duration = _to_float(cfg.get("scenario", {}).get("duration_s"))
     scenario_dir = out_dir / "_comparison_scenario"
     scenario_dir.mkdir(parents=True, exist_ok=True)
@@ -156,6 +162,7 @@ def run_advanced_baseline_comparison(
         scenario=scenario,
         out_dir=out,
         duration_s=duration_s,
+        save_traces=bool(save_traces),
     )
 
     rows: list[dict[str, Any]] = []
