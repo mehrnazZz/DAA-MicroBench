@@ -86,6 +86,7 @@ class _QpProblem:
     collision_constraints: list[_LinearConstraint]
     risk_agent_count: int
     first_risk_step: int | None
+    current_track_constraint_count: int
     accel_bound_mps2: float
     velocity_bound_mps: float
 
@@ -152,6 +153,14 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
         self.risk_activation_margin_m = float(cfg.get("risk_activation_margin_m", 0.0))
         self.obstacle_margin_m = float(cfg.get("obstacle_margin_m", 0.5))
         self.hard_tolerance_m = float(cfg.get("hard_tolerance_m", 0.04))
+        self.current_track_constraints_enabled = bool(cfg.get("current_track_constraints_enabled", True))
+        self.current_track_constraint_margin_m = float(cfg.get("current_track_constraint_margin_m", 0.25))
+        self.current_track_guard_enabled = bool(cfg.get("current_track_guard_enabled", True))
+        self.current_track_guard_margin_m = float(cfg.get("current_track_guard_margin_m", 0.35))
+        self.current_track_guard_activation_margin_m = float(cfg.get("current_track_guard_activation_margin_m", 1.25))
+        self.current_track_guard_ttc_s = float(cfg.get("current_track_guard_ttc_s", 3.0))
+        self.current_track_guard_alpha = float(cfg.get("current_track_guard_alpha", 1.4))
+        self.current_track_guard_iterations = int(cfg.get("current_track_guard_iterations", 3))
 
         self.tube_radius_m = float(cfg.get("tube_radius_m", 0.8))
         self.environment_margin_m = float(cfg.get("environment_margin_m", 1.0))
@@ -226,6 +235,7 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
         v_cmd = _clamp_speed(v_cmd, float(ego.v_max))
         if planner_input.planar:
             v_cmd[1] = 0.0
+        v_cmd, guard_info = self._apply_current_track_guard(planner_input, v_cmd, current)
 
         intent_points = self._intent_points(planner_input, plan.positions)
         intent = IntentMsg(
@@ -283,6 +293,7 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
             "dynamic_tube_dmpc_velocity_constraint_count": int(2 * plan.qp.bvel.shape[0]),
             "dynamic_tube_dmpc_tube_constraint_count": int(len(plan.qp.tube_constraints)),
             "dynamic_tube_dmpc_collision_constraint_count": int(len(plan.qp.collision_constraints)),
+            "dynamic_tube_dmpc_current_track_constraint_count": int(plan.qp.current_track_constraint_count),
             "dynamic_tube_dmpc_risk_agent_count": int(plan.qp.risk_agent_count),
             "dynamic_tube_dmpc_first_risk_step": plan.qp.first_risk_step,
             "dynamic_tube_dmpc_risk_triggered_activation": bool(plan.qp.risk_agent_count > 0),
@@ -307,6 +318,8 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
             "dynamic_tube_dmpc_planar": bool(planner_input.planar),
             "dynamic_tube_dmpc_agent_messages": 1,
             "dynamic_tube_dmpc_intent_points": int(intent_points.shape[0]),
+            "dynamic_tube_dmpc_velocity_guard_enabled": bool(self.current_track_guard_enabled),
+            **guard_info,
             "dynamic_tube_dmpc_equations": "1-3,21-23,24-27,28-32,33-41",
         }
         return PlannerOutput(v_cmd=v_cmd.astype(float), intent_out=intent, messages_out=[msg], debug_info=debug)
@@ -459,7 +472,12 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
             constraint_rows.append(np.asarray(c.normal, dtype=np.float64) @ bpos[row_slice, :])
             constraint_bounds.append(float(c.b - np.dot(c.normal, base_pos[c.step_idx - 1])))
 
-        collision_constraints, risk_count, first_risk = self._collision_constraints(planner_input, bpos, base_pos, targets)
+        collision_constraints, risk_count, first_risk, current_track_count = self._collision_constraints(
+            planner_input,
+            bpos,
+            base_pos,
+            targets,
+        )
         for c in collision_constraints:
             row_slice = slice(3 * (c.step_idx - 1), 3 * c.step_idx)
             constraint_rows.append(np.asarray(c.normal, dtype=np.float64) @ bpos[row_slice, :])
@@ -487,6 +505,7 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
             collision_constraints=collision_constraints,
             risk_agent_count=int(risk_count),
             first_risk_step=first_risk,
+            current_track_constraint_count=int(current_track_count),
             accel_bound_mps2=float(planner_input.ego.a_max),
             velocity_bound_mps=float(planner_input.ego.v_max),
         )
@@ -746,11 +765,12 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
         bpos: np.ndarray,
         base_pos: np.ndarray,
         assumed_ego: np.ndarray,
-    ) -> tuple[list[_LinearConstraint], int, int | None]:
+    ) -> tuple[list[_LinearConstraint], int, int | None, int]:
         del bpos, base_pos
         constraints: list[_LinearConstraint] = []
         risk_agents = 0
         first_risk: int | None = None
+        current_track_constraints = 0
         intent_by_sender = {
             int(intent.sender_id): intent
             for intent in planner_input.neighbor_intents
@@ -759,7 +779,8 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
         seen: set[int] = set()
         for nobs in planner_input.neighbors[: self.max_neighbors]:
             seen.add(int(nobs.idx))
-            pred = self._neighbor_prediction_sequence(nobs, intent_by_sender.get(int(nobs.idx)))
+            intent = intent_by_sender.get(int(nobs.idx))
+            pred = self._neighbor_prediction_sequence(nobs, intent)
             added, risk_step = self._constraints_against_prediction(
                 planner_input,
                 assumed_ego,
@@ -772,6 +793,22 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
                 risk_agents += 1
                 first_risk = risk_step if first_risk is None else min(first_risk, risk_step)
                 constraints.extend(added)
+            if self.current_track_constraints_enabled and intent is not None:
+                track_pred = self._neighbor_prediction_sequence(nobs, None)
+                track_added, track_risk_step = self._constraints_against_prediction(
+                    planner_input,
+                    assumed_ego,
+                    track_pred,
+                    source_kind="risk_neighbor_track",
+                    source_id=int(nobs.idx),
+                    neighbor_radius=float(nobs.radius),
+                    safe_extra_m=self.current_track_constraint_margin_m,
+                )
+                if track_added:
+                    risk_agents += 1
+                    first_risk = track_risk_step if first_risk is None else min(first_risk, track_risk_step)
+                    current_track_constraints += len(track_added)
+                    constraints.extend(track_added)
         for sender_id, intent in intent_by_sender.items():
             if sender_id in seen:
                 continue
@@ -788,7 +825,7 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
                 risk_agents += 1
                 first_risk = risk_step if first_risk is None else min(first_risk, risk_step)
                 constraints.extend(added)
-        return constraints, risk_agents, first_risk
+        return constraints, risk_agents, first_risk, current_track_constraints
 
     def _constraints_against_prediction(
         self,
@@ -799,8 +836,9 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
         source_kind: str,
         source_id: int,
         neighbor_radius: float,
+        safe_extra_m: float = 0.0,
     ) -> tuple[list[_LinearConstraint], int | None]:
-        safe = self._safe_radius(planner_input, neighbor_radius)
+        safe = self._safe_radius(planner_input, neighbor_radius) + max(0.0, float(safe_extra_m))
         scaled = [self._scaled_distance(assumed_ego[k] - other_pred[k]) for k in range(self._steps())]
         threshold = safe + self.risk_activation_margin_m
         risk_steps = [idx + 1 for idx, value in enumerate(scaled) if value <= threshold]
@@ -834,6 +872,81 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
                 )
             )
         return out, risk_step
+
+    def _apply_current_track_guard(
+        self,
+        planner_input: PlannerInput,
+        v_cmd: np.ndarray,
+        current: np.ndarray,
+    ) -> tuple[np.ndarray, dict[str, Any]]:
+        if not self.current_track_guard_enabled:
+            return np.asarray(v_cmd, dtype=np.float32), {
+                "dynamic_tube_dmpc_velocity_guard_adjusted": False,
+                "dynamic_tube_dmpc_velocity_guard_constraint_count": 0,
+                "dynamic_tube_dmpc_velocity_guard_min_clearance_m": None,
+                "dynamic_tube_dmpc_velocity_guard_min_ttc_s": None,
+                "dynamic_tube_dmpc_velocity_guard_delta_norm": 0.0,
+            }
+
+        ego = planner_input.ego
+        guarded = np.asarray(v_cmd, dtype=np.float32).copy()
+        start = guarded.copy()
+        max_delta = float(ego.a_max) * float(planner_input.dt)
+        safe_floor = float(ego.radius) + self.current_track_guard_margin_m
+        active: list[tuple[np.ndarray, float, float]] = []
+        min_clearance: float | None = None
+        min_ttc: float | None = None
+
+        for nobs in planner_input.neighbors[: self.max_neighbors]:
+            if not bool(nobs.valid):
+                continue
+            rel = np.asarray(ego.pos, dtype=np.float32) - np.asarray(nobs.pos, dtype=np.float32)
+            other_v = np.asarray(nobs.vel, dtype=np.float32)
+            if planner_input.planar:
+                rel[1] = 0.0
+                other_v[1] = 0.0
+            dist = _norm(rel)
+            if dist < 1e-6:
+                rel = np.asarray([1.0, 0.0, 0.0], dtype=np.float32)
+                dist = 1.0
+            unit = rel / dist
+            safe = max(self._safe_radius(planner_input, float(nobs.radius)), safe_floor + float(nobs.radius))
+            safe += max(0.0, float(self.current_track_guard_margin_m))
+            clearance = dist - safe
+            min_clearance = clearance if min_clearance is None else min(min_clearance, clearance)
+            rel_v_current = np.asarray(current, dtype=np.float32) - other_v
+            vv = float(np.dot(rel_v_current, rel_v_current))
+            ttc: float | None = None
+            if vv > 1e-9:
+                tau = -float(np.dot(rel, rel_v_current)) / vv
+                if tau >= 0.0:
+                    ttc = tau
+                    min_ttc = tau if min_ttc is None else min(min_ttc, tau)
+            within_range = dist <= safe + max(0.0, float(self.current_track_guard_activation_margin_m))
+            closing_soon = ttc is not None and ttc <= max(0.0, float(self.current_track_guard_ttc_s))
+            if not within_range and not closing_soon:
+                continue
+            rhs = float(np.dot(unit, other_v) - float(self.current_track_guard_alpha) * clearance)
+            active.append((unit.astype(np.float32), rhs, clearance))
+
+        for _ in range(max(1, self.current_track_guard_iterations)):
+            for unit, rhs, _clearance in active:
+                lhs = float(np.dot(unit, guarded))
+                if lhs < rhs:
+                    guarded = guarded + unit * (rhs - lhs)
+            guarded = _limit_delta(guarded, current, max_delta)
+            guarded = _clamp_speed(guarded, float(ego.v_max))
+            if planner_input.planar:
+                guarded[1] = 0.0
+
+        delta = _norm(guarded - start)
+        return guarded.astype(np.float32), {
+            "dynamic_tube_dmpc_velocity_guard_adjusted": bool(delta > 1e-7),
+            "dynamic_tube_dmpc_velocity_guard_constraint_count": int(len(active)),
+            "dynamic_tube_dmpc_velocity_guard_min_clearance_m": min_clearance,
+            "dynamic_tube_dmpc_velocity_guard_min_ttc_s": min_ttc,
+            "dynamic_tube_dmpc_velocity_guard_delta_norm": float(delta),
+        }
 
     def _neighbor_prediction_sequence(self, nobs: NeighborObs, intent: IntentObs | None) -> np.ndarray:
         if intent is not None and bool(intent.valid) and np.asarray(intent.points).size > 0:

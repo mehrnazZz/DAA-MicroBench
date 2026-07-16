@@ -265,6 +265,14 @@ dynamic_tube_dmpc:
   risk_activation_margin_m: 0.0
   obstacle_margin_m: 0.5
   hard_tolerance_m: 0.04
+  current_track_constraints_enabled: true
+  current_track_constraint_margin_m: 0.25
+  current_track_guard_enabled: true
+  current_track_guard_margin_m: 0.35
+  current_track_guard_activation_margin_m: 1.25
+  current_track_guard_ttc_s: 3.0
+  current_track_guard_alpha: 1.4
+  current_track_guard_iterations: 3
   tube_radius_m: 0.8
   environment_margin_m: 1.0
   tube_waypoints: 25

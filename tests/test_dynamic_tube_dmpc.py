@@ -140,6 +140,47 @@ def test_dynamic_tube_dmpc_intent_only_prediction_can_trigger_risk_constraints()
     assert out.debug_info["dynamic_tube_dmpc_collision_constraint_count"] > 0
 
 
+def test_dynamic_tube_dmpc_current_track_constraints_backstop_neighbor_intent() -> None:
+    ego = _agent((0.0, 0.0, 0.0), vel=(1.0, 0.0, 0.0))
+    neighbor = _neighbor(pos=(1.15, 0.0, 0.0), vel=(-1.0, 0.0, 0.0), radius=0.2)
+    optimistic_intent = IntentObs(
+        sender_id=1,
+        points=np.asarray(
+            [
+                [1.15, 0.0, 0.0],
+                [1.15, 0.0, 1.8],
+                [1.15, 0.0, 3.0],
+            ],
+            dtype=np.float32,
+        ),
+        tube_radius_m=0.25,
+        kind="DYNAMIC_TUBE_DMPC_TRAJECTORY",
+        expiry_s=1.0,
+        intent_age_s=0.1,
+        valid=True,
+        dt_plan_s=0.2,
+    )
+
+    out = _tiny_dynamic_tube().compute_cmd(
+        _planner_input(ego=ego, neighbors=[neighbor], neighbor_intents=[optimistic_intent])
+    )
+
+    info = out.debug_info
+    assert info["dynamic_tube_dmpc_current_track_constraint_count"] > 0
+    assert info["dynamic_tube_dmpc_collision_constraint_count"] >= info["dynamic_tube_dmpc_current_track_constraint_count"]
+    assert info["dynamic_tube_dmpc_velocity_guard_constraint_count"] > 0
+
+
+def test_dynamic_tube_dmpc_velocity_guard_projects_closing_command() -> None:
+    ego = _agent((0.0, 0.0, 0.0), vel=(1.0, 0.0, 0.0))
+    neighbor = _neighbor(pos=(1.0, 0.0, 0.0), vel=(-1.0, 0.0, 0.0), radius=0.2)
+
+    out = _tiny_dynamic_tube().compute_cmd(_planner_input(ego=ego, neighbors=[neighbor]))
+
+    assert out.debug_info["dynamic_tube_dmpc_velocity_guard_adjusted"] is True
+    assert out.debug_info["dynamic_tube_dmpc_velocity_guard_constraint_count"] > 0
+
+
 def test_dynamic_tube_dmpc_elastic_reconstruction_responds_to_obstacle_intrusion() -> None:
     ego = _agent((0.0, 0.0, 0.0))
 
