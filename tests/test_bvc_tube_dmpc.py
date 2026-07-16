@@ -147,6 +147,32 @@ def test_bvc_tube_dmpc_obstacle_constraints_are_hard_tube_boundaries() -> None:
     assert np.linalg.norm(out.v_cmd - ego.vel) <= ego.a_max * 0.02 + 1e-6
 
 
+def test_bvc_tube_dmpc_static_obstacle_broadphase_filters_far_obstacles() -> None:
+    planner = _tiny_bvc()
+    ego = _agent((0.0, 0.0, 0.0), goal=(40.0, 0.0, 0.0))
+    inp = _planner_input(ego=ego, planar=False)
+    positions = planner._seed_positions(
+        inp,
+        planner._local_target(inp),
+        np.zeros(3, dtype=np.float32),
+        "direct",
+    ).positions
+    far = AABBObs(center=np.asarray([35.0, 0.0, 0.0], dtype=np.float32), half=np.asarray([1.0, 1.0, 1.0]))
+    near = AABBObs(center=np.asarray([4.5, 0.0, 0.0], dtype=np.float32), half=np.asarray([1.0, 1.0, 1.0]))
+
+    far_constraints = planner._build_tube_constraints(
+        _planner_input(ego=ego, obstacles=[far], planar=False),
+        positions,
+    )
+    near_constraints = planner._build_tube_constraints(
+        _planner_input(ego=ego, obstacles=[near], planar=False),
+        positions,
+    )
+
+    assert not any(c.source_kind == "obstacle_aabb" for c in far_constraints)
+    assert any(c.source_kind == "obstacle_aabb" for c in near_constraints)
+
+
 def test_bvc_tube_dmpc_preserves_3d_command_shape() -> None:
     ego = _agent((0.0, 0.0, 0.0), goal=(10.0, 4.0, 0.0))
 

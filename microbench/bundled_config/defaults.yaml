@@ -68,6 +68,7 @@ planner_guardrails:
   fallback_speed_scale: 0.5
   method_timeout_ms:
     rmader: 400.0         # optimizer-grade MINVO/hyperplane solve; keep dense conflict outputs instead of fallback
+    bvc_tube_dmpc: 150.0  # hard spatial-partition optimizer; leaderboard still reports compute latency
 
 
 orca_heuristic: &orca_heuristic_defaults
@@ -230,6 +231,7 @@ bvc_tube_dmpc:
   line_search_shrink: 0.55
   safety_margin_m: 0.35
   obstacle_margin_m: 0.3
+  obstacle_broadphase_margin_m: 6.0
   hard_tolerance_m: 0.04
   near_clearance_m: 1.5
   goal_slowdown_radius_m: 6.0

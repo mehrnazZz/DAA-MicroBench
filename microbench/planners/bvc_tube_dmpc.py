@@ -51,6 +51,13 @@ def _closest_point_on_aabb(point: np.ndarray, obs: AABBObs) -> np.ndarray:
     return np.minimum(np.maximum(np.asarray(point, dtype=np.float32), center - half), center + half)
 
 
+def _aabb_gap_sq(point: np.ndarray, center: np.ndarray, half: np.ndarray) -> float:
+    dx = max(abs(float(point[0]) - float(center[0])) - float(half[0]), 0.0)
+    dy = max(abs(float(point[1]) - float(center[1])) - float(half[1]), 0.0)
+    dz = max(abs(float(point[2]) - float(center[2])) - float(half[2]), 0.0)
+    return dx * dx + dy * dy + dz * dz
+
+
 @dataclass(frozen=True)
 class _Seed:
     label: str
@@ -65,6 +72,15 @@ class _TubeConstraint:
     source_id: int
     normal: np.ndarray
     b: float
+    buffer_m: float
+
+
+@dataclass(frozen=True)
+class _ObstacleData:
+    source_id: int
+    center: np.ndarray
+    half: np.ndarray
+    inflated_half: np.ndarray
     buffer_m: float
 
 
@@ -126,6 +142,7 @@ class BvcTubeDmpcPlanner(ILocalPlanner):
         self.line_search_shrink = float(cfg.get("line_search_shrink", 0.55))
         self.safety_margin_m = float(cfg.get("safety_margin_m", 0.35))
         self.obstacle_margin_m = float(cfg.get("obstacle_margin_m", 0.3))
+        self.obstacle_broadphase_margin_m = float(cfg.get("obstacle_broadphase_margin_m", 6.0))
         self.hard_tolerance_m = float(cfg.get("hard_tolerance_m", 0.04))
         self.near_clearance_m = float(cfg.get("near_clearance_m", 1.5))
         self.goal_slowdown_radius_m = float(cfg.get("goal_slowdown_radius_m", 6.0))
@@ -609,6 +626,7 @@ class BvcTubeDmpcPlanner(ILocalPlanner):
     def _build_tube_constraints(self, planner_input: PlannerInput, positions: np.ndarray) -> list[_TubeConstraint]:
         constraints: list[_TubeConstraint] = []
         dt = self._dt()
+        obstacles = self._obstacle_data(planner_input)
         intent_by_sender = {
             int(intent.sender_id): intent
             for intent in planner_input.neighbor_intents
@@ -652,8 +670,10 @@ class BvcTubeDmpcPlanner(ILocalPlanner):
                 )
                 if constraint is not None:
                     constraints.append(constraint)
-            for obs_idx, obs in enumerate(planner_input.obstacles):
-                constraint = self._obstacle_constraint(k, anchor, obs, planner_input)
+            for obs in obstacles:
+                if not self._obstacle_relevant_to_anchor(anchor, obs):
+                    continue
+                constraint = self._obstacle_constraint(k, anchor, obs, planner_input.planar)
                 if constraint is not None:
                     constraints.append(constraint)
         return constraints
@@ -691,28 +711,51 @@ class BvcTubeDmpcPlanner(ILocalPlanner):
         self,
         step_idx: int,
         anchor: np.ndarray,
-        obs: AABBObs,
-        planner_input: PlannerInput,
+        obs: _ObstacleData,
+        planar: bool,
     ) -> _TubeConstraint | None:
-        closest = _closest_point_on_aabb(anchor, obs)
+        closest = np.minimum(np.maximum(np.asarray(anchor, dtype=np.float32), obs.center - obs.half), obs.center + obs.half)
         rel = closest - np.asarray(anchor, dtype=np.float32)
         if _norm(rel) < 1e-6:
-            rel = np.asarray(obs.center, dtype=np.float32) - np.asarray(anchor, dtype=np.float32)
-        if planner_input.planar:
+            rel = obs.center - np.asarray(anchor, dtype=np.float32)
+        if planar:
             rel[1] = 0.0
         dist = _norm(rel)
         if dist < 1e-6:
             return None
         normal = rel / dist
-        b = float(np.dot(normal, closest) - float(planner_input.ego.radius) - self.obstacle_margin_m)
+        b = float(np.dot(normal, closest) - float(obs.buffer_m))
         return _TubeConstraint(
             step_idx=int(step_idx),
             source_kind="obstacle_aabb",
-            source_id=-1,
+            source_id=int(obs.source_id),
             normal=normal.astype(np.float32),
             b=b,
-            buffer_m=float(planner_input.ego.radius) + self.obstacle_margin_m,
+            buffer_m=float(obs.buffer_m),
         )
+
+    def _obstacle_data(self, planner_input: PlannerInput) -> tuple[_ObstacleData, ...]:
+        buffer_m = float(planner_input.ego.radius) + self.obstacle_margin_m
+        out: list[_ObstacleData] = []
+        for obs_idx, obs in enumerate(planner_input.obstacles):
+            center = np.asarray(obs.center, dtype=np.float32)
+            half = np.asarray(obs.half, dtype=np.float32)
+            inflated_half = (half + buffer_m).astype(np.float32)
+            out.append(
+                _ObstacleData(
+                    source_id=int(obs_idx),
+                    center=center,
+                    half=half,
+                    inflated_half=inflated_half,
+                    buffer_m=float(buffer_m),
+                )
+            )
+        return tuple(out)
+
+    def _obstacle_relevant_to_anchor(self, anchor: np.ndarray, obs: _ObstacleData) -> bool:
+        broadphase_sq = max(0.0, float(self.obstacle_broadphase_margin_m))
+        broadphase_sq *= broadphase_sq
+        return bool(_aabb_gap_sq(anchor, obs.center, obs.inflated_half) <= broadphase_sq)
 
     def _tube_report(self, planner_input: PlannerInput, positions: np.ndarray) -> _TubeReport:
         constraints = self._build_tube_constraints(planner_input, positions)
