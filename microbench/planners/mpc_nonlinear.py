@@ -110,6 +110,7 @@ class NonlinearMpcPlanner(ILocalPlanner):
         self.horizon_s = float(cfg.get("horizon_s", 2.4))
         self.step_dt_s = float(cfg.get("step_dt_s", 0.4))
         self.horizon_steps = int(cfg.get("horizon_steps", 6))
+        self.replan_period_s = float(cfg.get("replan_period_s", 0.0))
         self.max_neighbors = int(cfg.get("max_neighbors", 8))
         self.max_initializations = int(cfg.get("max_initializations", 4))
         self.solver = str(cfg.get("solver", "projected_gradient")).strip().lower()
@@ -148,12 +149,16 @@ class NonlinearMpcPlanner(ILocalPlanner):
 
         self._last_controls: np.ndarray | None = None
         self._last_label: str | None = None
+        self._cached_controls: np.ndarray | None = None
+        self._last_replan_t: float | None = None
         self.seed = 0
 
     def reset(self, seed: int) -> None:
         self.seed = int(seed)
         self._last_controls = None
         self._last_label = None
+        self._cached_controls = None
+        self._last_replan_t = None
 
     def compute_cmd(self, planner_input: PlannerInput) -> PlannerOutput:
         ego = planner_input.ego
@@ -161,9 +166,16 @@ class NonlinearMpcPlanner(ILocalPlanner):
         if planner_input.planar:
             current[1] = 0.0
 
-        seeds = self._initializations(planner_input)
-        results = [self._optimize_seed(planner_input, seed) for seed in seeds]
-        best = min(results, key=lambda result: result.final_cost)
+        cached = self._maybe_reuse_controls(planner_input)
+        replanned = cached is None
+        if cached is None:
+            seeds = self._initializations(planner_input)
+            results = [self._optimize_seed(planner_input, seed) for seed in seeds]
+            best = min(results, key=lambda result: result.final_cost)
+            self._last_replan_t = float(planner_input.t)
+        else:
+            seeds = []
+            best = cached
 
         first_accel = best.controls[0] if best.controls.size else np.zeros(3, dtype=np.float32)
         v_cmd = current + first_accel * float(planner_input.dt)
@@ -187,6 +199,7 @@ class NonlinearMpcPlanner(ILocalPlanner):
         prior_label = self._last_label
         self._last_controls = best.controls.copy()
         self._last_label = best.label
+        self._cached_controls = best.controls.copy()
 
         return PlannerOutput(
             v_cmd=v_cmd.astype(float),
@@ -200,6 +213,9 @@ class NonlinearMpcPlanner(ILocalPlanner):
                 "mpc_nonlinear_step_dt_s": float(self._dt()),
                 "mpc_nonlinear_horizon_steps": int(best.controls.shape[0]),
                 "mpc_nonlinear_initializations": int(len(seeds)),
+                "mpc_nonlinear_replanned": bool(replanned),
+                "mpc_nonlinear_cached_reuse": bool(not replanned),
+                "mpc_nonlinear_replan_period_s": float(self.replan_period_s),
                 "mpc_nonlinear_best_seed": str(best.label),
                 "mpc_nonlinear_initial_cost": float(best.initial_cost),
                 "mpc_nonlinear_final_cost": float(best.final_cost),
@@ -347,6 +363,27 @@ class NonlinearMpcPlanner(ILocalPlanner):
         controls, iterations, status = self._optimize_projected_gradient(planner_input, u0, status)
         final = self._cost_and_gradient(planner_input, controls)
         return self._result_from_breakdown(seed, controls, initial["total"], final, iterations, "projected_gradient", status)
+
+    def _maybe_reuse_controls(self, planner_input: PlannerInput) -> _OptimizationResult | None:
+        if self.replan_period_s <= 0.0:
+            return None
+        if self._cached_controls is None or self._last_replan_t is None:
+            return None
+        if float(planner_input.t) - float(self._last_replan_t) >= self.replan_period_s:
+            return None
+        if self._cached_controls.shape != (self._steps(), 3):
+            return None
+        controls = self._project_controls(self._cached_controls.copy(), planner_input)
+        final = self._cost_and_gradient(planner_input, controls, need_grad=False)
+        return self._result_from_breakdown(
+            _Seed("cached_receding", controls),
+            controls,
+            float(final["total"]),
+            final,
+            0,
+            "cached_receding_mpc",
+            "cached_receding_mpc_solution",
+        )
 
     def _optimize_scipy(self, planner_input: PlannerInput, u0: np.ndarray) -> tuple[np.ndarray, int, str] | None:
         try:

@@ -33,6 +33,7 @@ def _planner_input(
     neighbor_intents=None,
     planar=True,
     goal_dir=(1.0, 0.0, 0.0),
+    t: float = 0.0,
 ) -> PlannerInput:
     return PlannerInput(
         ego=ego,
@@ -41,7 +42,7 @@ def _planner_input(
         obstacles=list(obstacles or []),
         neighbor_intents=list(neighbor_intents or []),
         dt=0.02,
-        t=0.0,
+        t=float(t),
         planar=planar,
     )
 
@@ -149,3 +150,27 @@ def test_mpc_nonlinear_neighbor_intent_is_used_in_cost() -> None:
 
     assert with_intent.debug_info["mpc_nonlinear_intent_count_considered"] == 1
     assert with_intent.debug_info["mpc_nonlinear_intent_penalty"] > no_intent.debug_info["mpc_nonlinear_intent_penalty"]
+
+
+def test_mpc_nonlinear_reuses_receding_solution_until_replan_period() -> None:
+    planner = NonlinearMpcPlanner(
+        cfg={
+            "horizon_s": 2.4,
+            "horizon_steps": 5,
+            "max_initializations": 2,
+            "opt_iterations": 2,
+            "replan_period_s": 0.1,
+        }
+    )
+    ego0 = _agent((0.0, 0.0, 0.0), vel=(0.5, 0.0, 0.0))
+
+    first = planner.compute_cmd(_planner_input(ego=ego0, t=0.0))
+    ego1 = _agent((0.01, 0.0, 0.0), vel=np.asarray(first.v_cmd, dtype=np.float32))
+    reused = planner.compute_cmd(_planner_input(ego=ego1, t=0.02))
+    expired = planner.compute_cmd(_planner_input(ego=ego1, t=0.12))
+
+    assert first.debug_info["mpc_nonlinear_replanned"] is True
+    assert reused.debug_info["mpc_nonlinear_replanned"] is False
+    assert reused.debug_info["mpc_nonlinear_cached_reuse"] is True
+    assert reused.debug_info["mpc_nonlinear_solver"] == "cached_receding_mpc"
+    assert expired.debug_info["mpc_nonlinear_replanned"] is True

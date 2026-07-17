@@ -43,6 +43,7 @@ def _planner_input(
     planar=True,
     goal_dir=(1.0, 0.0, 0.0),
     context: AgentContext | None = None,
+    t: float = 0.0,
 ) -> PlannerInput:
     return PlannerInput(
         ego=ego,
@@ -50,7 +51,7 @@ def _planner_input(
         neighbors=list(neighbors or []),
         neighbor_intents=list(neighbor_intents or []),
         dt=0.02,
-        t=0.0,
+        t=float(t),
         agent_context=context,
         planar=planar,
     )
@@ -159,6 +160,63 @@ def test_rmader_close_conflict_delay_check_falls_back_to_braking_plan() -> None:
     assert info["rmader_delay_check_fallback"] == "braking_trajectory"
     assert info["rmader_used_topology"] == "delay_check_brake"
     assert np.linalg.norm(out.v_cmd) <= ego.a_max * 0.02 + 1e-6
+
+
+def test_rmader_recovery_fallback_is_explicit_opt_in() -> None:
+    ego = _agent((0.0, 0.0, 0.0))
+    planner = RmaderPlanner(
+        cfg={
+            "horizon_s": 2.4,
+            "control_points": 8,
+            "samples_per_interval": 2,
+            "replan_period_s": 0.2,
+            "fallback_replan_period_s": 0.04,
+            "max_initializations": 2,
+            "opt_iterations": 2,
+            "hard_projection_iterations": 2,
+            "jerk_limit_mps3": 100.0,
+            "recovery_fallback_enabled": True,
+        }
+    )
+
+    out = planner.compute_cmd(_planner_input(ego=ego, neighbors=[_neighbor(pos=(3.0, 0.0, 0.0))]))
+
+    assert out.debug_info["rmader_delay_check_passed"] is False
+    assert out.debug_info["rmader_delay_check_fallback"] == "recovery_trajectory"
+    assert out.debug_info["rmader_used_topology"] == "delay_check_recovery"
+    assert np.linalg.norm(out.v_cmd) <= ego.a_max * 0.02 + 1e-6
+    assert np.linalg.norm(out.v_cmd) > 0.0
+
+
+def test_rmader_cached_fallback_remains_unaccepted_and_expires_quickly() -> None:
+    ego = _agent((0.0, 0.0, 0.0))
+    ctx = AgentContext(agent_id=0, method="rmader", seed=0, priority=0)
+    planner = RmaderPlanner(
+        cfg={
+            "horizon_s": 2.4,
+            "control_points": 8,
+            "samples_per_interval": 2,
+            "replan_period_s": 0.2,
+            "fallback_replan_period_s": 0.04,
+            "max_initializations": 2,
+            "opt_iterations": 2,
+            "hard_projection_iterations": 2,
+            "jerk_limit_mps3": 100.0,
+        }
+    )
+    neighbor = _neighbor(pos=(3.0, 0.0, 0.0))
+
+    first = planner.compute_cmd(_planner_input(ego=ego, neighbors=[neighbor], context=ctx, t=0.0))
+    reused = planner.compute_cmd(_planner_input(ego=ego, neighbors=[neighbor], context=ctx, t=0.02))
+    expired = planner.compute_cmd(_planner_input(ego=ego, neighbors=[neighbor], context=ctx, t=0.06))
+
+    assert first.debug_info["rmader_delay_check_fallback"] == "braking_trajectory"
+    assert reused.debug_info["rmader_replanned"] is False
+    assert reused.debug_info["rmader_delay_check_passed"] is False
+    assert reused.debug_info["rmader_delay_check_fallback"] == "cached_fallback"
+    assert reused.debug_info["rmader_cached_source"] == "fallback"
+    assert reused.debug_info["rmader_solver_status"] == "cached_fallback_minvo_plan"
+    assert expired.debug_info["rmader_replanned"] is True
 
 
 def test_rmader_uses_intent_only_hulls() -> None:

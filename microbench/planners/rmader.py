@@ -315,6 +315,10 @@ class RmaderPlanner(ILocalPlanner):
         self.control_points = int(cfg.get("control_points", 8))
         self.samples_per_interval = int(cfg.get("samples_per_interval", 3))
         self.replan_period_s = float(cfg.get("replan_period_s", 0.2))
+        self.fallback_replan_period_s = max(
+            0.0,
+            float(cfg.get("fallback_replan_period_s", min(0.08, max(0.0, self.replan_period_s)))),
+        )
         self.max_neighbors = int(cfg.get("max_neighbors", 8))
         self.max_initializations = int(cfg.get("max_initializations", 6))
         self.opt_iterations = int(cfg.get("opt_iterations", 8))
@@ -325,6 +329,7 @@ class RmaderPlanner(ILocalPlanner):
         self.safety_margin_m = float(cfg.get("safety_margin_m", 0.35))
         self.obstacle_margin_m = float(cfg.get("obstacle_margin_m", 0.3))
         self.obstacle_broadphase_margin_m = float(cfg.get("obstacle_broadphase_margin_m", 5.0))
+        self.dynamic_grace_intervals = max(0, int(cfg.get("dynamic_grace_intervals", 0)))
         self.minvo_epsilon_m = float(cfg.get("minvo_epsilon_m", 0.12))
         self.hard_safety_tolerance_m = float(cfg.get("hard_safety_tolerance_m", 0.05))
         self.near_clearance_m = float(cfg.get("near_clearance_m", 1.7))
@@ -336,6 +341,12 @@ class RmaderPlanner(ILocalPlanner):
         self.delay_check_enabled = bool(cfg.get("delay_check_enabled", True))
         self.delay_check_tolerance_m = float(cfg.get("delay_check_tolerance_m", 0.08))
         self.early_reject_violation_m = float(cfg.get("early_reject_violation_m", 0.35))
+        self.recovery_fallback_enabled = bool(cfg.get("recovery_fallback_enabled", False))
+        self.recovery_lookahead_m = float(cfg.get("recovery_lookahead_m", 2.0))
+        self.recovery_neighbor_range_m = float(cfg.get("recovery_neighbor_range_m", 4.0))
+        self.recovery_goal_weight = float(cfg.get("recovery_goal_weight", 0.35))
+        self.recovery_repulsion_weight = float(cfg.get("recovery_repulsion_weight", 1.0))
+        self.recovery_side_bias_weight = float(cfg.get("recovery_side_bias_weight", 0.25))
         self.stale_age_cap_s = float(cfg.get("stale_age_cap_s", 1.5))
         self.stale_inflation_gain = float(cfg.get("stale_inflation_gain", 0.75))
         self.intent_age_inflation_gain = float(cfg.get("intent_age_inflation_gain", 0.35))
@@ -380,11 +391,12 @@ class RmaderPlanner(ILocalPlanner):
         cached = self._maybe_reuse_committed_plan(planner_input, memory)
         replanned = cached is None
         if cached is not None:
+            cached_source = str(memory.get("rmader_cached_source", "committed"))
             seeds: list[_Seed] = []
             best = cached
             plan_used = cached
-            accepted = True
-            delay_fallback = "cached_committed"
+            accepted = cached_source == "committed"
+            delay_fallback = "cached_committed" if accepted else "cached_fallback"
             plan_version = int(memory.get("rmader_plan_version", 0))
         else:
             seeds = self._initializations(planner_input)
@@ -408,8 +420,8 @@ class RmaderPlanner(ILocalPlanner):
                     plan_used = fallback
                     delay_fallback = "previous_committed"
                 else:
-                    plan_used = self._braking_plan(planner_input)
-                    delay_fallback = "braking_trajectory"
+                    plan_used = self._uncommitted_fallback_plan(planner_input)
+                    delay_fallback = "recovery_trajectory" if plan_used.label == "delay_check_recovery" else "braking_trajectory"
 
             if accepted or delay_fallback == "previous_committed":
                 plan_version = int(memory.get("rmader_plan_version", 0)) + (1 if accepted else 0)
@@ -426,8 +438,10 @@ class RmaderPlanner(ILocalPlanner):
             memory["rmader_last_replan_t"] = float(planner_input.t)
             memory["rmader_cached_control_points"] = plan_used.control_points.copy()
             memory["rmader_cached_label"] = str(plan_used.label)
-            memory["rmader_cached_until_s"] = float(planner_input.t) + max(0.0, float(self.replan_period_s))
-            memory["rmader_cached_source"] = "committed" if accepted or delay_fallback == "previous_committed" else "fallback"
+            cache_source = "committed" if accepted or delay_fallback == "previous_committed" else "fallback"
+            cache_period = self.replan_period_s if cache_source == "committed" else self.fallback_replan_period_s
+            memory["rmader_cached_until_s"] = float(planner_input.t) + max(0.0, float(cache_period))
+            memory["rmader_cached_source"] = cache_source
 
         sample_dt = self.horizon_s / max(1, plan_used.samples.shape[0] - 1)
         next_idx = 1 if plan_used.samples.shape[0] > 1 else 0
@@ -512,6 +526,8 @@ class RmaderPlanner(ILocalPlanner):
             "rmader_replanned": bool(replanned),
             "rmader_cached_reuse": bool(not replanned),
             "rmader_replan_period_s": float(self.replan_period_s),
+            "rmader_fallback_replan_period_s": float(self.fallback_replan_period_s),
+            "rmader_cached_source": str(memory.get("rmader_cached_source", "none")),
             "rmader_best_topology": str(best.label),
             "rmader_used_topology": str(plan_used.label),
             "rmader_initial_cost": float(best.initial_cost),
@@ -522,6 +538,7 @@ class RmaderPlanner(ILocalPlanner):
             "rmader_hard_constraint_ok": bool(chosen_report.hard_ok),
             "rmader_hard_constraint_count": int(len(chosen_report.planes)),
             "rmader_hard_hull_count": int(chosen_report.hull_count),
+            "rmader_dynamic_grace_intervals": int(self.dynamic_grace_intervals),
             "rmader_max_hyperplane_violation_m": float(chosen_report.max_violation_m),
             "rmader_sum_hyperplane_violation_m": float(chosen_report.sum_violation_m),
             "rmader_min_hyperplane_gap_m": chosen_report.min_gap_m,
@@ -538,6 +555,7 @@ class RmaderPlanner(ILocalPlanner):
             "rmader_delay_check_enabled": bool(self.delay_check_enabled),
             "rmader_delay_check_passed": bool(accepted),
             "rmader_delay_check_fallback": str(delay_fallback),
+            "rmader_recovery_fallback_enabled": bool(self.recovery_fallback_enabled),
             "rmader_two_step_publication": True,
             "rmader_plan_version": int(plan_version),
             "rmader_agent_messages": 2,
@@ -1251,6 +1269,8 @@ class RmaderPlanner(ILocalPlanner):
             t0 = i * dt_segment
             t1 = (i + 1) * dt_segment
             tm = 0.5 * (t0 + t1)
+            if i < self.dynamic_grace_intervals:
+                continue
             for nobs in planner_input.neighbors[: self.max_neighbors]:
                 intent = intent_by_sender.get(int(nobs.idx))
                 points = np.asarray(
@@ -1376,7 +1396,6 @@ class RmaderPlanner(ILocalPlanner):
         if out.size == 0:
             out = np.asarray(planner_input.ego.pos, dtype=np.float32).reshape(1, 3)
         out[0] = np.asarray(planner_input.ego.pos, dtype=np.float32)
-        out[-1] = self._local_target(planner_input)
         if planner_input.planar:
             out[:, 1] = float(planner_input.ego.pos[1])
         return out.astype(np.float32)
@@ -1496,6 +1515,71 @@ class RmaderPlanner(ILocalPlanner):
             final=final,
             iterations=0,
             status="delay_check_previous_committed_fallback",
+        )
+
+    def _uncommitted_fallback_plan(self, planner_input: PlannerInput) -> _PlanResult:
+        if self.recovery_fallback_enabled:
+            recovery = self._recovery_plan(planner_input)
+            if recovery.path_length_m > 1e-6:
+                return recovery
+        return self._braking_plan(planner_input)
+
+    def _recovery_plan(self, planner_input: PlannerInput) -> _PlanResult:
+        ego = planner_input.ego
+        p0 = np.asarray(ego.pos, dtype=np.float32)
+        goal = np.asarray(ego.goal, dtype=np.float32)
+        to_goal = goal - p0
+        if planner_input.planar:
+            to_goal[1] = 0.0
+        goal_dir = _normalize(np.asarray(planner_input.goal_dir, dtype=np.float32))
+        if _norm(goal_dir) < 1e-9:
+            goal_dir = _normalize(to_goal)
+        if planner_input.planar:
+            goal_dir[1] = 0.0
+            goal_dir = _normalize(goal_dir)
+
+        repulsion = np.zeros(3, dtype=np.float32)
+        support_floor = max(0.5, float(self.recovery_neighbor_range_m))
+        for nobs in planner_input.neighbors[: self.max_neighbors]:
+            rel = p0 - np.asarray(nobs.pos, dtype=np.float32)
+            if planner_input.planar:
+                rel[1] = 0.0
+            dist = _norm(rel)
+            if dist <= 1e-6:
+                rel = _perp_xz(goal_dir, 1.0 if int(ego.idx) % 2 else -1.0)
+                dist = max(_norm(rel), 1.0)
+            support = max(support_floor, float(ego.radius) + float(nobs.radius) + self.near_clearance_m)
+            if dist >= support:
+                continue
+            gain = ((support - dist) / max(1e-6, support)) ** 2
+            repulsion += _normalize(rel) * float(gain)
+
+        side = _perp_xz(goal_dir, 1.0 if int(ego.idx) % 2 else -1.0)
+        direction = (
+            float(self.recovery_goal_weight) * goal_dir
+            + float(self.recovery_repulsion_weight) * repulsion
+            + float(self.recovery_side_bias_weight) * _normalize(side)
+        )
+        if planner_input.planar:
+            direction[1] = 0.0
+        direction = _normalize(direction)
+        if _norm(direction) < 1e-9:
+            direction = goal_dir
+
+        goal_dist = _norm(to_goal)
+        reach = max(0.5, min(float(self.recovery_lookahead_m), 0.45 * float(ego.v_max) * self.horizon_s))
+        target = p0 + direction * min(goal_dist, reach)
+        if planner_input.planar:
+            target[1] = float(p0[1])
+        cp = self._control_polygon(planner_input, target.astype(np.float32), np.zeros(3, dtype=np.float32), "delay_check_recovery").control_points
+        final = self._objective(planner_input, cp, cp)
+        return self._plan_result(
+            label="delay_check_recovery",
+            cp=cp,
+            initial_cost=float(final["total"]),
+            final=final,
+            iterations=0,
+            status="delay_check_recovery_fallback",
         )
 
     def _braking_plan(self, planner_input: PlannerInput) -> _PlanResult:
