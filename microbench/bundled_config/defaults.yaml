@@ -69,6 +69,7 @@ planner_guardrails:
   method_timeout_ms:
     rmader: 400.0         # optimizer-grade MINVO/hyperplane solve; keep dense conflict outputs instead of fallback
     bvc_tube_dmpc: 150.0  # hard spatial-partition optimizer; leaderboard still reports compute latency
+    dynamic_tube_dmpc: 250.0  # paper-grade tube QP; preserve rare dense-conflict spikes for scoring
 
 
 orca_heuristic: &orca_heuristic_defaults
@@ -309,6 +310,7 @@ rmader:
   horizon_s: 2.4
   control_points: 8
   samples_per_interval: 2
+  replan_period_s: 0.2
   max_neighbors: 8
   max_initializations: 3
   opt_iterations: 3

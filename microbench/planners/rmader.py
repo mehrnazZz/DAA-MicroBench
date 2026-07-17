@@ -288,6 +288,15 @@ class _PlanResult:
     path_length_m: float
 
 
+@dataclass(frozen=True)
+class _ClearanceSources:
+    dynamic_positions: np.ndarray
+    dynamic_radii: np.ndarray
+    obstacle_centers: np.ndarray
+    obstacle_halves: np.ndarray
+    obstacle_buffer_m: float
+
+
 class RmaderPlanner(ILocalPlanner):
     """Clean-room RMADER-style decentralized trajectory optimizer.
 
@@ -305,6 +314,7 @@ class RmaderPlanner(ILocalPlanner):
         self.horizon_s = float(cfg.get("horizon_s", 3.2))
         self.control_points = int(cfg.get("control_points", 8))
         self.samples_per_interval = int(cfg.get("samples_per_interval", 3))
+        self.replan_period_s = float(cfg.get("replan_period_s", 0.2))
         self.max_neighbors = int(cfg.get("max_neighbors", 8))
         self.max_initializations = int(cfg.get("max_initializations", 6))
         self.opt_iterations = int(cfg.get("opt_iterations", 8))
@@ -348,6 +358,7 @@ class RmaderPlanner(ILocalPlanner):
         self._last_label: str | None = None
         self._local_memory: dict[str, object] = {}
         self._dynamic_hull_cache: dict[tuple[int, int, float], list[_IntervalHull]] = {}
+        self._clearance_source_cache: dict[tuple[int, int], _ClearanceSources] = {}
 
     def reset(self, seed: int) -> None:
         self.seed = int(seed)
@@ -355,50 +366,68 @@ class RmaderPlanner(ILocalPlanner):
         self._last_label = None
         self._local_memory.clear()
         self._dynamic_hull_cache.clear()
+        self._clearance_source_cache.clear()
 
     def compute_cmd(self, planner_input: PlannerInput) -> PlannerOutput:
         self._dynamic_hull_cache.clear()
+        self._clearance_source_cache.clear()
         ego = planner_input.ego
         current = np.asarray(ego.vel, dtype=np.float32).copy()
         if planner_input.planar:
             current[1] = 0.0
 
-        seeds = self._initializations(planner_input)
-        results = [self._optimize_seed(planner_input, seed) for seed in seeds]
-        best = min(
-            results,
-            key=lambda r: (
-                not r.constraint_report.hard_ok,
-                not r.kinematic_report.ok,
-                r.constraint_report.max_violation_m,
-                r.final_cost,
-            ),
-        )
-
         memory = self._memory(planner_input)
-        accepted = self._delay_check(best)
-        plan_used = best
-        delay_fallback = "none"
-        if not accepted:
-            fallback = self._committed_fallback(planner_input, memory)
-            if fallback is not None:
-                plan_used = fallback
-                delay_fallback = "previous_committed"
-            else:
-                plan_used = self._braking_plan(planner_input)
-                delay_fallback = "braking_trajectory"
+        cached = self._maybe_reuse_committed_plan(planner_input, memory)
+        replanned = cached is None
+        if cached is not None:
+            seeds: list[_Seed] = []
+            best = cached
+            plan_used = cached
+            accepted = True
+            delay_fallback = "cached_committed"
+            plan_version = int(memory.get("rmader_plan_version", 0))
+        else:
+            seeds = self._initializations(planner_input)
+            results = [self._optimize_seed(planner_input, seed) for seed in seeds]
+            best = min(
+                results,
+                key=lambda r: (
+                    not r.constraint_report.hard_ok,
+                    not r.kinematic_report.ok,
+                    r.constraint_report.max_violation_m,
+                    r.final_cost,
+                ),
+            )
 
-        if accepted or delay_fallback == "previous_committed":
-            plan_version = int(memory.get("rmader_plan_version", 0)) + (1 if accepted else 0)
-            if accepted:
-                memory["rmader_plan_version"] = plan_version
-                memory["rmader_committed_control_points"] = best.control_points.copy()
-                memory["rmader_committed_label"] = str(best.label)
-                memory["rmader_committed_until_s"] = float(planner_input.t) + self.intent_ttl_s
+            accepted = self._delay_check(best)
+            plan_used = best
+            delay_fallback = "none"
+            if not accepted:
+                fallback = self._committed_fallback(planner_input, memory)
+                if fallback is not None:
+                    plan_used = fallback
+                    delay_fallback = "previous_committed"
+                else:
+                    plan_used = self._braking_plan(planner_input)
+                    delay_fallback = "braking_trajectory"
+
+            if accepted or delay_fallback == "previous_committed":
+                plan_version = int(memory.get("rmader_plan_version", 0)) + (1 if accepted else 0)
+                if accepted:
+                    memory["rmader_plan_version"] = plan_version
+                    memory["rmader_committed_control_points"] = best.control_points.copy()
+                    memory["rmader_committed_label"] = str(best.label)
+                    memory["rmader_committed_until_s"] = float(planner_input.t) + self.intent_ttl_s
+                    memory["rmader_last_replan_t"] = float(planner_input.t)
+                else:
+                    plan_version = int(memory.get("rmader_plan_version", 0))
             else:
                 plan_version = int(memory.get("rmader_plan_version", 0))
-        else:
-            plan_version = int(memory.get("rmader_plan_version", 0))
+            memory["rmader_last_replan_t"] = float(planner_input.t)
+            memory["rmader_cached_control_points"] = plan_used.control_points.copy()
+            memory["rmader_cached_label"] = str(plan_used.label)
+            memory["rmader_cached_until_s"] = float(planner_input.t) + max(0.0, float(self.replan_period_s))
+            memory["rmader_cached_source"] = "committed" if accepted or delay_fallback == "previous_committed" else "fallback"
 
         sample_dt = self.horizon_s / max(1, plan_used.samples.shape[0] - 1)
         next_idx = 1 if plan_used.samples.shape[0] > 1 else 0
@@ -480,6 +509,9 @@ class RmaderPlanner(ILocalPlanner):
             else 0,
             "rmader_initializations": int(len(seeds)),
             "rmader_iterations": int(best.iterations),
+            "rmader_replanned": bool(replanned),
+            "rmader_cached_reuse": bool(not replanned),
+            "rmader_replan_period_s": float(self.replan_period_s),
             "rmader_best_topology": str(best.label),
             "rmader_used_topology": str(plan_used.label),
             "rmader_initial_cost": float(best.initial_cost),
@@ -527,6 +559,7 @@ class RmaderPlanner(ILocalPlanner):
             )
         finally:
             self._dynamic_hull_cache.clear()
+            self._clearance_source_cache.clear()
 
     def _memory(self, planner_input: PlannerInput) -> dict[str, object]:
         if planner_input.agent_context is not None:
@@ -815,34 +848,124 @@ class RmaderPlanner(ILocalPlanner):
     def _sample_clearance_cost_and_grad(self, planner_input: PlannerInput, samples: np.ndarray) -> tuple[float, np.ndarray]:
         grad = np.zeros_like(samples, dtype=np.float32)
         cost = 0.0
-        if samples.size == 0:
+        if samples.size == 0 or samples.shape[0] <= 1:
             return 0.0, grad
-        dt = self.horizon_s / max(1, samples.shape[0] - 1)
+        sources = self._clearance_sources(planner_input, samples.shape[0])
+        points = np.asarray(samples[1:], dtype=np.float32)
+        grad_points = grad[1:]
+        near = float(self.near_clearance_m)
+        weight = float(self.soft_clearance_weight)
+
+        if sources.dynamic_positions.size > 0:
+            rel = points[:, None, :] - sources.dynamic_positions
+            dist_sq = np.sum(rel * rel, axis=2)
+            support = sources.dynamic_radii.reshape(1, -1) + near
+            mask = dist_sq < support * support
+            if bool(np.any(mask)):
+                sample_idx, source_idx = np.nonzero(mask)
+                selected_rel = rel[sample_idx, source_idx]
+                selected_dist = np.sqrt(np.maximum(dist_sq[sample_idx, source_idx], 1.0e-12))
+                selected_radius = sources.dynamic_radii[source_idx]
+                deficit = near - (selected_dist - selected_radius)
+                valid = deficit > 0.0
+                if bool(np.any(valid)):
+                    sample_idx = sample_idx[valid]
+                    selected_rel = selected_rel[valid]
+                    selected_dist = selected_dist[valid]
+                    deficit = deficit[valid]
+                    direction = selected_rel / selected_dist.reshape(-1, 1)
+                    zero_dir = selected_dist <= 1.0e-6
+                    if bool(np.any(zero_dir)):
+                        direction[zero_dir] = np.asarray([1.0, 0.0, 0.0], dtype=np.float32)
+                    cost += float(weight * np.sum(deficit * deficit))
+                    contrib = (-2.0 * weight * deficit.reshape(-1, 1) * direction).astype(np.float32)
+                    np.add.at(grad_points, sample_idx, contrib)
+
+        if sources.obstacle_centers.size > 0:
+            for center, half in zip(sources.obstacle_centers, sources.obstacle_halves):
+                signed_dist, dist_grad = self._sample_signed_distance_and_grad_to_aabb(points, center, half)
+                clearance = signed_dist - sources.obstacle_buffer_m
+                mask = clearance < near
+                if not bool(np.any(mask)):
+                    continue
+                deficit = near - clearance[mask]
+                cost += float(weight * np.sum(deficit * deficit))
+                grad_points[mask] += (-2.0 * weight * deficit.reshape(-1, 1) * dist_grad[mask]).astype(np.float32)
+
+        if planner_input.planar:
+            grad[:, 1] = 0.0
+        return float(cost), grad.astype(np.float32)
+
+    def _clearance_sources(self, planner_input: PlannerInput, sample_count: int) -> _ClearanceSources:
+        key = (id(planner_input), int(sample_count))
+        cached = self._clearance_source_cache.get(key)
+        if cached is not None:
+            return cached
+        steps = max(0, int(sample_count) - 1)
+        dt = self.horizon_s / max(1, int(sample_count) - 1)
         intent_by_sender = {
             int(intent.sender_id): intent
             for intent in planner_input.neighbor_intents
             if intent.valid and np.asarray(intent.points).size > 0
         }
-        for step_idx, point in enumerate(samples[1:], start=1):
-            t = step_idx * dt
-            sample_idx = step_idx
-            for nobs in planner_input.neighbors[: self.max_neighbors]:
-                intent = intent_by_sender.get(int(nobs.idx))
-                other = self._neighbor_prediction(nobs, intent, t)
-                radius = float(planner_input.ego.radius) + float(nobs.radius) + self.safety_margin_m
-                radius += self._neighbor_inflation(nobs) + (self._intent_inflation(intent) if intent is not None else 0.0)
-                p, g = self._point_clearance_penalty(point, other, radius)
-                cost += p
-                grad[sample_idx] += g
-            for obs in planner_input.obstacles:
-                signed_dist, dist_grad = _signed_distance_and_grad_to_aabb(point, obs)
-                clearance = signed_dist - float(planner_input.ego.radius) - self.obstacle_margin_m
-                if clearance < self.near_clearance_m:
-                    p = self.soft_clearance_weight * (self.near_clearance_m - clearance) ** 2
-                    g = -2.0 * self.soft_clearance_weight * (self.near_clearance_m - clearance) * dist_grad
-                    cost += float(p)
-                    grad[sample_idx] += g.astype(np.float32)
-        return float(cost), grad.astype(np.float32)
+        dynamic_positions: list[np.ndarray] = []
+        dynamic_radii: list[float] = []
+        times = [(idx + 1) * dt for idx in range(steps)]
+        for nobs in planner_input.neighbors[: self.max_neighbors]:
+            intent = intent_by_sender.get(int(nobs.idx))
+            dynamic_positions.append(
+                np.asarray([self._neighbor_prediction(nobs, intent, t) for t in times], dtype=np.float32)
+            )
+            radius = float(planner_input.ego.radius) + float(nobs.radius) + self.safety_margin_m
+            radius += self._neighbor_inflation(nobs) + (self._intent_inflation(intent) if intent is not None else 0.0)
+            dynamic_radii.append(float(radius))
+        if dynamic_positions:
+            dyn_pos = np.stack(dynamic_positions, axis=1).astype(np.float32)
+            dyn_radii = np.asarray(dynamic_radii, dtype=np.float32)
+        else:
+            dyn_pos = np.zeros((steps, 0, 3), dtype=np.float32)
+            dyn_radii = np.zeros((0,), dtype=np.float32)
+        if planner_input.obstacles:
+            obstacle_centers = np.asarray([np.asarray(obs.center, dtype=np.float32) for obs in planner_input.obstacles], dtype=np.float32)
+            obstacle_halves = np.asarray([np.asarray(obs.half, dtype=np.float32) for obs in planner_input.obstacles], dtype=np.float32)
+        else:
+            obstacle_centers = np.zeros((0, 3), dtype=np.float32)
+            obstacle_halves = np.zeros((0, 3), dtype=np.float32)
+        out = _ClearanceSources(
+            dynamic_positions=dyn_pos,
+            dynamic_radii=dyn_radii,
+            obstacle_centers=obstacle_centers,
+            obstacle_halves=obstacle_halves,
+            obstacle_buffer_m=float(planner_input.ego.radius) + self.obstacle_margin_m,
+        )
+        self._clearance_source_cache[key] = out
+        return out
+
+    def _sample_signed_distance_and_grad_to_aabb(
+        self,
+        points: np.ndarray,
+        center: np.ndarray,
+        half: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        pts = np.asarray(points, dtype=np.float32)
+        c = np.asarray(center, dtype=np.float32)
+        h = np.asarray(half, dtype=np.float32)
+        q = np.abs(pts - c) - h
+        outside = np.maximum(q, 0.0)
+        outside_dist = np.linalg.norm(outside, axis=1)
+        closest = np.minimum(np.maximum(pts, c - h), c + h)
+        grad = pts - closest
+        outside_mask = outside_dist > 1.0e-9
+        if bool(np.any(outside_mask)):
+            grad[outside_mask] /= outside_dist[outside_mask].reshape(-1, 1)
+        if bool(np.any(~outside_mask)):
+            inside_idx = np.nonzero(~outside_mask)[0]
+            axes = np.argmax(q[inside_idx], axis=1)
+            grad[inside_idx] = 0.0
+            signs = np.where(pts[inside_idx, axes] - c[axes] >= 0.0, 1.0, -1.0)
+            grad[inside_idx, axes] = signs.astype(np.float32)
+            outside_dist[inside_idx] = q[inside_idx, axes]
+        return outside_dist.astype(np.float32), grad.astype(np.float32)
 
     def _control_point_clearance_gradient(self, planner_input: PlannerInput, cp: np.ndarray) -> np.ndarray:
         grad = np.zeros_like(cp, dtype=np.float32)
@@ -1322,6 +1445,37 @@ class RmaderPlanner(ILocalPlanner):
         if not self.delay_check_enabled:
             return True
         return bool(result.constraint_report.max_violation_m <= self.delay_check_tolerance_m)
+
+    def _maybe_reuse_committed_plan(self, planner_input: PlannerInput, memory: dict[str, object]) -> _PlanResult | None:
+        if self.replan_period_s <= 0.0:
+            return None
+        last_replan = memory.get("rmader_last_replan_t")
+        if last_replan is None:
+            return None
+        if float(planner_input.t) - float(last_replan) >= self.replan_period_s:
+            return None
+        cp = memory.get("rmader_cached_control_points", memory.get("rmader_committed_control_points"))
+        if cp is None:
+            return None
+        until = float(memory.get("rmader_cached_until_s", memory.get("rmader_committed_until_s", -float("inf"))))
+        if until < float(planner_input.t):
+            return None
+        arr = np.asarray(cp, dtype=np.float32)
+        if arr.shape != (self._control_point_count(), 3):
+            return None
+        arr = self._apply_boundary_conditions(planner_input, arr)
+        final = self._objective(planner_input, arr, arr)
+        source = str(memory.get("rmader_cached_source", "committed"))
+        label = str(memory.get("rmader_cached_label", memory.get("rmader_committed_label", "cached")))
+        status = "cached_committed_minvo_plan" if source == "committed" else "cached_fallback_minvo_plan"
+        return self._plan_result(
+            label=f"{label}:reuse",
+            cp=arr,
+            initial_cost=float(final["total"]),
+            final=final,
+            iterations=0,
+            status=status,
+        )
 
     def _committed_fallback(self, planner_input: PlannerInput, memory: dict[str, object]) -> _PlanResult | None:
         cp = memory.get("rmader_committed_control_points")

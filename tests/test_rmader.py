@@ -234,3 +234,40 @@ def test_rmader_preserves_3d_command_shape() -> None:
     assert out.debug_info["rmader_planar"] is False
     assert out.debug_info["rmader_delay_check_passed"] is True
     assert np.linalg.norm(out.v_cmd - ego.vel) <= ego.a_max * 0.02 + 1e-6
+
+
+def test_rmader_reuses_committed_plan_until_replan_period() -> None:
+    ego = _agent((0.0, 0.0, 0.0), goal=(20.0, 0.0, 0.0))
+    ctx = AgentContext(agent_id=0, method="rmader", seed=0, priority=0)
+    planner = RmaderPlanner(
+        cfg={
+            "horizon_s": 2.4,
+            "control_points": 8,
+            "samples_per_interval": 2,
+            "replan_period_s": 0.2,
+            "max_initializations": 2,
+            "opt_iterations": 2,
+            "hard_projection_iterations": 2,
+            "jerk_limit_mps3": 100.0,
+        }
+    )
+
+    first = planner.compute_cmd(_planner_input(ego=ego, context=ctx))
+    ego2 = _agent((0.02, 0.0, 0.0), vel=first.v_cmd, goal=(20.0, 0.0, 0.0))
+    reused = planner.compute_cmd(
+        PlannerInput(
+            ego=ego2,
+            goal_dir=np.asarray([1.0, 0.0, 0.0], dtype=np.float32),
+            neighbors=[],
+            neighbor_intents=[],
+            dt=0.02,
+            t=0.02,
+            agent_context=ctx,
+            planar=True,
+        )
+    )
+
+    assert first.debug_info["rmader_replanned"] is True
+    assert reused.debug_info["rmader_replanned"] is False
+    assert reused.debug_info["rmader_cached_reuse"] is True
+    assert reused.debug_info["rmader_solver_status"] == "cached_committed_minvo_plan"
