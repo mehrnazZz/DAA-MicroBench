@@ -76,6 +76,7 @@ class _QpProblem:
     linear: np.ndarray
     constraints_a: np.ndarray
     constraints_b: np.ndarray
+    constraint_norm_sq: np.ndarray
     base_positions: np.ndarray
     base_velocities: np.ndarray
     bpos: np.ndarray
@@ -138,7 +139,7 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
         cfg = cfg or {}
         self.step_dt_s = float(cfg.get("step_dt_s", 0.2))
         self.horizon_steps = int(cfg.get("horizon_steps", 15))
-        self.replan_period_s = float(cfg.get("replan_period_s", 0.2))
+        self.replan_period_s = float(cfg.get("replan_period_s", 0.3))
         self.max_neighbors = int(cfg.get("max_neighbors", 12))
         self.max_intent_points = int(cfg.get("max_intent_points", 16))
         self.intent_ttl_s = float(cfg.get("intent_ttl_s", 1.0))
@@ -186,6 +187,8 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
         self.input_delta_weight = float(cfg.get("input_delta_weight", 0.28))
         self.qp_regularization = float(cfg.get("qp_regularization", 1e-5))
         self.qp_iterations = int(cfg.get("qp_iterations", 65))
+        self.qp_cost_tolerance = float(cfg.get("qp_cost_tolerance", 1e-4))
+        self.qp_control_tolerance = float(cfg.get("qp_control_tolerance", 1e-3))
         self.projection_iterations = int(cfg.get("projection_iterations", 5))
         self.line_search_shrink = float(cfg.get("line_search_shrink", 0.55))
         self.step_scale = float(cfg.get("step_scale", 0.92))
@@ -332,7 +335,7 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
 
         controls = initial.copy()
         cost = initial_cost
-        status = "projected_qp_converged"
+        status = "projected_qp_max_iterations"
         iterations = 0
         lipschitz = max(1e-6, float(np.linalg.norm(qp.hessian, ord=2)))
         base_step = self.step_scale / lipschitz
@@ -345,14 +348,26 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
             step = base_step
             accepted = False
             for _ls in range(8):
+                previous_controls = controls
+                previous_cost = cost
                 candidate = self._project(qp, controls - step * grad)
                 candidate_cost = self._qp_cost(qp, candidate)
                 if candidate_cost <= cost + 1e-7:
                     controls = candidate
                     cost = candidate_cost
                     accepted = True
+                    cost_reduction = max(0.0, float(previous_cost - candidate_cost))
+                    update_norm = float(np.linalg.norm(candidate - previous_controls))
+                    if cost_reduction <= self.qp_cost_tolerance * max(1.0, abs(float(previous_cost))):
+                        status = "projected_qp_converged"
+                        break
+                    if update_norm <= self.qp_control_tolerance:
+                        status = "projected_qp_converged"
+                        break
                     break
                 step *= max(0.1, min(0.95, self.line_search_shrink))
+            if accepted and status == "projected_qp_converged":
+                break
             if not accepted:
                 status = "projected_qp_line_search_stalled"
                 break
@@ -415,13 +430,18 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
 
         controls = self._shift_controls()
         qp = self._build_qp(planner_input, force_tube_reuse=True)
-        controls = self._project(qp, controls)
         positions, velocities = self._rollout(planner_input, controls)
         tube_report = self._constraint_report(qp.tube_constraints, positions)
         collision_report = self._constraint_report(qp.collision_constraints, positions)
         kin = self._kinematic_report(planner_input, controls, velocities)
-        if not tube_report.hard_ok or not collision_report.hard_ok:
-            return None
+        if not tube_report.hard_ok or not collision_report.hard_ok or not kin.ok:
+            controls = self._project(qp, controls)
+            positions, velocities = self._rollout(planner_input, controls)
+            tube_report = self._constraint_report(qp.tube_constraints, positions)
+            collision_report = self._constraint_report(qp.collision_constraints, positions)
+            kin = self._kinematic_report(planner_input, controls, velocities)
+            if not tube_report.hard_ok or not collision_report.hard_ok:
+                return None
         return _PlanResult(
             controls=controls.astype(np.float32).reshape(self._steps(), 3),
             positions=positions.astype(np.float32),
@@ -486,15 +506,18 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
         if constraint_rows:
             amat = np.vstack(constraint_rows).astype(np.float64)
             bvec = np.asarray(constraint_bounds, dtype=np.float64)
+            norm_sq = np.einsum("ij,ij->i", amat, amat).astype(np.float64) + 1e-9
         else:
             amat = np.zeros((0, dim), dtype=np.float64)
             bvec = np.zeros(0, dtype=np.float64)
+            norm_sq = np.zeros(0, dtype=np.float64)
 
         return _QpProblem(
             hessian=hessian.astype(np.float64),
             linear=linear.astype(np.float64),
             constraints_a=amat,
             constraints_b=bvec,
+            constraint_norm_sq=norm_sq,
             base_positions=base_pos.astype(np.float32),
             base_velocities=base_vel.astype(np.float32),
             bpos=bpos.astype(np.float64),
@@ -983,39 +1006,41 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
         for _ in range(max(1, self.projection_iterations)):
             u = self._project_accel_balls(u, amax)
             u = self._project_velocity_balls(qp, u)
-            for row, bound in zip(qp.constraints_a, qp.constraints_b):
+            for row, bound, norm_sq in zip(qp.constraints_a, qp.constraints_b, qp.constraint_norm_sq):
                 violation = float(np.dot(row, u) - bound)
                 if violation > 0.0:
-                    denom = float(np.dot(row, row)) + 1e-9
-                    u -= row * (violation / denom)
+                    u -= row * (violation / float(norm_sq))
             u = self._project_accel_balls(u, amax)
             u = self._project_velocity_balls(qp, u)
         return u.astype(np.float64)
 
     def _project_accel_balls(self, controls: np.ndarray, amax: float) -> np.ndarray:
         u = np.asarray(controls, dtype=np.float64).reshape(self._steps(), 3).copy()
-        for k in range(u.shape[0]):
-            n = float(np.linalg.norm(u[k]))
-            if n > float(amax) and n > 1e-12:
-                u[k] = u[k] / n * float(amax)
+        norms = np.sqrt(np.sum(u * u, axis=1))
+        mask = norms > float(amax)
+        if np.any(mask):
+            u[mask] *= (float(amax) / np.maximum(norms[mask], 1e-12))[:, None]
         return u.reshape(-1)
 
     def _project_velocity_balls(self, qp: _QpProblem, controls: np.ndarray) -> np.ndarray:
-        u = np.asarray(controls, dtype=np.float64).reshape(-1).copy()
+        u = np.asarray(controls, dtype=np.float64).reshape(self._steps(), 3).copy()
         vmax = float(qp.velocity_bound_mps)
+        h = max(1e-9, float(self.step_dt_s))
+        base_vel = np.asarray(qp.base_velocities, dtype=np.float64)
+        cumulative_u = np.cumsum(u, axis=0)
         for k in range(self._steps()):
-            row_slice = slice(3 * k, 3 * (k + 1))
-            vel = np.asarray(qp.base_velocities[k], dtype=np.float64) + qp.bvel[row_slice, :] @ u
-            n = float(np.linalg.norm(vel))
+            # For the double-integrator matrices, velocity at step k is
+            # base_v[k] + h * sum_{j<=k} u[j]. This direct projection avoids a
+            # dense matrix product for every horizon step in every QP iteration.
+            vel = base_vel[k] + h * cumulative_u[k]
+            n = math.sqrt(float(np.dot(vel, vel)))
             if n > vmax and n > 1e-12:
                 direction = vel / n
-                row = direction @ qp.bvel[row_slice, :]
-                bound = vmax - float(np.dot(direction, qp.base_velocities[k]))
-                violation = float(np.dot(row, u) - bound)
-                if violation > 0.0:
-                    denom = float(np.dot(row, row)) + 1e-9
-                    u -= row * (violation / denom)
-        return u
+                violation = n - vmax
+                correction = direction * (violation / (h * float(k + 1)))
+                u[: k + 1] -= correction
+                cumulative_u[k:] -= float(k + 1) * correction
+        return u.reshape(-1)
 
     def _qp_cost(self, qp: _QpProblem, controls: np.ndarray) -> float:
         u = np.asarray(controls, dtype=np.float64).reshape(-1)

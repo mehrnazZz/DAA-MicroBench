@@ -259,7 +259,7 @@ bvc_tube_dmpc:
 dynamic_tube_dmpc:
   step_dt_s: 0.2
   horizon_steps: 15
-  replan_period_s: 0.2
+  replan_period_s: 0.3
   max_neighbors: 12
   r_min_prime_m: 0.4
   localization_sigma_m: 0.03
@@ -299,6 +299,8 @@ dynamic_tube_dmpc:
   input_delta_weight: 0.16
   qp_regularization: 0.00001
   qp_iterations: 65
+  qp_cost_tolerance: 0.0001
+  qp_control_tolerance: 0.001
   projection_iterations: 5
   line_search_shrink: 0.55
   step_scale: 0.92
@@ -354,6 +356,12 @@ rmader:
   sampled_delay_check_max_violation_m: 0.3
   sampled_delay_check_min_clearance_m: 0.1
   sampled_delay_check_obstacle_clearance_m: 0.1
+  velocity_guard_enabled: true
+  velocity_guard_margin_m: 0.35
+  velocity_guard_activation_margin_m: 1.25
+  velocity_guard_ttc_s: 3.0
+  velocity_guard_alpha: 1.4
+  velocity_guard_iterations: 3
   recovery_fallback_enabled: false
   recovery_lookahead_m: 2.0
   recovery_neighbor_range_m: 4.0

@@ -210,6 +210,14 @@ def test_baseline_leaderboard_episode_timeout_writes_failed_row(tmp_path: Path, 
     assert int(float(rows[0]["planner_error_count"])) == 1
 
 
+def test_leaderboard_timeout_bypasses_planner_exception_handlers() -> None:
+    with pytest.raises(baseline_leaderboard.LeaderboardRunTimeout):
+        try:
+            raise baseline_leaderboard.LeaderboardRunTimeout("episode timeout")
+        except Exception:  # pragma: no cover - must not catch hard timeout control flow
+            pass
+
+
 def test_baseline_leaderboard_cli_json_and_gate(tmp_path: Path) -> None:
     out_dir = tmp_path / "cli_leaderboard"
     proc = subprocess.run(

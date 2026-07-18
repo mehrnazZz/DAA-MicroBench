@@ -167,7 +167,7 @@ def _write_empty_summary(run_dir: Path) -> Path:
     return summary_path
 
 
-class LeaderboardRunTimeout(TimeoutError):
+class LeaderboardRunTimeout(BaseException):
     pass
 
 

@@ -235,6 +235,31 @@ def test_rmader_sampled_delay_check_rejects_large_hull_failure() -> None:
     assert out.debug_info["rmader_delay_check_fallback"] == "braking_trajectory"
 
 
+def test_rmader_velocity_guard_projects_immediate_track_conflict() -> None:
+    ego = _agent((0.0, 0.0, 0.0))
+    planner = RmaderPlanner(
+        cfg={
+            "horizon_s": 2.4,
+            "control_points": 8,
+            "samples_per_interval": 2,
+            "replan_period_s": 0.2,
+            "max_initializations": 2,
+            "opt_iterations": 2,
+            "hard_projection_iterations": 2,
+            "jerk_limit_mps3": 100.0,
+            "velocity_guard_enabled": True,
+            "velocity_guard_margin_m": 0.35,
+        }
+    )
+
+    out = planner.compute_cmd(_planner_input(ego=ego, neighbors=[_neighbor(pos=(0.8, 0.0, 0.0), vel=(0.0, 0.0, 0.0))]))
+
+    assert out.debug_info["rmader_velocity_guard_adjusted"] is True
+    assert out.debug_info["rmader_velocity_guard_constraint_count"] > 0
+    assert out.v_cmd[0] < 0.0
+    assert np.linalg.norm(out.v_cmd) <= ego.a_max * 0.02 + 1e-6
+
+
 def test_rmader_recovery_fallback_is_explicit_opt_in() -> None:
     ego = _agent((0.0, 0.0, 0.0))
     planner = RmaderPlanner(

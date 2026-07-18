@@ -352,6 +352,12 @@ class RmaderPlanner(ILocalPlanner):
         self.sampled_delay_check_max_violation_m = float(cfg.get("sampled_delay_check_max_violation_m", 0.3))
         self.sampled_delay_check_min_clearance_m = float(cfg.get("sampled_delay_check_min_clearance_m", 0.12))
         self.sampled_delay_check_obstacle_clearance_m = float(cfg.get("sampled_delay_check_obstacle_clearance_m", 0.12))
+        self.velocity_guard_enabled = bool(cfg.get("velocity_guard_enabled", True))
+        self.velocity_guard_margin_m = float(cfg.get("velocity_guard_margin_m", 0.35))
+        self.velocity_guard_activation_margin_m = float(cfg.get("velocity_guard_activation_margin_m", 1.25))
+        self.velocity_guard_ttc_s = float(cfg.get("velocity_guard_ttc_s", 3.0))
+        self.velocity_guard_alpha = float(cfg.get("velocity_guard_alpha", 1.4))
+        self.velocity_guard_iterations = int(cfg.get("velocity_guard_iterations", 3))
         self.early_reject_violation_m = float(cfg.get("early_reject_violation_m", 0.35))
         self.recovery_fallback_enabled = bool(cfg.get("recovery_fallback_enabled", False))
         self.recovery_lookahead_m = float(cfg.get("recovery_lookahead_m", 2.0))
@@ -469,6 +475,7 @@ class RmaderPlanner(ILocalPlanner):
         v_cmd = _clamp_speed(v_cmd, float(ego.v_max))
         if planner_input.planar:
             v_cmd[1] = 0.0
+        v_cmd, guard_info = self._apply_velocity_guard(planner_input, v_cmd, current)
 
         intent_points = self._intent_points(planner_input, plan_used.samples)
         intent = IntentMsg(
@@ -587,9 +594,11 @@ class RmaderPlanner(ILocalPlanner):
             "rmader_planar": bool(planner_input.planar),
             "rmader_intent_points": int(intent_points.shape[0]),
             "rmader_command_lookahead_s": float(command_lookahead_s),
+            "rmader_velocity_guard_enabled": bool(self.velocity_guard_enabled),
             "rmader_prior_label": prior_label,
             "rmader_accel_delta_norm": float(_norm(v_cmd - current)),
             "rmader_accel_delta_limit": float(float(ego.a_max) * float(planner_input.dt)),
+            **guard_info,
         }
         try:
             return PlannerOutput(
@@ -601,6 +610,80 @@ class RmaderPlanner(ILocalPlanner):
         finally:
             self._dynamic_hull_cache.clear()
             self._clearance_source_cache.clear()
+
+    def _apply_velocity_guard(
+        self,
+        planner_input: PlannerInput,
+        v_cmd: np.ndarray,
+        current: np.ndarray,
+    ) -> tuple[np.ndarray, dict[str, Any]]:
+        if not self.velocity_guard_enabled:
+            return np.asarray(v_cmd, dtype=np.float32), {
+                "rmader_velocity_guard_adjusted": False,
+                "rmader_velocity_guard_constraint_count": 0,
+                "rmader_velocity_guard_min_clearance_m": None,
+                "rmader_velocity_guard_min_ttc_s": None,
+                "rmader_velocity_guard_delta_norm": 0.0,
+            }
+
+        ego = planner_input.ego
+        guarded = np.asarray(v_cmd, dtype=np.float32).copy()
+        start = guarded.copy()
+        max_delta = float(ego.a_max) * float(planner_input.dt)
+        active: list[tuple[np.ndarray, float]] = []
+        min_clearance: float | None = None
+        min_ttc: float | None = None
+
+        for nobs in planner_input.neighbors[: self.max_neighbors]:
+            if not bool(nobs.valid):
+                continue
+            rel = np.asarray(ego.pos, dtype=np.float32) - np.asarray(nobs.pos, dtype=np.float32)
+            other_v = np.asarray(nobs.vel, dtype=np.float32)
+            if planner_input.planar:
+                rel[1] = 0.0
+                other_v[1] = 0.0
+            dist = _norm(rel)
+            if dist < 1e-6:
+                rel = np.asarray([1.0, 0.0, 0.0], dtype=np.float32)
+                dist = 1.0
+            unit = rel / dist
+            safe = float(ego.radius) + float(nobs.radius) + self.safety_margin_m + self._neighbor_inflation(nobs)
+            safe += max(0.0, float(self.velocity_guard_margin_m))
+            clearance = dist - safe
+            min_clearance = clearance if min_clearance is None else min(min_clearance, clearance)
+            rel_v_current = np.asarray(current, dtype=np.float32) - other_v
+            vv = float(np.dot(rel_v_current, rel_v_current))
+            ttc: float | None = None
+            if vv > 1e-9:
+                tau = -float(np.dot(rel, rel_v_current)) / vv
+                if tau >= 0.0:
+                    ttc = tau
+                    min_ttc = tau if min_ttc is None else min(min_ttc, tau)
+            within_range = dist <= safe + max(0.0, float(self.velocity_guard_activation_margin_m))
+            closing_soon = ttc is not None and ttc <= max(0.0, float(self.velocity_guard_ttc_s))
+            if not within_range and not closing_soon:
+                continue
+            rhs = float(np.dot(unit, other_v) - float(self.velocity_guard_alpha) * clearance)
+            active.append((unit.astype(np.float32), rhs))
+
+        for _ in range(max(1, self.velocity_guard_iterations)):
+            for unit, rhs in active:
+                lhs = float(np.dot(unit, guarded))
+                if lhs < rhs:
+                    guarded = guarded + unit * (rhs - lhs)
+            guarded = _limit_delta(guarded, current, max_delta)
+            guarded = _clamp_speed(guarded, float(ego.v_max))
+            if planner_input.planar:
+                guarded[1] = 0.0
+
+        delta = _norm(guarded - start)
+        return guarded.astype(np.float32), {
+            "rmader_velocity_guard_adjusted": bool(delta > 1e-7),
+            "rmader_velocity_guard_constraint_count": int(len(active)),
+            "rmader_velocity_guard_min_clearance_m": min_clearance,
+            "rmader_velocity_guard_min_ttc_s": min_ttc,
+            "rmader_velocity_guard_delta_norm": float(delta),
+        }
 
     def _memory(self, planner_input: PlannerInput) -> dict[str, object]:
         if planner_input.agent_context is not None:

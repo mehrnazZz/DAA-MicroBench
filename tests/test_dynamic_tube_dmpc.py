@@ -181,6 +181,28 @@ def test_dynamic_tube_dmpc_velocity_guard_projects_closing_command() -> None:
     assert out.debug_info["dynamic_tube_dmpc_velocity_guard_constraint_count"] > 0
 
 
+def test_dynamic_tube_dmpc_projection_precomputes_halfspace_norms() -> None:
+    planner = _tiny_dynamic_tube()
+    qp = planner._build_qp(_planner_input(ego=_agent((0.0, 0.0, 0.0))))
+
+    assert qp.constraint_norm_sq.shape == qp.constraints_b.shape
+    assert np.all(qp.constraint_norm_sq > 0.0)
+
+
+def test_dynamic_tube_dmpc_projection_uses_cumulative_velocity_dynamics() -> None:
+    planner = _tiny_dynamic_tube()
+    planner.step_dt_s = 0.2
+    ego = _agent((0.0, 0.0, 0.0), vel=(0.8, 0.0, 0.0), v_max=1.0, a_max=8.0)
+    qp = planner._build_qp(_planner_input(ego=ego))
+    controls = np.full((planner._steps(), 3), [8.0, 0.0, 0.0], dtype=np.float64).reshape(-1)
+
+    projected = planner._project(qp, controls)
+    _, velocities = planner._rollout(_planner_input(ego=ego), projected)
+
+    speeds = np.linalg.norm(velocities, axis=1)
+    assert float(np.max(speeds)) <= ego.v_max + 1e-3
+
+
 def test_dynamic_tube_dmpc_elastic_reconstruction_responds_to_obstacle_intrusion() -> None:
     ego = _agent((0.0, 0.0, 0.0))
 
