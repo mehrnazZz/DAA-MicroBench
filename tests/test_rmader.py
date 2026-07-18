@@ -133,6 +133,25 @@ def test_rmader_open_space_uses_meaningful_local_horizon_from_rest() -> None:
     assert np.linalg.norm(out.v_cmd - ego.vel) <= ego.a_max * 0.02 + 1e-6
 
 
+def test_rmader_commands_against_receding_lookahead_point() -> None:
+    planner = RmaderPlanner(cfg={"command_lookahead_s": 1.4})
+    samples = np.asarray(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [3.0, 0.0, 0.0],
+            [6.0, 0.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+
+    lookahead = planner._command_lookahead(sample_dt=0.5, sample_count=samples.shape[0])
+    point = planner._sample_plan_at(samples, sample_dt=0.5, t=lookahead)
+
+    assert lookahead == 1.4
+    np.testing.assert_allclose(point, [5.4, 0.0, 0.0], atol=1e-6)
+
+
 def test_rmader_far_neighbor_uses_hard_minvo_hyperplanes() -> None:
     ego = _agent((0.0, 0.0, 0.0))
     planner = _tiny_rmader()
@@ -157,9 +176,63 @@ def test_rmader_close_conflict_delay_check_falls_back_to_braking_plan() -> None:
     info = out.debug_info
     assert info["rmader_candidate_hard_constraint_ok"] is False
     assert info["rmader_delay_check_passed"] is False
+    assert info["rmader_delay_check_mode"] == "hard_hyperplane_failed"
     assert info["rmader_delay_check_fallback"] == "braking_trajectory"
     assert info["rmader_used_topology"] == "delay_check_brake"
     assert np.linalg.norm(out.v_cmd) <= ego.a_max * 0.02 + 1e-6
+
+
+def test_rmader_sampled_delay_check_accepts_narrow_hull_false_positive() -> None:
+    ego = _agent((0.0, 0.0, 0.0))
+    planner = RmaderPlanner(
+        cfg={
+            "horizon_s": 2.4,
+            "control_points": 8,
+            "samples_per_interval": 2,
+            "replan_period_s": 0.2,
+            "max_initializations": 2,
+            "opt_iterations": 2,
+            "hard_projection_iterations": 2,
+            "jerk_limit_mps3": 100.0,
+            "sampled_delay_check_enabled": True,
+            "sampled_delay_check_max_violation_m": 0.3,
+            "sampled_delay_check_min_clearance_m": 0.1,
+        }
+    )
+
+    out = planner.compute_cmd(_planner_input(ego=ego, neighbors=[_neighbor(pos=(6.0, 0.0, 0.0))]))
+
+    assert out.debug_info["rmader_candidate_hard_constraint_ok"] is False
+    assert out.debug_info["rmader_delay_check_passed"] is True
+    assert out.debug_info["rmader_delay_check_mode"] == "swept_sampled_collision_clear"
+    assert out.debug_info["rmader_sampled_delay_check_min_clearance_m"] >= 0.1
+    assert out.debug_info["rmader_delay_check_fallback"] == "none"
+    assert np.linalg.norm(out.v_cmd) > 0.0
+
+
+def test_rmader_sampled_delay_check_rejects_large_hull_failure() -> None:
+    ego = _agent((0.0, 0.0, 0.0))
+    planner = RmaderPlanner(
+        cfg={
+            "horizon_s": 2.4,
+            "control_points": 8,
+            "samples_per_interval": 2,
+            "replan_period_s": 0.2,
+            "max_initializations": 2,
+            "opt_iterations": 2,
+            "hard_projection_iterations": 2,
+            "jerk_limit_mps3": 100.0,
+            "sampled_delay_check_enabled": True,
+            "sampled_delay_check_max_violation_m": 0.3,
+            "sampled_delay_check_min_clearance_m": 0.1,
+        }
+    )
+
+    out = planner.compute_cmd(_planner_input(ego=ego, neighbors=[_neighbor(pos=(3.0, 0.0, 0.0))]))
+
+    assert out.debug_info["rmader_delay_check_passed"] is False
+    assert out.debug_info["rmader_delay_check_mode"] == "sampled_skipped_large_hull_violation"
+    assert out.debug_info["rmader_delay_check_fallback"] == "braking_trajectory"
 
 
 def test_rmader_recovery_fallback_is_explicit_opt_in() -> None:

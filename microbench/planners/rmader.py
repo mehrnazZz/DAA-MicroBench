@@ -289,6 +289,13 @@ class _PlanResult:
 
 
 @dataclass(frozen=True)
+class _DelayCheckResult:
+    accepted: bool
+    mode: str
+    min_sampled_clearance_m: float | None = None
+
+
+@dataclass(frozen=True)
 class _ClearanceSources:
     dynamic_positions: np.ndarray
     dynamic_radii: np.ndarray
@@ -338,8 +345,13 @@ class RmaderPlanner(ILocalPlanner):
         self.intent_tube_margin_m = float(cfg.get("intent_tube_margin_m", 0.35))
         self.coordination_message_ttl_s = float(cfg.get("coordination_message_ttl_s", 0.75))
         self.max_intent_points = int(cfg.get("max_intent_points", 14))
+        self.command_lookahead_s = float(cfg.get("command_lookahead_s", 1.4))
         self.delay_check_enabled = bool(cfg.get("delay_check_enabled", True))
         self.delay_check_tolerance_m = float(cfg.get("delay_check_tolerance_m", 0.08))
+        self.sampled_delay_check_enabled = bool(cfg.get("sampled_delay_check_enabled", False))
+        self.sampled_delay_check_max_violation_m = float(cfg.get("sampled_delay_check_max_violation_m", 0.3))
+        self.sampled_delay_check_min_clearance_m = float(cfg.get("sampled_delay_check_min_clearance_m", 0.12))
+        self.sampled_delay_check_obstacle_clearance_m = float(cfg.get("sampled_delay_check_obstacle_clearance_m", 0.12))
         self.early_reject_violation_m = float(cfg.get("early_reject_violation_m", 0.35))
         self.recovery_fallback_enabled = bool(cfg.get("recovery_fallback_enabled", False))
         self.recovery_lookahead_m = float(cfg.get("recovery_lookahead_m", 2.0))
@@ -396,6 +408,11 @@ class RmaderPlanner(ILocalPlanner):
             best = cached
             plan_used = cached
             accepted = cached_source == "committed"
+            delay_check = _DelayCheckResult(
+                accepted=accepted,
+                mode="cached_committed" if accepted else "cached_fallback",
+                min_sampled_clearance_m=None,
+            )
             delay_fallback = "cached_committed" if accepted else "cached_fallback"
             plan_version = int(memory.get("rmader_plan_version", 0))
         else:
@@ -411,7 +428,8 @@ class RmaderPlanner(ILocalPlanner):
                 ),
             )
 
-            accepted = self._delay_check(best)
+            delay_check = self._delay_check(planner_input, best)
+            accepted = bool(delay_check.accepted)
             plan_used = best
             delay_fallback = "none"
             if not accepted:
@@ -444,8 +462,9 @@ class RmaderPlanner(ILocalPlanner):
             memory["rmader_cached_source"] = cache_source
 
         sample_dt = self.horizon_s / max(1, plan_used.samples.shape[0] - 1)
-        next_idx = 1 if plan_used.samples.shape[0] > 1 else 0
-        desired_v = (plan_used.samples[next_idx] - np.asarray(ego.pos, dtype=np.float32)) / max(1e-6, sample_dt)
+        command_lookahead_s = self._command_lookahead(sample_dt, plan_used.samples.shape[0])
+        command_point = self._sample_plan_at(plan_used.samples, sample_dt, command_lookahead_s)
+        desired_v = (command_point - np.asarray(ego.pos, dtype=np.float32)) / max(1e-6, command_lookahead_s)
         v_cmd = _limit_delta(desired_v, current, float(ego.a_max) * float(planner_input.dt))
         v_cmd = _clamp_speed(v_cmd, float(ego.v_max))
         if planner_input.planar:
@@ -554,6 +573,9 @@ class RmaderPlanner(ILocalPlanner):
             "rmader_max_jerk_violation_mps3": float(chosen_kin.max_jerk_violation_mps3),
             "rmader_delay_check_enabled": bool(self.delay_check_enabled),
             "rmader_delay_check_passed": bool(accepted),
+            "rmader_delay_check_mode": str(delay_check.mode),
+            "rmader_sampled_delay_check_enabled": bool(self.sampled_delay_check_enabled),
+            "rmader_sampled_delay_check_min_clearance_m": delay_check.min_sampled_clearance_m,
             "rmader_delay_check_fallback": str(delay_fallback),
             "rmader_recovery_fallback_enabled": bool(self.recovery_fallback_enabled),
             "rmader_two_step_publication": True,
@@ -564,6 +586,7 @@ class RmaderPlanner(ILocalPlanner):
             "rmader_obstacle_count_considered": int(len(planner_input.obstacles)),
             "rmader_planar": bool(planner_input.planar),
             "rmader_intent_points": int(intent_points.shape[0]),
+            "rmader_command_lookahead_s": float(command_lookahead_s),
             "rmader_prior_label": prior_label,
             "rmader_accel_delta_norm": float(_norm(v_cmd - current)),
             "rmader_accel_delta_limit": float(float(ego.a_max) * float(planner_input.dt)),
@@ -583,6 +606,24 @@ class RmaderPlanner(ILocalPlanner):
         if planner_input.agent_context is not None:
             return planner_input.agent_context.memory
         return self._local_memory
+
+    def _command_lookahead(self, sample_dt: float, sample_count: int) -> float:
+        if sample_count <= 1:
+            return max(1e-6, float(sample_dt))
+        horizon = max(1e-6, float(sample_dt) * float(sample_count - 1))
+        return min(horizon, max(float(sample_dt), float(self.command_lookahead_s)))
+
+    def _sample_plan_at(self, samples: np.ndarray, sample_dt: float, t: float) -> np.ndarray:
+        pts = np.asarray(samples, dtype=np.float32)
+        if pts.ndim != 2 or pts.shape[0] == 0:
+            return np.zeros(3, dtype=np.float32)
+        if pts.shape[0] == 1 or sample_dt <= 1e-9:
+            return pts[0].astype(np.float32)
+        tau = min(float(pts.shape[0] - 1), max(0.0, float(t) / max(1e-6, float(sample_dt))))
+        lo = min(pts.shape[0] - 1, int(math.floor(tau)))
+        hi = min(pts.shape[0] - 1, lo + 1)
+        alpha = min(1.0, max(0.0, tau - float(lo)))
+        return ((1.0 - alpha) * pts[lo] + alpha * pts[hi]).astype(np.float32)
 
     def _control_point_count(self) -> int:
         return max(7, int(self.control_points))
@@ -1460,10 +1501,97 @@ class RmaderPlanner(ILocalPlanner):
         fixed[-3:] = True
         return fixed
 
-    def _delay_check(self, result: _PlanResult) -> bool:
+    def _delay_check(self, planner_input: PlannerInput, result: _PlanResult) -> _DelayCheckResult:
         if not self.delay_check_enabled:
-            return True
-        return bool(result.constraint_report.max_violation_m <= self.delay_check_tolerance_m)
+            return _DelayCheckResult(True, "disabled", None)
+        if result.constraint_report.max_violation_m <= self.delay_check_tolerance_m:
+            return _DelayCheckResult(True, "hard_hyperplane", None)
+        if not self.sampled_delay_check_enabled:
+            return _DelayCheckResult(False, "hard_hyperplane_failed", None)
+        if result.constraint_report.max_violation_m > self.sampled_delay_check_max_violation_m:
+            return _DelayCheckResult(False, "sampled_skipped_large_hull_violation", None)
+        ok, min_clearance = self._swept_sampled_delay_check(planner_input, result.samples)
+        if ok:
+            return _DelayCheckResult(True, "swept_sampled_collision_clear", min_clearance)
+        return _DelayCheckResult(False, "swept_sampled_collision_risk", min_clearance)
+
+    def _swept_sampled_delay_check(self, planner_input: PlannerInput, samples: np.ndarray) -> tuple[bool, float | None]:
+        own = np.asarray(samples, dtype=np.float32)
+        if own.ndim != 2 or own.shape[0] == 0:
+            return False, None
+        if own.shape[0] == 1:
+            own = np.vstack([np.asarray(planner_input.ego.pos, dtype=np.float32), own[0]])
+        if planner_input.planar:
+            own[:, 1] = float(planner_input.ego.pos[1])
+        sample_dt = self.horizon_s / max(1, own.shape[0] - 1)
+        times = [idx * sample_dt for idx in range(own.shape[0])]
+        min_clearance: float | None = None
+
+        intent_by_sender = {
+            int(intent.sender_id): intent
+            for intent in planner_input.neighbor_intents
+            if intent.valid and np.asarray(intent.points).size > 0
+        }
+        seen: set[int] = set()
+        for nobs in planner_input.neighbors[: self.max_neighbors]:
+            seen.add(int(nobs.idx))
+            intent = intent_by_sender.get(int(nobs.idx))
+            other = np.asarray([self._neighbor_prediction(nobs, intent, t) for t in times], dtype=np.float32)
+            if planner_input.planar:
+                other[:, 1] = float(planner_input.ego.pos[1])
+            radius = float(planner_input.ego.radius) + float(nobs.radius)
+            radius += self._neighbor_inflation(nobs) + (self._intent_inflation(intent) if intent is not None else 0.0)
+            ok, clearance = self._swept_polyline_clearance_ok(own, other, radius, self.sampled_delay_check_min_clearance_m)
+            min_clearance = clearance if min_clearance is None else min(min_clearance, clearance)
+            if not ok:
+                return False, min_clearance
+
+        for sender_id, intent in intent_by_sender.items():
+            if sender_id in seen:
+                continue
+            other = np.asarray([self._intent_prediction(intent, t) for t in times], dtype=np.float32)
+            if planner_input.planar:
+                other[:, 1] = float(planner_input.ego.pos[1])
+            radius = float(planner_input.ego.radius) + float(intent.tube_radius_m) + self._intent_inflation(intent)
+            ok, clearance = self._swept_polyline_clearance_ok(own, other, radius, self.sampled_delay_check_min_clearance_m)
+            min_clearance = clearance if min_clearance is None else min(min_clearance, clearance)
+            if not ok:
+                return False, min_clearance
+
+        for obs in planner_input.obstacles:
+            for i in range(own.shape[0] - 1):
+                for tau in (0.0, 0.25, 0.5, 0.75, 1.0):
+                    point = (1.0 - tau) * own[i] + tau * own[i + 1]
+                    signed, _ = _signed_distance_and_grad_to_aabb(point, obs)
+                    clearance = float(signed) - float(planner_input.ego.radius)
+                    min_clearance = clearance if min_clearance is None else min(min_clearance, clearance)
+                    if clearance < self.sampled_delay_check_obstacle_clearance_m:
+                        return False, min_clearance
+
+        return True, min_clearance
+
+    def _swept_polyline_clearance_ok(
+        self,
+        own: np.ndarray,
+        other: np.ndarray,
+        radius_m: float,
+        min_clearance_m: float,
+    ) -> tuple[bool, float]:
+        min_clearance = float("inf")
+        if own.shape[0] != other.shape[0] or own.shape[0] < 2:
+            return False, -float("inf")
+        for i in range(own.shape[0] - 1):
+            rel0 = np.asarray(own[i] - other[i], dtype=np.float32)
+            rel1 = np.asarray(own[i + 1] - other[i + 1], dtype=np.float32)
+            delta = rel1 - rel0
+            denom = float(np.dot(delta, delta))
+            alpha = 0.0 if denom <= 1e-12 else min(1.0, max(0.0, -float(np.dot(rel0, delta)) / denom))
+            rel = rel0 + alpha * delta
+            clearance = _norm(rel) - float(radius_m)
+            min_clearance = min(min_clearance, clearance)
+            if clearance < float(min_clearance_m):
+                return False, float(min_clearance)
+        return True, float(min_clearance)
 
     def _maybe_reuse_committed_plan(self, planner_input: PlannerInput, memory: dict[str, object]) -> _PlanResult | None:
         if self.replan_period_s <= 0.0:

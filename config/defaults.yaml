@@ -347,8 +347,13 @@ rmader:
   intent_ttl_s: 1.0
   intent_tube_margin_m: 0.35
   max_intent_points: 14
+  command_lookahead_s: 1.4
   delay_check_enabled: true
   delay_check_tolerance_m: 0.08
+  sampled_delay_check_enabled: true
+  sampled_delay_check_max_violation_m: 0.3
+  sampled_delay_check_min_clearance_m: 0.1
+  sampled_delay_check_obstacle_clearance_m: 0.1
   recovery_fallback_enabled: false
   recovery_lookahead_m: 2.0
   recovery_neighbor_range_m: 4.0
