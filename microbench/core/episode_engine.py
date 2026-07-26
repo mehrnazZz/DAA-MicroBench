@@ -152,6 +152,8 @@ def _copy_neighbor_obs(
     last_seen_s: float | None = None,
     stale: bool | None = None,
     occluded: bool | None = None,
+    priority: int | None = None,
+    role: str | None = None,
 ) -> NeighborObs:
     return NeighborObs(
         idx=int(n.idx),
@@ -165,6 +167,8 @@ def _copy_neighbor_obs(
         last_seen_s=n.last_seen_s if last_seen_s is None else float(last_seen_s),
         stale=bool(n.stale if stale is None else stale),
         occluded=bool(n.occluded if occluded is None else occluded),
+        priority=n.priority if priority is None else int(priority),
+        role=n.role if role is None else str(role),
     )
 
 
@@ -677,6 +681,8 @@ class EpisodeEngine:
             "last_seen_s": float(n.last_seen_s) if n.last_seen_s is not None else None,
             "stale": bool(n.stale),
             "occluded": bool(n.occluded),
+            "priority": None if n.priority is None else int(n.priority),
+            "role": n.role,
         }
 
     def _planner_fallback_cmd(self, planner_input: PlannerInput) -> np.ndarray:
@@ -805,6 +811,8 @@ class EpisodeEngine:
                             msg_age_sec=age,
                             valid=True,
                             source="v2v",
+                            priority=int(self.agent_profiles[j].priority),
+                            role=self.agent_profiles[j].role,
                         )
                     )
             if self._has_failure(active_failures, "comm_dropout", "communication_dropout", "noncooperative"):

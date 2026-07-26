@@ -174,3 +174,51 @@ def test_mpc_nonlinear_reuses_receding_solution_until_replan_period() -> None:
     assert reused.debug_info["mpc_nonlinear_cached_reuse"] is True
     assert reused.debug_info["mpc_nonlinear_solver"] == "cached_receding_mpc"
     assert expired.debug_info["mpc_nonlinear_replanned"] is True
+
+
+def test_mpc_nonlinear_cached_reuse_shifts_by_plan_interval() -> None:
+    planner = NonlinearMpcPlanner(
+        cfg={
+            "horizon_s": 2.4,
+            "horizon_steps": 4,
+            "replan_period_s": 1.0,
+        }
+    )
+    planner._cached_controls = np.asarray(
+        [
+            [2.0, 0.0, 0.0],
+            [0.0, 0.0, 2.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    planner._last_controls = planner._cached_controls.copy()
+    planner._last_label = "probe"
+    planner._last_replan_t = 0.0
+    ego = _agent((0.0, 0.0, 0.0), v_max=10.0, a_max=4.0)
+
+    early = planner.compute_cmd(_planner_input(ego=ego, planar=False, t=0.02))
+
+    assert early.debug_info["mpc_nonlinear_replanned"] is False
+    assert early.debug_info["mpc_nonlinear_cached_reuse"] is True
+    assert float(early.v_cmd[0]) > 0.0
+    assert abs(float(early.v_cmd[2])) < 1e-9
+
+    planner._cached_controls = np.asarray(
+        [
+            [2.0, 0.0, 0.0],
+            [0.0, 0.0, 2.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ],
+        dtype=np.float32,
+    )
+    planner._last_controls = planner._cached_controls.copy()
+    planner._last_replan_t = 0.0
+    shifted = planner.compute_cmd(_planner_input(ego=ego, planar=False, t=planner._dt() + 0.01))
+
+    assert shifted.debug_info["mpc_nonlinear_replanned"] is False
+    assert shifted.debug_info["mpc_nonlinear_cached_reuse"] is True
+    assert abs(float(shifted.v_cmd[0])) < 1e-9
+    assert float(shifted.v_cmd[2]) > 0.0

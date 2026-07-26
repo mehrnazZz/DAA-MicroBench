@@ -55,14 +55,15 @@ def _planner_input(
     )
 
 
-def _neighbor() -> NeighborObs:
+def _neighbor(*, priority: int | None = None, idx: int = 1) -> NeighborObs:
     return NeighborObs(
-        idx=1,
+        idx=idx,
         pos=np.asarray([3.0, 0.0, 0.0], dtype=np.float32),
         vel=np.asarray([-2.0, 0.0, 0.0], dtype=np.float32),
         radius=0.5,
         msg_age_sec=0.0,
         valid=True,
+        priority=priority,
     )
 
 
@@ -164,3 +165,27 @@ def test_dmpc_best_response_preserves_3d_command_shape() -> None:
     assert out.v_cmd[1] > 0.0
     assert out.debug_info["dmpc_best_response_planar"] is False
     assert np.linalg.norm(out.v_cmd - ego.vel) <= ego.a_max * 0.02 + 1e-6
+
+
+def test_dmpc_best_response_uses_neighbor_priority_metadata() -> None:
+    planner = DistributedMpcBestResponsePlanner(
+        cfg={
+            "priority_responsibility_gain": 0.25,
+            "priority_inflation_gain": 0.2,
+        }
+    )
+    high_ego = _planner_input(
+        ego=_agent((0.0, 0.0, 0.0)),
+        neighbors=[_neighbor(priority=1, idx=99)],
+        context=AgentContext(agent_id=0, method="dmpc_best_response", seed=0, priority=100),
+    )
+    low_ego = _planner_input(
+        ego=_agent((0.0, 0.0, 0.0)),
+        neighbors=[_neighbor(priority=100, idx=99)],
+        context=AgentContext(agent_id=0, method="dmpc_best_response", seed=0, priority=1),
+    )
+
+    assert planner._responsibility_scale(high_ego, high_ego.neighbors[0]) < 1.0
+    assert planner._priority_inflation(high_ego, high_ego.neighbors[0]) < 0.0
+    assert planner._responsibility_scale(low_ego, low_ego.neighbors[0]) > 1.0
+    assert planner._priority_inflation(low_ego, low_ego.neighbors[0]) > 0.0

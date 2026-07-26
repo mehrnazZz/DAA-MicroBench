@@ -138,5 +138,8 @@ def fuse_observations(v2v_obs: list[NeighborObs], sensor_obs: list[NeighborObs])
     for obs in sensor_obs:
         prev = by_id.get(obs.idx)
         if prev is None or obs.msg_age_sec <= prev.msg_age_sec:
+            if prev is not None:
+                obs.priority = prev.priority
+                obs.role = prev.role
             by_id[obs.idx] = obs
     return [by_id[k] for k in sorted(by_id)]

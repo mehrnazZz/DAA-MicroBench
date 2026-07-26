@@ -273,19 +273,19 @@ class DistributedMpcBestResponsePlanner(NonlinearMpcPlanner):
 
     def _priority_inflation(self, planner_input: PlannerInput, nobs: NeighborObs) -> float:
         ego_priority = self._agent_priority(planner_input)
-        neighbor_priority = int(nobs.idx)
-        if ego_priority > neighbor_priority:
+        neighbor_priority = self._neighbor_priority(nobs)
+        if neighbor_priority > ego_priority:
             return self.priority_inflation_gain
-        if ego_priority < neighbor_priority:
+        if neighbor_priority < ego_priority:
             return -0.5 * self.priority_inflation_gain
         return 0.0
 
     def _responsibility_scale(self, planner_input: PlannerInput, nobs: NeighborObs) -> float:
         ego_priority = self._agent_priority(planner_input)
-        neighbor_priority = int(nobs.idx)
-        if ego_priority > neighbor_priority:
+        neighbor_priority = self._neighbor_priority(nobs)
+        if neighbor_priority > ego_priority:
             return float(1.0 + self.priority_responsibility_gain)
-        if ego_priority < neighbor_priority:
+        if neighbor_priority < ego_priority:
             return float(max(0.55, 1.0 - 0.5 * self.priority_responsibility_gain))
         return 1.0
 
@@ -293,6 +293,10 @@ class DistributedMpcBestResponsePlanner(NonlinearMpcPlanner):
     def _agent_priority(planner_input: PlannerInput) -> int:
         ctx = planner_input.agent_context
         return int(ctx.priority) if ctx is not None else int(planner_input.ego.idx)
+
+    @staticmethod
+    def _neighbor_priority(nobs: NeighborObs) -> int:
+        return int(nobs.priority) if nobs.priority is not None else int(nobs.idx)
 
     def _memory(self, planner_input: PlannerInput) -> dict[str, Any]:
         ctx = planner_input.agent_context

@@ -44,6 +44,8 @@ class NeighborObs:
     last_seen_s: float | None = None
     stale: bool = False
     occluded: bool = False
+    priority: int | None = None
+    role: str | None = None
 
 
 @dataclass

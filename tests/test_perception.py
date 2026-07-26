@@ -8,9 +8,9 @@ import unittest
 import numpy as np
 
 from microbench.core import EpisodeEngine
-from microbench.core.perception import sense_neighbors
+from microbench.core.perception import fuse_observations, sense_neighbors
 from microbench.runner import run_episode
-from microbench.types import AgentState, RunSpec
+from microbench.types import AgentState, NeighborObs, RunSpec
 
 
 def _agent(idx: int, pos: tuple[float, float, float], goal=(10.0, 0.0, 0.0)) -> AgentState:
@@ -60,6 +60,35 @@ class TestPerception(unittest.TestCase):
             rng=np.random.default_rng(0),
         )
         self.assertEqual(obs, [])
+
+    def test_fused_sensor_track_preserves_v2v_priority_metadata(self):
+        v2v = NeighborObs(
+            idx=1,
+            pos=np.asarray([1.0, 0.0, 0.0], dtype=np.float32),
+            vel=np.zeros(3, dtype=np.float32),
+            radius=0.3,
+            msg_age_sec=0.05,
+            valid=True,
+            source="v2v",
+            priority=100,
+            role="emergency_response",
+        )
+        sensor = NeighborObs(
+            idx=1,
+            pos=np.asarray([1.1, 0.0, 0.0], dtype=np.float32),
+            vel=np.zeros(3, dtype=np.float32),
+            radius=0.3,
+            msg_age_sec=0.0,
+            valid=True,
+            source="sensor",
+        )
+
+        fused = fuse_observations([v2v], [sensor])
+
+        self.assertEqual(len(fused), 1)
+        self.assertEqual(fused[0].source, "sensor")
+        self.assertEqual(fused[0].priority, 100)
+        self.assertEqual(fused[0].role, "emergency_response")
 
     def test_runner_sensor_mode_trace_marks_observation_source(self):
         with tempfile.TemporaryDirectory() as td:

@@ -373,7 +373,8 @@ class NonlinearMpcPlanner(ILocalPlanner):
             return None
         if self._cached_controls.shape != (self._steps(), 3):
             return None
-        controls = self._project_controls(self._cached_controls.copy(), planner_input)
+        controls = self._shift_cached_controls(planner_input)
+        controls = self._project_controls(controls, planner_input)
         final = self._cost_and_gradient(planner_input, controls, need_grad=False)
         return self._result_from_breakdown(
             _Seed("cached_receding", controls),
@@ -384,6 +385,17 @@ class NonlinearMpcPlanner(ILocalPlanner):
             "cached_receding_mpc",
             "cached_receding_mpc_solution",
         )
+
+    def _shift_cached_controls(self, planner_input: PlannerInput) -> np.ndarray:
+        assert self._cached_controls is not None
+        assert self._last_replan_t is not None
+        controls = np.asarray(self._cached_controls, dtype=np.float32)
+        elapsed = max(0.0, float(planner_input.t) - float(self._last_replan_t))
+        shift_steps = int(math.floor(elapsed / max(1e-6, self._dt())))
+        shift_steps = min(max(0, shift_steps), controls.shape[0] - 1)
+        if shift_steps <= 0:
+            return controls.copy()
+        return np.vstack([controls[shift_steps:], np.repeat(controls[-1:], shift_steps, axis=0)]).astype(np.float32)
 
     def _optimize_scipy(self, planner_input: PlannerInput, u0: np.ndarray) -> tuple[np.ndarray, int, str] | None:
         try:
