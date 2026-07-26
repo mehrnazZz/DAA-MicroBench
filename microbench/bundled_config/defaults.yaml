@@ -144,27 +144,31 @@ mpc_nonlinear:
   scipy_maxiter: 35
   gradient_step_accel: 0.18
   line_search_shrink: 0.55
+  command_preview_s: 0.4
+  goal_capture_radius_m: 4.0
+  goal_capture_time_s: 0.75
+  goal_capture_min_clearance_m: 0.5
   safety_margin_m: 0.3
   obstacle_margin_m: 0.25
-  near_clearance_m: 1.75
+  near_clearance_m: 1.8
   goal_slowdown_radius_m: 6.0
   stale_inflation_gain: 0.65
   stale_age_cap_s: 1.5
   intent_age_inflation_gain: 0.3
   track_uncertainty_speed_gain: 0.1
   tracking_weight: 0.45
-  velocity_tracking_weight: 0.75
-  terminal_weight: 8.0
-  progress_weight: 1.1
+  velocity_tracking_weight: 0.9
+  terminal_weight: 10.0
+  progress_weight: 1.7
   control_weight: 0.04
   jerk_weight: 0.2
   speed_limit_weight: 45.0
   accel_limit_weight: 30.0
-  collision_weight: 6000.0
+  collision_weight: 8500.0
   clearance_weight: 120.0
   obstacle_collision_weight: 7500.0
   obstacle_clearance_weight: 150.0
-  intent_collision_weight: 5200.0
+  intent_collision_weight: 7600.0
   intent_clearance_weight: 110.0
   warm_start_weight: 0.05
   intent_ttl_s: 1.0
