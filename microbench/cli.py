@@ -821,6 +821,7 @@ def _optimizer_suite_review(args) -> None:
         max_trace_cases=int(args.max_trace_cases),
         save_review_traces=bool(args.save_review_traces),
         trace_max_steps=int(args.trace_max_steps),
+        guardrail_retries=int(args.guardrail_retries),
     )
 
     if args.json:
@@ -839,6 +840,7 @@ def _optimizer_suite_review(args) -> None:
             f"negative_clearance={findings['negative_clearance_rows']} "
             f"incomplete={findings['incomplete_episode_rows']} "
             f"guardrails={findings['guardrail_rows']} "
+            f"persistent_guardrails={findings['persistent_guardrail_rows']} "
             f"dimensions={','.join(findings['dimensions_covered']) or '-'}"
         )
         for entry in report["method_summaries"]:
@@ -1581,6 +1583,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=4000,
         help="Maximum full-trace frames saved for --save-review-traces",
+    )
+    p_osr.add_argument(
+        "--guardrail-retries",
+        type=int,
+        default=1,
+        help="Retry rows with planner guardrails this many times to separate transient spikes from persistent failures",
     )
     p_osr.add_argument("--json", action="store_true", help="Emit machine-readable optimizer review report")
     p_osr.add_argument("--require-pass", action="store_true", help="Fail if selected optimizer review checks fail")

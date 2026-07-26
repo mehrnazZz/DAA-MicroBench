@@ -258,7 +258,7 @@ python -m microbench.cli optimizer-suite-review \
   --require-pass
 ```
 
-This delegates the actual runs to `baseline-leaderboard`, writes the normal leaderboard artifacts, and adds `optimizer_suite_review.json` with method summaries, guardrail/collision/incomplete-row findings, and Foxglove rerun/export commands for the most interesting review cases. Capped optimizer reviews use `--max-runs-strategy balanced` by default so checkpoint rows spread across scenario/method groups instead of only taking the first suite entries. To materialize full traces for those review cases, add `--save-review-traces`. For publication-scale optimizer claims, use the full generated stress suites without a run cap:
+This delegates the actual runs to `baseline-leaderboard`, writes the normal leaderboard artifacts, and adds `optimizer_suite_review.json` with method summaries, guardrail/collision/incomplete-row findings, transient guardrail retry evidence, and Foxglove rerun/export commands for the most interesting review cases. Capped optimizer reviews use `--max-runs-strategy balanced` by default so checkpoint rows spread across scenario/method groups instead of only taking the first suite entries. Guardrail rows are retried once by default to separate transient local runtime spikes from persistent baseline failures; use `--guardrail-retries 0` for a stricter no-retry audit. To materialize full traces for those review cases, add `--save-review-traces`. For publication-scale optimizer claims, use the full generated stress suites without a run cap:
 
 ```bash
 python -m microbench.cli optimizer-suite-review \

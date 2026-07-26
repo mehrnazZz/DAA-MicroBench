@@ -163,7 +163,7 @@ python -m microbench.cli optimizer-suite-review \
   --require-pass
 ```
 
-It delegates runs to `baseline-leaderboard`, then writes `optimizer_suite_review.json` with method summaries, review findings, and Foxglove rerun/export commands for the most interesting cases. Capped optimizer reviews use balanced run selection by default, so checkpoints cover scenario/method groups more evenly than a prefix-only cap. Use `--save-review-traces` to write full `trace_episode.jsonl` artifacts for those cases. Remove `--max-runs` and use `--suites official_alpha,official_3d_stress,official_agentic_stress --require-complete` before making publication-scale optimizer claims.
+It delegates runs to `baseline-leaderboard`, then writes `optimizer_suite_review.json` with method summaries, review findings, transient guardrail retry evidence, and Foxglove rerun/export commands for the most interesting cases. Capped optimizer reviews use balanced run selection by default, so checkpoints cover scenario/method groups more evenly than a prefix-only cap. Guardrail rows retry once by default only to distinguish transient local runtime spikes from persistent failures; use `--guardrail-retries 0` for a stricter audit. Use `--save-review-traces` to write full `trace_episode.jsonl` artifacts for those cases. Remove `--max-runs` and use `--suites official_alpha,official_3d_stress,official_agentic_stress --require-complete` before making publication-scale optimizer claims.
 
 Optionally publish the same run to W&B as dashboard tables:
 

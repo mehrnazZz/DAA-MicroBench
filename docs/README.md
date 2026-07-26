@@ -100,6 +100,8 @@ Run a capped optimizer-grade suite review for NMPC versus EGO-Swarm optimization
 python -m microbench.cli optimizer-suite-review --out-dir runs_optimizer_suite_review --max-runs 4 --require-pass
 ```
 
+The optimizer review retries planner-guardrail rows once by default and records retry evidence in `optimizer_suite_review.json`, so transient local runtime spikes stay visible without being confused with persistent baseline failures.
+
 Run the all-suite baseline leaderboard:
 
 ```bash
