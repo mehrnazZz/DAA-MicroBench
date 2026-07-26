@@ -118,6 +118,10 @@ class NonlinearMpcPlanner(ILocalPlanner):
         self.scipy_maxiter = int(cfg.get("scipy_maxiter", 35))
         self.gradient_step_accel = float(cfg.get("gradient_step_accel", 0.18))
         self.line_search_shrink = float(cfg.get("line_search_shrink", 0.55))
+        self.command_preview_s = float(cfg.get("command_preview_s", 0.0))
+        self.goal_capture_radius_m = float(cfg.get("goal_capture_radius_m", 0.0))
+        self.goal_capture_time_s = float(cfg.get("goal_capture_time_s", 1.0))
+        self.goal_capture_min_clearance_m = float(cfg.get("goal_capture_min_clearance_m", 0.0))
 
         self.safety_margin_m = float(cfg.get("safety_margin_m", 0.3))
         self.obstacle_margin_m = float(cfg.get("obstacle_margin_m", 0.25))
@@ -177,8 +181,11 @@ class NonlinearMpcPlanner(ILocalPlanner):
             seeds = []
             best = cached
 
-        first_accel = best.controls[0] if best.controls.size else np.zeros(3, dtype=np.float32)
-        v_cmd = current + first_accel * float(planner_input.dt)
+        v_cmd, command_mode, preview_step = self._command_from_plan(planner_input, best, current)
+        capture = self._goal_capture_command(planner_input, best, v_cmd)
+        if capture is not None:
+            v_cmd = capture
+            command_mode = f"{command_mode}:goal_capture"
         v_cmd = _limit_delta(v_cmd, current, float(ego.a_max) * float(planner_input.dt))
         v_cmd = _clamp_speed(v_cmd, float(ego.v_max))
         if planner_input.planar:
@@ -216,6 +223,10 @@ class NonlinearMpcPlanner(ILocalPlanner):
                 "mpc_nonlinear_replanned": bool(replanned),
                 "mpc_nonlinear_cached_reuse": bool(not replanned),
                 "mpc_nonlinear_replan_period_s": float(self.replan_period_s),
+                "mpc_nonlinear_command_mode": command_mode,
+                "mpc_nonlinear_command_preview_s": float(self.command_preview_s),
+                "mpc_nonlinear_command_preview_step": int(preview_step),
+                "mpc_nonlinear_goal_capture_radius_m": float(self.goal_capture_radius_m),
                 "mpc_nonlinear_best_seed": str(best.label),
                 "mpc_nonlinear_initial_cost": float(best.initial_cost),
                 "mpc_nonlinear_final_cost": float(best.final_cost),
@@ -242,6 +253,66 @@ class NonlinearMpcPlanner(ILocalPlanner):
                 "mpc_nonlinear_prior_seed": prior_label,
             },
         )
+
+    def _command_from_plan(
+        self,
+        planner_input: PlannerInput,
+        best: _OptimizationResult,
+        current: np.ndarray,
+    ) -> tuple[np.ndarray, str, int]:
+        if self.command_preview_s > 1e-9 and best.positions.size:
+            preview_step = min(
+                best.positions.shape[0],
+                max(1, int(math.ceil(float(self.command_preview_s) / max(1e-6, self._dt())))),
+            )
+            preview_t = float(preview_step) * self._dt()
+            target = np.asarray(best.positions[preview_step - 1], dtype=np.float32)
+            desired = (target - np.asarray(planner_input.ego.pos, dtype=np.float32)) / max(1e-6, preview_t)
+            if planner_input.planar:
+                desired[1] = 0.0
+            return desired.astype(np.float32), "planned_position_preview", int(preview_step)
+
+        first_accel = best.controls[0] if best.controls.size else np.zeros(3, dtype=np.float32)
+        desired = np.asarray(current, dtype=np.float32) + np.asarray(first_accel, dtype=np.float32) * float(planner_input.dt)
+        if planner_input.planar:
+            desired[1] = 0.0
+        return desired.astype(np.float32), "first_accel", 0
+
+    def _goal_capture_command(
+        self,
+        planner_input: PlannerInput,
+        best: _OptimizationResult,
+        planned_cmd: np.ndarray,
+    ) -> np.ndarray | None:
+        if self.goal_capture_radius_m <= 1e-9:
+            return None
+        if bool(best.predicted_swarm_conflict) or bool(best.predicted_obstacle_conflict):
+            return None
+        min_clearance = best.min_swarm_clearance_m
+        if min_clearance is not None and float(min_clearance) < self.goal_capture_min_clearance_m:
+            return None
+
+        ego = planner_input.ego
+        to_goal = np.asarray(ego.goal, dtype=np.float32) - np.asarray(ego.pos, dtype=np.float32)
+        if planner_input.planar:
+            to_goal[1] = 0.0
+        dist = _norm(to_goal)
+        if dist <= 1e-9 or dist > self.goal_capture_radius_m:
+            return None
+
+        direction = to_goal / dist
+        planned_progress = float(np.dot(np.asarray(planned_cmd, dtype=np.float32), direction))
+        capture_speed = min(
+            float(ego.v_max),
+            math.sqrt(max(0.0, 2.0 * max(1e-6, float(ego.a_max)) * dist)),
+            dist / max(float(planner_input.dt), float(self.goal_capture_time_s)),
+        )
+        if capture_speed <= planned_progress + 1e-6:
+            return None
+        desired = direction * capture_speed
+        if planner_input.planar:
+            desired[1] = 0.0
+        return desired.astype(np.float32)
 
     def _steps(self) -> int:
         if self.horizon_steps > 0:

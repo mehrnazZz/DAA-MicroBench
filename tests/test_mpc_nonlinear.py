@@ -222,3 +222,94 @@ def test_mpc_nonlinear_cached_reuse_shifts_by_plan_interval() -> None:
     assert shifted.debug_info["mpc_nonlinear_cached_reuse"] is True
     assert abs(float(shifted.v_cmd[0])) < 1e-9
     assert float(shifted.v_cmd[2]) > 0.0
+
+
+def test_mpc_nonlinear_preview_command_tracks_planned_position() -> None:
+    planner = NonlinearMpcPlanner(
+        cfg={
+            "horizon_s": 2.4,
+            "horizon_steps": 4,
+            "command_preview_s": 0.6,
+        }
+    )
+    ego = _agent((0.0, 0.0, 0.0), vel=(0.0, 0.0, 0.0), v_max=10.0, a_max=4.0)
+    result = planner._result_from_breakdown(
+        seed=type("Seed", (), {"label": "probe"})(),
+        controls=np.zeros((4, 3), dtype=np.float32),
+        initial_cost=0.0,
+        final={
+            "total": 0.0,
+            "positions": np.asarray(
+                [
+                    [0.0, 0.0, 2.0],
+                    [0.0, 0.0, 4.0],
+                    [0.0, 0.0, 6.0],
+                    [0.0, 0.0, 8.0],
+                ],
+                dtype=np.float32,
+            ),
+            "velocities": np.zeros((4, 3), dtype=np.float32),
+            "tracking_cost": 0.0,
+            "terminal_cost": 0.0,
+            "control_cost": 0.0,
+            "jerk_cost": 0.0,
+            "dynamic_penalty": 0.0,
+            "collision_penalty": 0.0,
+            "obstacle_penalty": 0.0,
+            "intent_penalty": 0.0,
+            "min_swarm_clearance_m": None,
+            "min_obstacle_clearance_m": None,
+            "predicted_swarm_conflict": False,
+            "predicted_obstacle_conflict": False,
+        },
+        iterations=0,
+        solver="probe",
+        status="probe",
+    )
+
+    desired, mode, preview_step = planner._command_from_plan(_planner_input(ego=ego, planar=False), result, ego.vel)
+
+    assert mode == "planned_position_preview"
+    assert preview_step == 1
+    assert abs(float(desired[0])) < 1e-9
+    assert float(desired[2]) > 0.0
+
+
+def test_mpc_nonlinear_goal_capture_lifts_near_goal_progress() -> None:
+    planner = NonlinearMpcPlanner(
+        cfg={
+            "goal_capture_radius_m": 4.5,
+            "goal_capture_time_s": 1.0,
+        }
+    )
+    ego = _agent((0.0, 0.0, 0.0), goal=(3.0, 0.0, 0.0), v_max=4.0, a_max=2.0)
+    result = planner._result_from_breakdown(
+        seed=type("Seed", (), {"label": "probe"})(),
+        controls=np.zeros((planner._steps(), 3), dtype=np.float32),
+        initial_cost=0.0,
+        final={
+            "total": 0.0,
+            "positions": np.zeros((planner._steps(), 3), dtype=np.float32),
+            "velocities": np.zeros((planner._steps(), 3), dtype=np.float32),
+            "tracking_cost": 0.0,
+            "terminal_cost": 0.0,
+            "control_cost": 0.0,
+            "jerk_cost": 0.0,
+            "dynamic_penalty": 0.0,
+            "collision_penalty": 0.0,
+            "obstacle_penalty": 0.0,
+            "intent_penalty": 0.0,
+            "min_swarm_clearance_m": 1.0,
+            "min_obstacle_clearance_m": None,
+            "predicted_swarm_conflict": False,
+            "predicted_obstacle_conflict": False,
+        },
+        iterations=0,
+        solver="probe",
+        status="probe",
+    )
+
+    capture = planner._goal_capture_command(_planner_input(ego=ego), result, np.zeros(3, dtype=np.float32))
+
+    assert capture is not None
+    assert float(capture[0]) > 0.0
