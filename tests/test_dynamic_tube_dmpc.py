@@ -203,6 +203,30 @@ def test_dynamic_tube_dmpc_projection_uses_cumulative_velocity_dynamics() -> Non
     assert float(np.max(speeds)) <= ego.v_max + 1e-3
 
 
+def test_dynamic_tube_dmpc_clear_airspace_recovery_tracks_goal_when_safe() -> None:
+    planner = _tiny_dynamic_tube()
+    ego = _agent((0.0, 0.0, 0.0), goal=(10.0, 0.0, 0.0), v_max=2.0, a_max=2.0)
+    planner_input = _planner_input(ego=ego)
+    qp = planner._build_qp(planner_input)
+
+    recovery = planner._clear_airspace_goal_recovery(planner_input, qp)
+
+    assert recovery is not None
+    controls, positions, velocities = recovery
+    assert controls.shape == (planner._steps(), 3)
+    assert positions[-1, 0] > positions[0, 0]
+    assert float(np.max(np.linalg.norm(velocities, axis=1))) <= ego.v_max + 1e-3
+
+
+def test_dynamic_tube_dmpc_clear_airspace_recovery_blocks_active_neighbor_risk() -> None:
+    planner = _tiny_dynamic_tube()
+    ego = _agent((0.0, 0.0, 0.0), vel=(1.0, 0.0, 0.0), goal=(10.0, 0.0, 0.0), v_max=2.0, a_max=2.0)
+    planner_input = _planner_input(ego=ego, neighbors=[_neighbor(pos=(1.0, 0.0, 0.0), vel=(-1.0, 0.0, 0.0))])
+    qp = planner._build_qp(planner_input)
+
+    assert planner._clear_airspace_goal_recovery(planner_input, qp) is None
+
+
 def test_dynamic_tube_dmpc_elastic_reconstruction_responds_to_obstacle_intrusion() -> None:
     ego = _agent((0.0, 0.0, 0.0))
 

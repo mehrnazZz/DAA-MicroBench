@@ -306,6 +306,9 @@ dynamic_tube_dmpc:
   terminal_weight: 8.0
   control_weight: 0.04
   input_delta_weight: 0.16
+  clear_airspace_recovery_enabled: true
+  clear_airspace_recovery_min_clearance_m: 4.0
+  clear_airspace_recovery_ttc_s: 3.0
   qp_regularization: 0.00001
   qp_iterations: 65
   qp_cost_tolerance: 0.0001

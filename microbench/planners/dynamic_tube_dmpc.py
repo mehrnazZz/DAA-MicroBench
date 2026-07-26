@@ -185,6 +185,9 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
         self.terminal_weight = float(cfg.get("terminal_weight", 5.5))
         self.control_weight = float(cfg.get("control_weight", 0.06))
         self.input_delta_weight = float(cfg.get("input_delta_weight", 0.28))
+        self.clear_airspace_recovery_enabled = bool(cfg.get("clear_airspace_recovery_enabled", True))
+        self.clear_airspace_recovery_min_clearance_m = float(cfg.get("clear_airspace_recovery_min_clearance_m", 4.0))
+        self.clear_airspace_recovery_ttc_s = float(cfg.get("clear_airspace_recovery_ttc_s", 3.0))
         self.qp_regularization = float(cfg.get("qp_regularization", 1e-5))
         self.qp_iterations = int(cfg.get("qp_iterations", 65))
         self.qp_cost_tolerance = float(cfg.get("qp_cost_tolerance", 1e-4))
@@ -378,6 +381,15 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
         kin = self._kinematic_report(planner_input, controls, velocities)
         fallback = "none"
         if not tube_report.hard_ok or not collision_report.hard_ok or not kin.ok:
+            recovery = self._clear_airspace_goal_recovery(planner_input, qp)
+            if recovery is not None:
+                controls, positions, velocities = recovery
+                tube_report = self._constraint_report(qp.tube_constraints, positions)
+                collision_report = self._constraint_report(qp.collision_constraints, positions)
+                kin = self._kinematic_report(planner_input, controls, velocities)
+                fallback = "clear_airspace_goal_recovery"
+
+        if fallback == "none" and (not tube_report.hard_ok or not collision_report.hard_ok or not kin.ok):
             brake = self._braking_controls(planner_input)
             brake = self._project(qp, brake)
             bpos, bvel = self._rollout(planner_input, brake)
@@ -1087,6 +1099,101 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
             controls[k] = accel
             vel = vel + accel * self.step_dt_s
         return controls.reshape(-1).astype(np.float64)
+
+    def _clear_airspace_goal_recovery(
+        self,
+        planner_input: PlannerInput,
+        qp: _QpProblem,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+        if not self.clear_airspace_recovery_enabled:
+            return None
+        if qp.risk_agent_count > 0 or qp.collision_constraints:
+            return None
+        if planner_input.obstacles:
+            return None
+        if not self._local_airspace_clear_for_recovery(planner_input):
+            return None
+
+        controls = self._goal_recovery_controls(planner_input)
+        controls = self._project_kinematic(qp, controls)
+        positions, velocities = self._rollout(planner_input, controls)
+        kin = self._kinematic_report(planner_input, controls, velocities)
+        if not kin.ok:
+            return None
+        min_swarm = self._min_swarm_clearance(planner_input, positions)
+        if min_swarm is not None and float(min_swarm) < self.clear_airspace_recovery_min_clearance_m:
+            return None
+        min_obstacle = self._min_obstacle_clearance(planner_input, positions)
+        if min_obstacle is not None and float(min_obstacle) < self.obstacle_margin_m:
+            return None
+        return controls.astype(np.float32).reshape(self._steps(), 3), positions, velocities
+
+    def _local_airspace_clear_for_recovery(self, planner_input: PlannerInput) -> bool:
+        ego = planner_input.ego
+        ego_pos = np.asarray(ego.pos, dtype=np.float32).copy()
+        ego_vel = np.asarray(ego.vel, dtype=np.float32).copy()
+        if planner_input.planar:
+            ego_pos[1] = float(ego.pos[1])
+            ego_vel[1] = 0.0
+        for nobs in planner_input.neighbors[: self.max_neighbors]:
+            if not bool(nobs.valid):
+                continue
+            other_pos = np.asarray(nobs.pos, dtype=np.float32).copy()
+            other_vel = np.asarray(nobs.vel, dtype=np.float32).copy()
+            if planner_input.planar:
+                other_pos[1] = float(ego.pos[1])
+                other_vel[1] = 0.0
+            rel = ego_pos - other_pos
+            clearance = self._scaled_distance(rel) - self._safe_radius(planner_input, float(nobs.radius))
+            if clearance < self.clear_airspace_recovery_min_clearance_m:
+                return False
+            rel_v = ego_vel - other_vel
+            vv = float(np.dot(rel_v, rel_v))
+            if vv > 1e-9:
+                ttc = -float(np.dot(rel, rel_v)) / vv
+                if 0.0 <= ttc <= self.clear_airspace_recovery_ttc_s:
+                    return False
+        return True
+
+    def _goal_recovery_controls(self, planner_input: PlannerInput) -> np.ndarray:
+        controls = np.zeros((self._steps(), 3), dtype=np.float32)
+        ego = planner_input.ego
+        pos = np.asarray(ego.pos, dtype=np.float32).copy()
+        vel = np.asarray(ego.vel, dtype=np.float32).copy()
+        if planner_input.planar:
+            pos[1] = float(ego.pos[1])
+            vel[1] = 0.0
+        h = float(self.step_dt_s)
+        for k in range(self._steps()):
+            to_goal = np.asarray(ego.goal, dtype=np.float32) - pos
+            if planner_input.planar:
+                to_goal[1] = 0.0
+            dist = _norm(to_goal)
+            if dist <= 1e-6:
+                desired = np.zeros(3, dtype=np.float32)
+            else:
+                direction = to_goal / dist
+                stopping_speed = math.sqrt(max(0.0, 2.0 * max(1e-6, float(ego.a_max)) * dist))
+                speed = min(float(ego.v_max), stopping_speed, dist / max(h, 1e-6))
+                desired = direction * speed
+            accel = (desired - vel) / max(h, 1e-6)
+            accel = _limit_delta(accel, np.zeros(3, dtype=np.float32), float(ego.a_max))
+            if planner_input.planar:
+                accel[1] = 0.0
+            controls[k] = accel.astype(np.float32)
+            pos = pos + h * vel + 0.5 * h * h * accel
+            vel = vel + h * accel
+            if planner_input.planar:
+                pos[1] = float(ego.pos[1])
+                vel[1] = 0.0
+        return controls.reshape(-1).astype(np.float64)
+
+    def _project_kinematic(self, qp: _QpProblem, controls: np.ndarray) -> np.ndarray:
+        u = np.asarray(controls, dtype=np.float64).reshape(-1).copy()
+        for _ in range(max(1, self.projection_iterations)):
+            u = self._project_accel_balls(u, float(qp.accel_bound_mps2))
+            u = self._project_velocity_balls(qp, u)
+        return u.astype(np.float64)
 
     def _rollout(self, planner_input: PlannerInput, controls: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         u = np.asarray(controls, dtype=np.float32).reshape(self._steps(), 3)
