@@ -368,6 +368,9 @@ class RmaderPlanner(ILocalPlanner):
         self.velocity_guard_ttc_s = float(cfg.get("velocity_guard_ttc_s", 3.0))
         self.velocity_guard_alpha = float(cfg.get("velocity_guard_alpha", 1.4))
         self.velocity_guard_iterations = int(cfg.get("velocity_guard_iterations", 3))
+        self.velocity_guard_brake_enabled = bool(cfg.get("velocity_guard_brake_enabled", True))
+        self.velocity_guard_brake_clearance_m = float(cfg.get("velocity_guard_brake_clearance_m", 0.4))
+        self.velocity_guard_brake_scale = float(cfg.get("velocity_guard_brake_scale", 0.6))
         self.early_reject_violation_m = float(cfg.get("early_reject_violation_m", 0.35))
         self.recovery_fallback_enabled = bool(cfg.get("recovery_fallback_enabled", False))
         self.recovery_lookahead_m = float(cfg.get("recovery_lookahead_m", 2.0))
@@ -496,6 +499,12 @@ class RmaderPlanner(ILocalPlanner):
         v_cmd, guard_info = self._apply_velocity_guard(planner_input, v_cmd, current)
 
         intent_points = self._intent_points(planner_input, plan_used.samples)
+        if (
+            guard_info["rmader_velocity_guard_adjusted"] or guard_info["rmader_velocity_guard_brake_applied"]
+        ) and intent_points.shape[0] >= 2:
+            intent_points[1] = np.asarray(ego.pos, dtype=np.float32) + np.asarray(v_cmd, dtype=np.float32) * float(sample_dt)
+            if planner_input.planar:
+                intent_points[1, 1] = float(ego.pos[1])
         intent = IntentMsg(
             sender_id=int(ego.idx),
             timestamp_send_s=float(planner_input.t),
@@ -657,6 +666,7 @@ class RmaderPlanner(ILocalPlanner):
                 "rmader_velocity_guard_min_clearance_m": None,
                 "rmader_velocity_guard_min_ttc_s": None,
                 "rmader_velocity_guard_delta_norm": 0.0,
+                "rmader_velocity_guard_brake_applied": False,
             }
 
         ego = planner_input.ego
@@ -666,6 +676,7 @@ class RmaderPlanner(ILocalPlanner):
         active: list[tuple[np.ndarray, float]] = []
         min_clearance: float | None = None
         min_ttc: float | None = None
+        brake_applied = False
 
         for nobs in self._traffic(planner_input).neighbors:
             if not bool(nobs.valid):
@@ -709,6 +720,19 @@ class RmaderPlanner(ILocalPlanner):
             if planner_input.planar:
                 guarded[1] = 0.0
 
+        if (
+            self.velocity_guard_brake_enabled
+            and active
+            and min_clearance is not None
+            and float(min_clearance) <= max(0.0, float(self.velocity_guard_brake_clearance_m))
+        ):
+            brake_scale = max(0.0, min(1.0, float(self.velocity_guard_brake_scale)))
+            guarded = _limit_delta(guarded * brake_scale, current, max_delta)
+            guarded = _clamp_speed(guarded, float(ego.v_max))
+            if planner_input.planar:
+                guarded[1] = 0.0
+            brake_applied = True
+
         delta = _norm(guarded - start)
         return guarded.astype(np.float32), {
             "rmader_velocity_guard_adjusted": bool(delta > 1e-7),
@@ -716,6 +740,7 @@ class RmaderPlanner(ILocalPlanner):
             "rmader_velocity_guard_min_clearance_m": min_clearance,
             "rmader_velocity_guard_min_ttc_s": min_ttc,
             "rmader_velocity_guard_delta_norm": float(delta),
+            "rmader_velocity_guard_brake_applied": bool(brake_applied),
         }
 
     def _memory(self, planner_input: PlannerInput) -> dict[str, object]:
@@ -787,8 +812,11 @@ class RmaderPlanner(ILocalPlanner):
         return target.astype(np.float32)
 
     def _initializations(self, planner_input: PlannerInput) -> list[_Seed]:
+        limit = max(1, int(self.max_initializations))
         target = self._local_target(planner_input)
         seeds = [self._control_polygon(planner_input, target, np.zeros(3, dtype=np.float32), "direct")]
+        if len(seeds) >= limit:
+            return seeds[:limit]
         v_pref = self._preferred_velocity(planner_input)
         directions = self._topology_directions(planner_input, v_pref)
         for label, direction in directions:
@@ -803,13 +831,16 @@ class RmaderPlanner(ILocalPlanner):
                 if planner_input.planar:
                     offset[1] = 0.0
                 seeds.append(self._control_polygon(planner_input, target, offset, f"{label}:{scale:g}m"))
+                seeds = self._dedupe_seeds(seeds)
+                if len(seeds) >= limit:
+                    return seeds[:limit]
 
         if self._last_control_points is not None and self._last_control_points.shape[0] == self._control_point_count():
             warm = self._last_control_points.copy()
             warm = self._apply_boundary_conditions(planner_input, warm, target)
             seeds.append(_Seed("warm_start", warm.astype(np.float32), 0.0))
 
-        return self._dedupe_seeds(seeds)[: max(1, self.max_initializations)]
+        return self._dedupe_seeds(seeds)[:limit]
 
     def _topology_directions(self, planner_input: PlannerInput, v_pref: np.ndarray) -> list[tuple[str, np.ndarray]]:
         p0 = np.asarray(planner_input.ego.pos, dtype=np.float32)

@@ -161,8 +161,20 @@ def test_scale_planner_preset_overrides_optimizer_budget(monkeypatch) -> None:
     assert mpc.max_neighbors == 6
     assert mpc.max_intents == 8
     assert mpc.horizon_steps == 4
+    assert dmpc.max_neighbors == 8
+    assert dmpc.max_intents == 10
     assert dmpc.max_initializations == 2
+    assert dmpc.safety_margin_m == 0.5
+    assert dmpc.velocity_guard_margin_m == 0.65
+    assert dmpc.velocity_guard_alpha == 0.7
+    assert dmpc.velocity_guard_brake_scale == 0.3
+    assert bvc.max_neighbors == 8
+    assert bvc.max_intents == 10
     assert bvc.projection_iterations == 2
+    assert bvc.safety_margin_m == 0.6
+    assert bvc.velocity_guard_margin_m == 0.7
+    assert bvc.velocity_guard_alpha == 0.7
+    assert bvc.velocity_guard_brake_scale == 0.25
     assert ego.max_neighbors == 8
     assert ego.max_intents == 10
     assert ego.max_initializations == 4
@@ -172,10 +184,15 @@ def test_scale_planner_preset_overrides_optimizer_budget(monkeypatch) -> None:
     assert ego.velocity_guard_margin_m == 0.55
     assert ego.velocity_guard_brake_clearance_m == 1.0
     assert ego.velocity_guard_brake_scale == 0.35
+    assert rmader.max_neighbors == 6
     assert rmader.max_dynamic_hulls_per_interval == 5
     assert rmader.dynamic_broadphase_margin_m == 6.0
     assert rmader.cached_reuse_validation == "kinematic"
-    assert rmader.replan_period_s == 0.45
+    assert rmader.replan_period_s == 0.3
+    assert rmader.sampled_delay_check_enabled is False
+    assert rmader.velocity_guard_margin_m == 0.65
+    assert rmader.velocity_guard_alpha == 0.7
+    assert rmader.velocity_guard_brake_scale == 0.3
 
 
 def test_list_methods_cli_can_emit_metadata_json() -> None:

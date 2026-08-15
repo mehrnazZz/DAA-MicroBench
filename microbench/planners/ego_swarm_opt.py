@@ -256,7 +256,10 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
             samples,
             immediate_v_cmd=v_cmd,
             sample_dt=sample_dt,
-            override_immediate=bool(guard_info["ego_swarm_opt_velocity_guard_adjusted"]),
+            override_immediate=bool(
+                guard_info["ego_swarm_opt_velocity_guard_adjusted"]
+                or guard_info["ego_swarm_opt_velocity_guard_brake_applied"]
+            ),
         )
         intent = IntentMsg(
             sender_id=int(ego.idx),

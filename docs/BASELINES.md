@@ -288,7 +288,9 @@ python -m microbench.cli scale-benchmark \
 
 This writes the standard raw result files plus `scale_summary.csv` and `scale_benchmark.json`, grouped by scenario, method, communication profile, and N. Use it to report maximum completed N, timeout pressure, guardrail pressure, collision rate, and planner p95 latency. `--planner-preset scale` bounds optimizer effort for high-N studies while preserving the normal full/default planner settings for standard runs. Treat timeout rows and partial-timeout rows as review blockers, not success cases.
 
-For `rmader`, the scale preset also enables ego-trajectory broadphase filtering for dynamic MINVO hulls, keeps only the closest moving hulls per interval, uses kinematic cached-plan validation between replans, and replans slightly less often. This keeps the high-N study focused on nearby deconfliction pressure instead of spending most of the run solving hard hyperplanes against distant traffic.
+For `dmpc_best_response` and `bvc_tube_dmpc`, the scale preset keeps optimizer effort bounded while using a larger dense-fleet local traffic budget, stronger safety margins, and command-level velocity/yield guarding. This keeps the high-N row focused on deconfliction behavior instead of turning every large-fleet run into a full optimizer-throughput test.
+
+For `rmader`, the scale preset also enables ego-trajectory broadphase filtering for dynamic MINVO hulls, keeps only the closest moving hulls per interval, stops generating topology seeds once the configured seed budget is full, uses kinematic cached-plan validation between replans, and replans slightly less often. This keeps the high-N study focused on nearby deconfliction pressure instead of spending most of the run solving hard hyperplanes against distant traffic.
 
 For `ego_swarm_opt`, the scale preset uses receding cached-plan reuse between 5 Hz trajectory optimizations, a larger dense-fleet local traffic budget, and a command-level velocity/yield guard. This matches a more realistic trajectory-planner cadence than re-solving every simulator tick and keeps high-N rows from becoming pure optimizer-throughput tests.
 
@@ -459,6 +461,10 @@ Useful distributed MPC debug fields include:
 - `dmpc_best_response_coupled_constraints`
 - `dmpc_best_response_pairwise_slack_penalty`
 - `dmpc_best_response_min_coupled_clearance_m`
+- `dmpc_best_response_velocity_guard_adjusted`
+- `dmpc_best_response_velocity_guard_constraint_count`
+- `dmpc_best_response_velocity_guard_brake_applied`
+- `dmpc_best_response_velocity_guard_min_clearance_m`
 - `dmpc_best_response_agent_messages`
 
 Use `dmpc_best_response` when you want to compare a reactive local NMPC (`mpc_nonlinear`) against a trajectory-sharing distributed-MPC formulation under the same planner contract. It should be judged on safety and completion metrics plus intent stability, plan staleness, communication load, and compute cost.
@@ -487,6 +493,10 @@ Useful BVC tube-DMPC debug fields include:
 - `bvc_tube_dmpc_max_cell_violation_m`
 - `bvc_tube_dmpc_min_cell_slack_m`
 - `bvc_tube_dmpc_fallback`
+- `bvc_tube_dmpc_velocity_guard_adjusted`
+- `bvc_tube_dmpc_velocity_guard_constraint_count`
+- `bvc_tube_dmpc_velocity_guard_brake_applied`
+- `bvc_tube_dmpc_velocity_guard_min_clearance_m`
 - `bvc_tube_dmpc_agent_messages`
 
 Use `bvc_tube_dmpc` when comparing trajectory-sharing DMPC styles: it is more geometry-constrained than `dmpc_best_response`, while `rmader` emphasizes robust delayed trajectory publication and MINVO/hyperplane separation. This implementation is a clean-room benchmark baseline inspired by buffered Voronoi-cell and uncertainty-aware Voronoi-cell formulations; it is not an official port of a BVC/B-UAVC or Schoellig-lab DMPC codebase.
@@ -546,6 +556,10 @@ Useful RMADER debug fields include:
 - `rmader_cached_reuse_validation`
 - `rmader_dynamic_broadphase_margin_m`
 - `rmader_max_dynamic_hulls_per_interval`
+- `rmader_velocity_guard_adjusted`
+- `rmader_velocity_guard_constraint_count`
+- `rmader_velocity_guard_brake_applied`
+- `rmader_velocity_guard_min_clearance_m`
 
 Use `rmader` when comparing robust trajectory publication and hard convex-separation behavior against `dmpc_best_response`, `mpc_nonlinear`, and `ego_swarm_opt`. It is an original Python implementation adapted to DAA Microbench's local velocity-command contract, not a ROS/Gurobi port of the MIT ACL RMADER/MADER codebase.
 

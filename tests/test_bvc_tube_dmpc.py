@@ -131,6 +131,35 @@ def test_bvc_tube_dmpc_intent_only_neighbor_builds_tube_constraints() -> None:
     assert info["bvc_tube_dmpc_candidate_max_cell_violation_m"] is not None
 
 
+def test_bvc_tube_dmpc_velocity_guard_publishes_guarded_immediate_step() -> None:
+    ego = _agent((0.0, 0.0, 0.0), vel=(1.0, 0.0, 0.0))
+    planner = BvcTubeDmpcPlanner(
+        cfg={
+            "horizon_steps": 4,
+            "max_initializations": 2,
+            "opt_iterations": 2,
+            "projection_iterations": 2,
+            "velocity_guard_enabled": True,
+            "velocity_guard_margin_m": 0.35,
+            "velocity_guard_brake_clearance_m": 1.0,
+            "velocity_guard_brake_scale": 0.25,
+        }
+    )
+
+    out = planner.compute_cmd(
+        _planner_input(ego=ego, neighbors=[_neighbor(pos=(0.8, 0.0, 0.0), vel=(0.0, 0.0, 0.0))])
+    )
+
+    info = out.debug_info
+    assert info["bvc_tube_dmpc_velocity_guard_constraint_count"] > 0
+    assert info["bvc_tube_dmpc_velocity_guard_min_clearance_m"] < 0.0
+    assert info["bvc_tube_dmpc_velocity_guard_brake_applied"] is True
+    assert out.v_cmd[0] < ego.vel[0]
+    assert out.intent_out is not None
+    expected = ego.pos + np.asarray(out.v_cmd, dtype=np.float32) * float(out.intent_out.dt_plan_s)
+    np.testing.assert_allclose(out.intent_out.points[1], expected, atol=1e-6)
+
+
 def test_bvc_tube_dmpc_obstacle_constraints_are_hard_tube_boundaries() -> None:
     ego = _agent((0.0, 0.0, 0.0), vel=(0.5, 0.0, 0.0))
     obstacle = AABBObs(

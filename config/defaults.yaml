@@ -67,8 +67,9 @@ planner_guardrails:
   timeout_ms: 100.0       # soft timeout; slow outputs are discarded after the call returns
   fallback_speed_scale: 0.5
   method_timeout_ms:
+    dmpc_best_response: 200.0  # distributed MPC best-response optimizer; keep rare dense-conflict spikes for scoring
     rmader: 400.0         # optimizer-grade MINVO/hyperplane solve; keep dense conflict outputs instead of fallback
-    bvc_tube_dmpc: 200.0  # hard spatial-partition optimizer; leaderboard still reports compute latency
+    bvc_tube_dmpc: 300.0  # hard spatial-partition optimizer; leaderboard still reports compute latency
     dynamic_tube_dmpc: 250.0  # paper-grade tube QP; preserve rare dense-conflict spikes for scoring
     ego_swarm_opt: 200.0  # optimizer-grade control-point trajectory solve; preserve rare dense-conflict spikes for scoring
 
@@ -83,22 +84,45 @@ planner_presets:
       scipy_maxiter: 12
       replan_period_s: 0.2
     dmpc_best_response:
-      max_neighbors: 6
-      max_intents: 8
+      max_neighbors: 8
+      max_intents: 10
       horizon_steps: 4
       max_initializations: 2
       opt_iterations: 2
       scipy_maxiter: 12
-      command_preview_s: 0.8
+      command_preview_s: 0.9
       replan_period_s: 0.2
+      safety_margin_m: 0.5
+      near_clearance_m: 2.2
+      collision_weight: 9500.0
+      clearance_weight: 240.0
+      intent_collision_weight: 9000.0
+      intent_clearance_weight: 220.0
+      missing_intent_inflation_m: 0.35
+      stale_intent_inflation_m: 0.55
+      velocity_guard_margin_m: 0.65
+      velocity_guard_activation_margin_m: 4.0
+      velocity_guard_ttc_s: 6.0
+      velocity_guard_alpha: 0.7
+      velocity_guard_brake_clearance_m: 1.4
+      velocity_guard_brake_scale: 0.3
     bvc_tube_dmpc:
-      max_neighbors: 6
-      max_intents: 8
+      max_neighbors: 8
+      max_intents: 10
       horizon_steps: 4
       max_initializations: 2
       opt_iterations: 1
       projection_iterations: 2
-      replan_period_s: 0.3
+      replan_period_s: 0.2
+      safety_margin_m: 0.6
+      near_clearance_m: 2.4
+      tube_violation_weight: 36000.0
+      velocity_guard_margin_m: 0.7
+      velocity_guard_activation_margin_m: 4.0
+      velocity_guard_ttc_s: 6.0
+      velocity_guard_alpha: 0.7
+      velocity_guard_brake_clearance_m: 1.5
+      velocity_guard_brake_scale: 0.25
     dynamic_tube_dmpc:
       max_neighbors: 6
       max_intents: 8
@@ -137,9 +161,20 @@ planner_presets:
       dynamic_broadphase_margin_m: 6.0
       max_dynamic_hulls_per_interval: 5
       cached_reuse_validation: kinematic
-      replan_period_s: 0.45
-      fallback_replan_period_s: 0.25
+      replan_period_s: 0.3
+      fallback_replan_period_s: 0.12
+      safety_margin_m: 0.55
+      near_clearance_m: 2.3
+      soft_clearance_weight: 220.0
+      hard_violation_weight: 24000.0
       sampled_delay_check_enabled: false
+      sampled_delay_check_min_clearance_m: 0.2
+      velocity_guard_margin_m: 0.65
+      velocity_guard_activation_margin_m: 4.0
+      velocity_guard_ttc_s: 6.0
+      velocity_guard_alpha: 0.7
+      velocity_guard_brake_clearance_m: 1.4
+      velocity_guard_brake_scale: 0.3
 
 
 orca_heuristic: &orca_heuristic_defaults
@@ -271,6 +306,15 @@ dmpc_best_response:
   stale_age_cap_s: 1.5
   intent_age_inflation_gain: 0.4
   track_uncertainty_speed_gain: 0.12
+  velocity_guard_enabled: true
+  velocity_guard_margin_m: 0.35
+  velocity_guard_activation_margin_m: 1.25
+  velocity_guard_ttc_s: 3.0
+  velocity_guard_alpha: 1.4
+  velocity_guard_iterations: 3
+  velocity_guard_brake_enabled: true
+  velocity_guard_brake_clearance_m: 0.4
+  velocity_guard_brake_scale: 0.6
   tracking_weight: 0.32
   velocity_tracking_weight: 1.8
   terminal_weight: 16.0
@@ -323,6 +367,15 @@ bvc_tube_dmpc:
   stale_age_cap_s: 1.5
   intent_age_inflation_gain: 0.35
   track_uncertainty_speed_gain: 0.12
+  velocity_guard_enabled: true
+  velocity_guard_margin_m: 0.35
+  velocity_guard_activation_margin_m: 1.25
+  velocity_guard_ttc_s: 3.0
+  velocity_guard_alpha: 1.4
+  velocity_guard_iterations: 3
+  velocity_guard_brake_enabled: true
+  velocity_guard_brake_clearance_m: 0.4
+  velocity_guard_brake_scale: 0.6
   offset_scales_m: [0.0, 2.0, 4.0]
   vertical_offset_scales_m: [1.8, 3.2]
   reference_weight: 0.08
@@ -449,6 +502,9 @@ rmader:
   velocity_guard_ttc_s: 3.0
   velocity_guard_alpha: 1.4
   velocity_guard_iterations: 3
+  velocity_guard_brake_enabled: true
+  velocity_guard_brake_clearance_m: 0.4
+  velocity_guard_brake_scale: 0.6
   recovery_fallback_enabled: false
   recovery_lookahead_m: 2.0
   recovery_neighbor_range_m: 4.0

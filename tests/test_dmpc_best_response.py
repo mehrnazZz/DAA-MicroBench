@@ -55,11 +55,17 @@ def _planner_input(
     )
 
 
-def _neighbor(*, priority: int | None = None, idx: int = 1) -> NeighborObs:
+def _neighbor(
+    *,
+    priority: int | None = None,
+    idx: int = 1,
+    pos=(3.0, 0.0, 0.0),
+    vel=(-2.0, 0.0, 0.0),
+) -> NeighborObs:
     return NeighborObs(
         idx=idx,
-        pos=np.asarray([3.0, 0.0, 0.0], dtype=np.float32),
-        vel=np.asarray([-2.0, 0.0, 0.0], dtype=np.float32),
+        pos=np.asarray(pos, dtype=np.float32),
+        vel=np.asarray(vel, dtype=np.float32),
         radius=0.5,
         msg_age_sec=0.0,
         valid=True,
@@ -147,6 +153,35 @@ def test_dmpc_best_response_falls_back_for_stale_intent() -> None:
     assert info["dmpc_best_response_neighbor_intent_count_considered"] == 0
     assert info["dmpc_best_response_stale_intent_count"] == 1
     assert info["dmpc_best_response_fallback_cv_predictions"] > 0
+
+
+def test_dmpc_best_response_velocity_guard_publishes_guarded_immediate_step() -> None:
+    ego = _agent((0.0, 0.0, 0.0), vel=(1.0, 0.0, 0.0))
+    planner = DistributedMpcBestResponsePlanner(
+        cfg={
+            "horizon_steps": 4,
+            "max_initializations": 2,
+            "opt_iterations": 2,
+            "velocity_guard_enabled": True,
+            "velocity_guard_margin_m": 0.35,
+            "velocity_guard_brake_clearance_m": 1.0,
+            "velocity_guard_brake_scale": 0.25,
+        }
+    )
+
+    out = planner.compute_cmd(
+        _planner_input(ego=ego, neighbors=[_neighbor(pos=(0.8, 0.0, 0.0), vel=(0.0, 0.0, 0.0))])
+    )
+
+    info = out.debug_info
+    assert info["dmpc_best_response_velocity_guard_adjusted"] is True
+    assert info["dmpc_best_response_velocity_guard_constraint_count"] > 0
+    assert info["dmpc_best_response_velocity_guard_min_clearance_m"] < 0.0
+    assert info["dmpc_best_response_velocity_guard_brake_applied"] is True
+    assert out.v_cmd[0] < ego.vel[0]
+    assert out.intent_out is not None
+    expected = ego.pos + np.asarray(out.v_cmd, dtype=np.float32) * float(out.intent_out.dt_plan_s)
+    np.testing.assert_allclose(out.intent_out.points[1], expected, atol=1e-6)
 
 
 def test_dmpc_best_response_preserves_3d_command_shape() -> None:

@@ -249,6 +249,8 @@ def test_rmader_velocity_guard_projects_immediate_track_conflict() -> None:
             "jerk_limit_mps3": 100.0,
             "velocity_guard_enabled": True,
             "velocity_guard_margin_m": 0.35,
+            "velocity_guard_brake_clearance_m": 1.0,
+            "velocity_guard_brake_scale": 0.25,
         }
     )
 
@@ -256,8 +258,43 @@ def test_rmader_velocity_guard_projects_immediate_track_conflict() -> None:
 
     assert out.debug_info["rmader_velocity_guard_adjusted"] is True
     assert out.debug_info["rmader_velocity_guard_constraint_count"] > 0
+    assert out.debug_info["rmader_velocity_guard_brake_applied"] is True
     assert out.v_cmd[0] < 0.0
+    assert out.intent_out is not None
+    expected = ego.pos + np.asarray(out.v_cmd, dtype=np.float32) * float(out.intent_out.dt_plan_s)
+    np.testing.assert_allclose(out.intent_out.points[1], expected, atol=1e-6)
     assert np.linalg.norm(out.v_cmd) <= ego.a_max * 0.02 + 1e-6
+
+
+def test_rmader_initializations_stop_at_seed_budget(monkeypatch) -> None:
+    ego = _agent((0.0, 0.0, 0.0))
+    planner = RmaderPlanner(
+        cfg={
+            "max_initializations": 1,
+            "offset_scales_m": [2.0, 4.0],
+            "vertical_offset_scales_m": [2.0],
+        }
+    )
+    calls = 0
+    original = planner._control_polygon
+
+    def _counted_control_polygon(planner_input, target, offset, label):
+        nonlocal calls
+        calls += 1
+        return original(planner_input, target, offset, label)
+
+    monkeypatch.setattr(planner, "_control_polygon", _counted_control_polygon)
+
+    seeds = planner._initializations(
+        _planner_input(
+            ego=ego,
+            neighbors=[_neighbor(pos=(3.0, 0.0, 0.0))],
+            planar=False,
+        )
+    )
+
+    assert len(seeds) == 1
+    assert calls == 1
 
 
 def test_rmader_recovery_fallback_is_explicit_opt_in() -> None:
