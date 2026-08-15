@@ -440,7 +440,7 @@ Run a fleet-size scaling ladder:
 ```bash
 python -m microbench.cli scale-benchmark \
   --out-dir runs_scale_benchmark \
-  --scenarios config/scenarios/stacked_swap_3d.yaml,config/scenarios/urban_conflict_3d.yaml \
+  --scenarios config/scenarios/stacked_swap_3d.yaml,config/scenarios/urban_conflict_3d.yaml,config/scenarios/urban_throughput_3d.yaml \
   --n 4,8,16,30 \
   --seeds 2 \
   --comm realistic_v2v_50hz \
@@ -586,6 +586,7 @@ Built-in 3D scenarios:
 - `config/scenarios/vertical_crossing_obstacles_3d.yaml`
 - `config/scenarios/urban_airspace_3d.yaml`
 - `config/scenarios/urban_conflict_3d.yaml`
+- `config/scenarios/urban_throughput_3d.yaml`
 
 Generated 3D family scenarios:
 - `sphere_swap_3d_medium`: true volumetric antipodal swap through shared airspace
@@ -604,6 +605,7 @@ What they are for:
 - `vertical_crossing_obstacles_3d`: crossing traffic plus center obstacle
 - `urban_airspace_3d`: environment-rich urban airspace with buildings, occlusion, static obstacle proximity, and layered goals
 - `urban_conflict_3d`: near-coplanar urban crossing where straight-line goal seeking collides and avoidance baselines must actively deconflict
+- `urban_throughput_3d`: asymmetric urban crossing/merge flow for measuring high-density mission progress without perfect four-way gridlock
 
 ### 7.2 Quick 3D Run
 

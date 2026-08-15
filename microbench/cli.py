@@ -83,6 +83,7 @@ CANONICAL_3D_SCENARIOS = [
     "config/scenarios/weather_vertical_event_3d.yaml",
     "config/scenarios/vertical_crossing_obstacles_3d.yaml",
     "config/scenarios/urban_airspace_3d.yaml",
+    "config/scenarios/urban_throughput_3d.yaml",
 ]
 
 CANONICAL_PERCEPTION_SCENARIOS = [
@@ -1657,7 +1658,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_scale.add_argument(
         "--scenarios",
         required=True,
-        help="Comma-separated scenario paths/ids/globs, e.g. config/scenarios/stacked_swap_3d.yaml,config/scenarios/urban_conflict_3d.yaml",
+        help="Comma-separated scenario paths/ids/globs, e.g. config/scenarios/stacked_swap_3d.yaml,config/scenarios/urban_conflict_3d.yaml,config/scenarios/urban_throughput_3d.yaml",
     )
     p_scale.add_argument(
         "--methods",

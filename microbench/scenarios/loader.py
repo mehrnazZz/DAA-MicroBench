@@ -117,6 +117,7 @@ def _four_way_one(cfg: dict, idx: int, rng: np.random.Generator) -> tuple[np.nda
     extent = float(cfg.get("extent_m", 40.0))
     lane_hw = float(cfg.get("lane_half_width_m", 5.0))
     dirs = ["west", "east", "south", "north"]
+    opposite = {"west": "east", "east": "west", "south": "north", "north": "south"}
 
     def sample_side(side: str, y_m: float) -> np.ndarray:
         if side == "west":
@@ -127,11 +128,28 @@ def _four_way_one(cfg: dict, idx: int, rng: np.random.Generator) -> tuple[np.nda
             return np.array([rng.uniform(-lane_hw, lane_hw), y_m, -extent], dtype=float)
         return np.array([rng.uniform(-lane_hw, lane_hw), y_m, extent], dtype=float)
 
-    opposite = {"west": "east", "east": "west", "south": "north", "north": "south"}
+    flows = cfg.get("flows")
+    expanded_flows: list[tuple[str, str]] = []
+    if isinstance(flows, list):
+        for flow in flows:
+            if not isinstance(flow, dict):
+                continue
+            start = str(flow.get("start", flow.get("from", "west"))).lower()
+            goal = str(flow.get("goal", flow.get("to", opposite.get(start, "east")))).lower()
+            if start not in dirs or goal not in dirs:
+                continue
+            weight = max(1, int(flow.get("weight", 1)))
+            expanded_flows.extend((start, goal) for _ in range(weight))
 
-    side = dirs[idx % 4]
+    if expanded_flows:
+        stride = max(1, int(cfg.get("flow_stride", 1)))
+        side, goal_side = expanded_flows[(idx * stride) % len(expanded_flows)]
+    else:
+        side = dirs[idx % 4]
+        goal_side = opposite[side]
+
     sp = sample_side(side, float(cfg.get("y_m", 0.0)))
-    gt = sample_side(opposite[side], float(cfg.get("y_m", 0.0)))
+    gt = sample_side(goal_side, float(cfg.get("y_m", 0.0)))
     return (
         _apply_layer_y(cfg, sp, idx, "start_layers_m"),
         _apply_layer_y(cfg, gt, idx, "goal_layers_m"),

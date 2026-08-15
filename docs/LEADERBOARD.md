@@ -172,7 +172,7 @@ For fleet-size scaling studies, use the scale benchmark runner:
 ```bash
 python -m microbench.cli scale-benchmark \
   --out-dir runs_scale_benchmark \
-  --scenarios config/scenarios/stacked_swap_3d.yaml,config/scenarios/urban_conflict_3d.yaml \
+  --scenarios config/scenarios/stacked_swap_3d.yaml,config/scenarios/urban_conflict_3d.yaml,config/scenarios/urban_throughput_3d.yaml \
   --n 4,8,16,30 \
   --seeds 2 \
   --comm realistic_v2v_50hz \

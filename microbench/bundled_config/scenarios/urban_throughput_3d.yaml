@@ -1,0 +1,117 @@
+scenario:
+  name: "urban_throughput_3d"
+  description: "Asymmetric 3D urban DAA throughput lane with buildings, occlusion, staggered crossing streams, and merge pressure."
+  duration_s: 90.0
+
+world:
+  planar: false
+  bounds:
+    xmin: -58.0
+    xmax: 58.0
+    ymin: -8.0
+    ymax: 26.0
+    zmin: -58.0
+    zmax: 58.0
+
+agent_params:
+  radius_m: 0.6
+  v_max_mps: 3.4
+  a_max_mps2: 2.4
+  goal_tolerance_m: 1.3
+
+goals:
+  min_goal_distance_m: 62.0
+  max_attempts: 20000
+
+spawn:
+  type: "four_way"
+  extent_m: 42.0
+  lane_half_width_m: 7.0
+  y_m: 7.0
+  min_start_separation_m: 2.0
+  flow_stride: 7
+  start_layers_m: [5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+  goal_layers_m: [9.0, 8.0, 7.0, 10.0, 6.0, 5.0]
+  flows:
+    - start: "west"
+      goal: "east"
+      weight: 8
+    - start: "south"
+      goal: "north"
+      weight: 5
+    - start: "west"
+      goal: "north"
+      weight: 4
+    - start: "north"
+      goal: "east"
+      weight: 3
+    - start: "south"
+      goal: "east"
+      weight: 2
+
+obstacles:
+  - kind: "building"
+    label: "west tower"
+    aabb:
+      center: [-20.0, 5.0, -16.0]
+      half: [4.0, 10.0, 5.0]
+  - kind: "building"
+    label: "east tower"
+    aabb:
+      center: [18.0, 5.5, 16.0]
+      half: [5.0, 11.0, 4.0]
+  - kind: "building"
+    label: "north block"
+    aabb:
+      center: [4.0, 5.0, 28.0]
+      half: [5.0, 10.0, 4.0]
+  - kind: "building"
+    label: "south block"
+    aabb:
+      center: [-6.0, 5.0, -28.0]
+      half: [4.0, 10.0, 5.0]
+  - kind: "building"
+    label: "offset tower"
+    aabb:
+      center: [28.0, 6.0, -12.0]
+      half: [4.0, 12.0, 5.0]
+  - kind: "no_fly_volume"
+    label: "offset crane"
+    aabb:
+      center: [6.0, 6.0, -6.0]
+      half: [1.6, 12.0, 1.6]
+
+perception:
+  mode: "fused"
+  sensor:
+    range_m: 34.0
+    fov_deg: 160.0
+    occlusion: true
+    occlusion_margin_m: 0.35
+    false_negative_p: 0.01
+    noise_sigma_pos_m: 0.04
+    noise_sigma_vel_mps: 0.04
+    track_ttl_s: 0.35
+
+intent:
+  enabled: true
+  tx_rate_hz: 10.0
+  max_points: 10
+  age_cap_s: 0.75
+
+visual:
+  environment: "urban_airspace"
+  ground_y_m: -4.0
+  road_width_m: 9.0
+  show_sensor_ranges: false
+
+benchmark:
+  family: "urban_airspace"
+  dimension: "3d"
+  difficulty: "hard"
+  purpose: "Measure high-density urban mission throughput under realistic asymmetric crossing and merge pressure without perfect four-way gridlock."
+  expected_failure_modes:
+    - "merge_yield_deadlock"
+    - "crossing_conflict"
+    - "building_shadow_late_detection"
+    - "obstacle_cut_corner"

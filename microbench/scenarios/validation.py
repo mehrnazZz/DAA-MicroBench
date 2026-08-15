@@ -14,6 +14,7 @@ AXES = (("x", 0), ("y", 1), ("z", 2))
 BOUND_KEYS = ("xmin", "xmax", "ymin", "ymax", "zmin", "zmax")
 PERCEPTION_MODES = {"v2v", "sensor", "fused"}
 SPAWN_TYPES = {"rect_to_rect", "circle_swap", "sphere_swap", "four_way"}
+FOUR_WAY_SIDES = {"west", "east", "south", "north"}
 ACCEPTANCE_OPERATORS = {"<=", "<", ">=", ">", "==", "!="}
 ACCEPTANCE_SCOPES = {"summary", "results"}
 ACCEPTANCE_SEVERITIES = {"smoke", "required", "warning", "informational"}
@@ -216,6 +217,30 @@ def _spawn_extent(report: ValidationReport, spawn: dict) -> tuple[np.ndarray, np
     y_m = _num(report, spawn.get("y_m", 0.0), "spawn.y_m")
     if extent is None or lane is None or y_m is None:
         return None
+    flow_stride = _positive(report, spawn, "flow_stride", "spawn")
+    if flow_stride is not None and abs(flow_stride - round(flow_stride)) > 1e-9:
+        report.add_error("spawn.flow_stride", "must be an integer")
+    flows = spawn.get("flows")
+    if flows is not None:
+        if not isinstance(flows, list) or not flows:
+            report.add_error("spawn.flows", "must be a non-empty list when provided")
+        else:
+            for idx, flow in enumerate(flows):
+                loc = f"spawn.flows[{idx}]"
+                if not isinstance(flow, dict):
+                    report.add_error(loc, "must be a mapping")
+                    continue
+                start = str(flow.get("start", flow.get("from", ""))).lower()
+                goal = str(flow.get("goal", flow.get("to", ""))).lower()
+                if start not in FOUR_WAY_SIDES:
+                    report.add_error(f"{loc}.start", f"must be one of {sorted(FOUR_WAY_SIDES)}")
+                if goal not in FOUR_WAY_SIDES:
+                    report.add_error(f"{loc}.goal", f"must be one of {sorted(FOUR_WAY_SIDES)}")
+                weight = _positive(report, flow, "weight", loc)
+                if weight is not None and abs(weight - round(weight)) > 1e-9:
+                    report.add_error(f"{loc}.weight", "must be an integer")
+                if start and goal and start == goal:
+                    report.add_warning(loc, "start and goal sides are identical")
     ys = _layers_or_y(spawn, "start_layers_m", y_m) + _layers_or_y(spawn, "goal_layers_m", y_m)
     lo = np.asarray([-extent, min(ys), -extent], dtype=float)
     hi = np.asarray([extent, max(ys), extent], dtype=float)

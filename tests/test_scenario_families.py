@@ -34,6 +34,37 @@ class TestScenarioFamilies(unittest.TestCase):
         dots = np.sum(spawns * goals, axis=1)
         self.assertLess(float(np.mean(dots)), -500.0)
 
+    def test_four_way_weighted_flows_generate_asymmetric_urban_traffic(self):
+        cfg = {
+            "goals": {"min_goal_distance_m": 20.0},
+            "spawn": {
+                "type": "four_way",
+                "extent_m": 30.0,
+                "lane_half_width_m": 2.0,
+                "y_m": 5.0,
+                "flows": [
+                    {"start": "west", "goal": "east", "weight": 3},
+                    {"start": "south", "goal": "north", "weight": 2},
+                    {"start": "north", "goal": "east", "weight": 1},
+                ],
+            },
+        }
+
+        spawns, goals = generate_spawns_goals(cfg, n_agents=6, rng=np.random.default_rng(7))
+
+        self.assertEqual(int(np.sum(np.isclose(spawns[:, 0], -30.0))), 3)
+        self.assertEqual(int(np.sum(np.isclose(spawns[:, 2], -30.0))), 2)
+        self.assertEqual(int(np.sum(np.isclose(spawns[:, 2], 30.0))), 1)
+        self.assertEqual(int(np.sum(np.isclose(goals[:, 0], 30.0))), 4)
+        self.assertEqual(int(np.sum(np.isclose(goals[:, 2], 30.0))), 2)
+
+        cfg["spawn"]["flow_stride"] = 5
+        spawns, _goals = generate_spawns_goals(cfg, n_agents=3, rng=np.random.default_rng(7))
+
+        self.assertEqual(int(np.sum(np.isclose(spawns[:, 0], -30.0))), 1)
+        self.assertEqual(int(np.sum(np.isclose(spawns[:, 2], -30.0))), 1)
+        self.assertEqual(int(np.sum(np.isclose(spawns[:, 2], 30.0))), 1)
+
     def test_official_alpha_materializes_2d_and_3d_scenarios(self):
         with tempfile.TemporaryDirectory() as td:
             generated = materialize_official_suite("official_alpha", Path(td), overwrite=True)
