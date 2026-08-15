@@ -7,6 +7,7 @@ from typing import Any
 import numpy as np
 
 from microbench.planners.base import ILocalPlanner
+from microbench.planners.locality import LocalTrafficContext, select_local_traffic
 from microbench.types import AABBObs, IntentMsg, IntentObs, NeighborObs, PlannerInput, PlannerOutput
 
 
@@ -112,6 +113,7 @@ class NonlinearMpcPlanner(ILocalPlanner):
         self.horizon_steps = int(cfg.get("horizon_steps", 6))
         self.replan_period_s = float(cfg.get("replan_period_s", 0.0))
         self.max_neighbors = int(cfg.get("max_neighbors", 8))
+        self.max_intents = int(cfg.get("max_intents", max(self.max_neighbors, 12)))
         self.max_initializations = int(cfg.get("max_initializations", 4))
         self.solver = str(cfg.get("solver", "projected_gradient")).strip().lower()
         self.opt_iterations = int(cfg.get("opt_iterations", 8))
@@ -155,6 +157,7 @@ class NonlinearMpcPlanner(ILocalPlanner):
         self._last_label: str | None = None
         self._cached_controls: np.ndarray | None = None
         self._last_replan_t: float | None = None
+        self._traffic_context: LocalTrafficContext | None = None
         self.seed = 0
 
     def reset(self, seed: int) -> None:
@@ -163,8 +166,15 @@ class NonlinearMpcPlanner(ILocalPlanner):
         self._last_label = None
         self._cached_controls = None
         self._last_replan_t = None
+        self._traffic_context = None
 
     def compute_cmd(self, planner_input: PlannerInput) -> PlannerOutput:
+        self._traffic_context = select_local_traffic(
+            planner_input,
+            max_neighbors=self.max_neighbors,
+            max_intents=self.max_intents,
+        )
+        traffic = self._traffic(planner_input)
         ego = planner_input.ego
         current = np.asarray(ego.vel, dtype=np.float32).copy()
         if planner_input.planar:
@@ -208,7 +218,7 @@ class NonlinearMpcPlanner(ILocalPlanner):
         self._last_label = best.label
         self._cached_controls = best.controls.copy()
 
-        return PlannerOutput(
+        out = PlannerOutput(
             v_cmd=v_cmd.astype(float),
             intent_out=intent,
             debug_info={
@@ -243,8 +253,10 @@ class NonlinearMpcPlanner(ILocalPlanner):
                 "mpc_nonlinear_min_obstacle_clearance_m": best.min_obstacle_clearance_m,
                 "mpc_nonlinear_predicted_swarm_conflict": bool(best.predicted_swarm_conflict),
                 "mpc_nonlinear_predicted_obstacle_conflict": bool(best.predicted_obstacle_conflict),
-                "mpc_nonlinear_neighbor_count_considered": int(min(len(planner_input.neighbors), self.max_neighbors)),
-                "mpc_nonlinear_intent_count_considered": int(sum(1 for intent_obs in planner_input.neighbor_intents if intent_obs.valid)),
+                "mpc_nonlinear_neighbor_count_considered": int(len(traffic.neighbors)),
+                "mpc_nonlinear_intent_count_considered": int(traffic.selected_intent_count),
+                "mpc_nonlinear_intent_count_available": int(traffic.input_valid_intent_count),
+                "mpc_nonlinear_intent_count_pruned": int(traffic.pruned_intent_count),
                 "mpc_nonlinear_obstacle_count_considered": int(len(planner_input.obstacles)),
                 "mpc_nonlinear_planar": bool(planner_input.planar),
                 "mpc_nonlinear_intent_points": int(intent_points.shape[0]),
@@ -253,6 +265,17 @@ class NonlinearMpcPlanner(ILocalPlanner):
                 "mpc_nonlinear_prior_seed": prior_label,
             },
         )
+        self._traffic_context = None
+        return out
+
+    def _traffic(self, planner_input: PlannerInput) -> LocalTrafficContext:
+        if self._traffic_context is None or self._traffic_context.input_id != id(planner_input):
+            self._traffic_context = select_local_traffic(
+                planner_input,
+                max_neighbors=self.max_neighbors,
+                max_intents=self.max_intents,
+            )
+        return self._traffic_context
 
     def _command_from_plan(
         self,
@@ -391,7 +414,7 @@ class NonlinearMpcPlanner(ILocalPlanner):
             if not planner_input.planar:
                 directions.append(("vertical_up", np.asarray([0.0, 1.0, 0.0], dtype=np.float32)))
                 directions.append(("vertical_down", np.asarray([0.0, -1.0, 0.0], dtype=np.float32)))
-        for nobs in planner_input.neighbors[: self.max_neighbors]:
+        for nobs in self._traffic(planner_input).neighbors:
             rel = p0 - np.asarray(nobs.pos, dtype=np.float32)
             if planner_input.planar:
                 rel[1] = 0.0
@@ -746,7 +769,7 @@ class NonlinearMpcPlanner(ILocalPlanner):
         dt = self._dt()
         for step_idx, pos in enumerate(positions, start=1):
             t = step_idx * dt
-            for nobs in planner_input.neighbors[: self.max_neighbors]:
+            for nobs in self._traffic(planner_input).neighbors:
                 other = np.asarray(nobs.pos, dtype=np.float32) + np.asarray(nobs.vel, dtype=np.float32) * t
                 safe_radius = (
                     float(planner_input.ego.radius)
@@ -771,9 +794,7 @@ class NonlinearMpcPlanner(ILocalPlanner):
         grad = np.zeros_like(positions, dtype=np.float32)
         penalty = 0.0
         for step_idx, pos in enumerate(positions, start=1):
-            for intent in planner_input.neighbor_intents:
-                if not intent.valid or np.asarray(intent.points).size == 0:
-                    continue
+            for intent in self._traffic(planner_input).intents_by_sender.values():
                 other = self._intent_prediction(intent, step_idx)
                 safe_radius = float(planner_input.ego.radius) + float(intent.tube_radius_m) + self.safety_margin_m + self._intent_inflation(intent)
                 p, g, _clearance = self._sphere_clearance_penalty_and_grad(

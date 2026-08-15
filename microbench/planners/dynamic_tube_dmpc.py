@@ -8,6 +8,7 @@ import numpy as np
 
 from microbench.comm.messages import make_intent_trajectory
 from microbench.planners.base import ILocalPlanner
+from microbench.planners.locality import LocalTrafficContext, select_local_traffic
 from microbench.types import AABBObs, IntentMsg, IntentObs, NeighborObs, PlannerInput, PlannerOutput
 
 
@@ -141,6 +142,7 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
         self.horizon_steps = int(cfg.get("horizon_steps", 15))
         self.replan_period_s = float(cfg.get("replan_period_s", 0.3))
         self.max_neighbors = int(cfg.get("max_neighbors", 12))
+        self.max_intents = int(cfg.get("max_intents", max(self.max_neighbors, 12)))
         self.max_intent_points = int(cfg.get("max_intent_points", 16))
         self.intent_ttl_s = float(cfg.get("intent_ttl_s", 1.0))
         self.intent_tube_margin_m = float(cfg.get("intent_tube_margin_m", 0.35))
@@ -207,6 +209,7 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
         self._last_replan_t: float | None = None
         self._last_tube_update_t: float | None = None
         self._last_obstacle_signature: np.ndarray | None = None
+        self._traffic_context: LocalTrafficContext | None = None
 
     def reset(self, seed: int) -> None:
         self.seed = int(seed)
@@ -220,8 +223,15 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
         self._last_replan_t = None
         self._last_tube_update_t = None
         self._last_obstacle_signature = None
+        self._traffic_context = None
 
     def compute_cmd(self, planner_input: PlannerInput) -> PlannerOutput:
+        self._traffic_context = select_local_traffic(
+            planner_input,
+            max_neighbors=self.max_neighbors,
+            max_intents=self.max_intents,
+        )
+        traffic = self._traffic(planner_input)
         ego = planner_input.ego
         current = np.asarray(ego.vel, dtype=np.float32).copy()
         if planner_input.planar:
@@ -325,10 +335,23 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
             "dynamic_tube_dmpc_agent_messages": 1,
             "dynamic_tube_dmpc_intent_points": int(intent_points.shape[0]),
             "dynamic_tube_dmpc_velocity_guard_enabled": bool(self.current_track_guard_enabled),
+            "dynamic_tube_dmpc_neighbor_count_considered": int(len(traffic.neighbors)),
+            "dynamic_tube_dmpc_intent_count_considered": int(traffic.selected_intent_count),
+            "dynamic_tube_dmpc_intent_count_available": int(traffic.input_valid_intent_count),
+            "dynamic_tube_dmpc_intent_count_pruned": int(traffic.pruned_intent_count),
             **guard_info,
             "dynamic_tube_dmpc_equations": "1-3,21-23,24-27,28-32,33-41",
         }
         return PlannerOutput(v_cmd=v_cmd.astype(float), intent_out=intent, messages_out=[msg], debug_info=debug)
+
+    def _traffic(self, planner_input: PlannerInput) -> LocalTrafficContext:
+        if self._traffic_context is None or self._traffic_context.input_id != id(planner_input):
+            self._traffic_context = select_local_traffic(
+                planner_input,
+                max_neighbors=self.max_neighbors,
+                max_intents=self.max_intents,
+            )
+        return self._traffic_context
 
     def _solve_plan(self, planner_input: PlannerInput) -> _PlanResult:
         qp = self._build_qp(planner_input)
@@ -806,13 +829,10 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
         risk_agents = 0
         first_risk: int | None = None
         current_track_constraints = 0
-        intent_by_sender = {
-            int(intent.sender_id): intent
-            for intent in planner_input.neighbor_intents
-            if bool(intent.valid) and np.asarray(intent.points).size > 0
-        }
+        traffic = self._traffic(planner_input)
+        intent_by_sender = traffic.intents_by_sender
         seen: set[int] = set()
-        for nobs in planner_input.neighbors[: self.max_neighbors]:
+        for nobs in traffic.neighbors:
             seen.add(int(nobs.idx))
             intent = intent_by_sender.get(int(nobs.idx))
             pred = self._neighbor_prediction_sequence(nobs, intent)
@@ -932,7 +952,7 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
         min_clearance: float | None = None
         min_ttc: float | None = None
 
-        for nobs in planner_input.neighbors[: self.max_neighbors]:
+        for nobs in self._traffic(planner_input).neighbors:
             if not bool(nobs.valid):
                 continue
             rel = np.asarray(ego.pos, dtype=np.float32) - np.asarray(nobs.pos, dtype=np.float32)
@@ -1135,7 +1155,7 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
         if planner_input.planar:
             ego_pos[1] = float(ego.pos[1])
             ego_vel[1] = 0.0
-        for nobs in planner_input.neighbors[: self.max_neighbors]:
+        for nobs in self._traffic(planner_input).neighbors:
             if not bool(nobs.valid):
                 continue
             other_pos = np.asarray(nobs.pos, dtype=np.float32).copy()
@@ -1245,7 +1265,7 @@ class DynamicTubeDmpcPlanner(ILocalPlanner):
 
     def _min_swarm_clearance(self, planner_input: PlannerInput, positions: np.ndarray) -> float | None:
         values: list[float] = []
-        for nobs in planner_input.neighbors[: self.max_neighbors]:
+        for nobs in self._traffic(planner_input).neighbors:
             pred = self._neighbor_prediction_sequence(nobs, None)
             safe = self._safe_radius(planner_input, float(nobs.radius))
             for p, q in zip(positions, pred):

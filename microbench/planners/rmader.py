@@ -8,6 +8,7 @@ import numpy as np
 
 from microbench.comm.messages import make_intent_trajectory
 from microbench.planners.base import ILocalPlanner
+from microbench.planners.locality import LocalTrafficContext, select_local_traffic
 from microbench.types import AABBObs, IntentMsg, IntentObs, NeighborObs, PlannerInput, PlannerOutput
 
 
@@ -327,6 +328,7 @@ class RmaderPlanner(ILocalPlanner):
             float(cfg.get("fallback_replan_period_s", min(0.08, max(0.0, self.replan_period_s)))),
         )
         self.max_neighbors = int(cfg.get("max_neighbors", 8))
+        self.max_intents = int(cfg.get("max_intents", max(self.max_neighbors, 12)))
         self.max_initializations = int(cfg.get("max_initializations", 6))
         self.opt_iterations = int(cfg.get("opt_iterations", 8))
         self.hard_projection_iterations = int(cfg.get("hard_projection_iterations", 7))
@@ -388,6 +390,7 @@ class RmaderPlanner(ILocalPlanner):
         self._local_memory: dict[str, object] = {}
         self._dynamic_hull_cache: dict[tuple[int, int, float], list[_IntervalHull]] = {}
         self._clearance_source_cache: dict[tuple[int, int], _ClearanceSources] = {}
+        self._traffic_context: LocalTrafficContext | None = None
 
     def reset(self, seed: int) -> None:
         self.seed = int(seed)
@@ -396,10 +399,17 @@ class RmaderPlanner(ILocalPlanner):
         self._local_memory.clear()
         self._dynamic_hull_cache.clear()
         self._clearance_source_cache.clear()
+        self._traffic_context = None
 
     def compute_cmd(self, planner_input: PlannerInput) -> PlannerOutput:
         self._dynamic_hull_cache.clear()
         self._clearance_source_cache.clear()
+        self._traffic_context = select_local_traffic(
+            planner_input,
+            max_neighbors=self.max_neighbors,
+            max_intents=self.max_intents,
+        )
+        traffic = self._traffic(planner_input)
         ego = planner_input.ego
         current = np.asarray(ego.vel, dtype=np.float32).copy()
         if planner_input.planar:
@@ -588,8 +598,10 @@ class RmaderPlanner(ILocalPlanner):
             "rmader_two_step_publication": True,
             "rmader_plan_version": int(plan_version),
             "rmader_agent_messages": 2,
-            "rmader_neighbor_count_considered": int(min(len(planner_input.neighbors), self.max_neighbors)),
-            "rmader_intent_count_considered": int(sum(1 for intent_obs in planner_input.neighbor_intents if intent_obs.valid)),
+            "rmader_neighbor_count_considered": int(len(traffic.neighbors)),
+            "rmader_intent_count_considered": int(traffic.selected_intent_count),
+            "rmader_intent_count_available": int(traffic.input_valid_intent_count),
+            "rmader_intent_count_pruned": int(traffic.pruned_intent_count),
             "rmader_obstacle_count_considered": int(len(planner_input.obstacles)),
             "rmader_planar": bool(planner_input.planar),
             "rmader_intent_points": int(intent_points.shape[0]),
@@ -610,6 +622,16 @@ class RmaderPlanner(ILocalPlanner):
         finally:
             self._dynamic_hull_cache.clear()
             self._clearance_source_cache.clear()
+            self._traffic_context = None
+
+    def _traffic(self, planner_input: PlannerInput) -> LocalTrafficContext:
+        if self._traffic_context is None or self._traffic_context.input_id != id(planner_input):
+            self._traffic_context = select_local_traffic(
+                planner_input,
+                max_neighbors=self.max_neighbors,
+                max_intents=self.max_intents,
+            )
+        return self._traffic_context
 
     def _apply_velocity_guard(
         self,
@@ -634,7 +656,7 @@ class RmaderPlanner(ILocalPlanner):
         min_clearance: float | None = None
         min_ttc: float | None = None
 
-        for nobs in planner_input.neighbors[: self.max_neighbors]:
+        for nobs in self._traffic(planner_input).neighbors:
             if not bool(nobs.valid):
                 continue
             rel = np.asarray(ego.pos, dtype=np.float32) - np.asarray(nobs.pos, dtype=np.float32)
@@ -788,7 +810,8 @@ class RmaderPlanner(ILocalPlanner):
                 directions.append(("vertical_up", np.asarray([0.0, 1.0, 0.0], dtype=np.float32)))
                 directions.append(("vertical_down", np.asarray([0.0, -1.0, 0.0], dtype=np.float32)))
 
-        for nobs in planner_input.neighbors[: self.max_neighbors]:
+        traffic = self._traffic(planner_input)
+        for nobs in traffic.neighbors:
             rel = p0 - np.asarray(nobs.pos, dtype=np.float32)
             if planner_input.planar:
                 rel[1] = 0.0
@@ -797,9 +820,7 @@ class RmaderPlanner(ILocalPlanner):
                 directions.append((f"agent_{int(nobs.idx)}_away", rel))
                 directions.append((f"agent_{int(nobs.idx)}_side", rel + _perp_xz(rel, sign)))
 
-        for intent in planner_input.neighbor_intents:
-            if not intent.valid:
-                continue
+        for intent in traffic.intent_only:
             points = np.asarray(intent.points, dtype=np.float32)
             if points.ndim != 2 or points.shape[0] == 0:
                 continue
@@ -1045,15 +1066,12 @@ class RmaderPlanner(ILocalPlanner):
             return cached
         steps = max(0, int(sample_count) - 1)
         dt = self.horizon_s / max(1, int(sample_count) - 1)
-        intent_by_sender = {
-            int(intent.sender_id): intent
-            for intent in planner_input.neighbor_intents
-            if intent.valid and np.asarray(intent.points).size > 0
-        }
+        traffic = self._traffic(planner_input)
+        intent_by_sender = traffic.intents_by_sender
         dynamic_positions: list[np.ndarray] = []
         dynamic_radii: list[float] = []
         times = [(idx + 1) * dt for idx in range(steps)]
-        for nobs in planner_input.neighbors[: self.max_neighbors]:
+        for nobs in traffic.neighbors:
             intent = intent_by_sender.get(int(nobs.idx))
             dynamic_positions.append(
                 np.asarray([self._neighbor_prediction(nobs, intent, t) for t in times], dtype=np.float32)
@@ -1384,18 +1402,15 @@ class RmaderPlanner(ILocalPlanner):
         if cached is not None:
             return cached
         hulls: list[_IntervalHull] = []
-        intent_by_sender = {
-            int(intent.sender_id): intent
-            for intent in planner_input.neighbor_intents
-            if intent.valid and np.asarray(intent.points).size > 0
-        }
+        traffic = self._traffic(planner_input)
+        intent_by_sender = traffic.intents_by_sender
         for i in range(num_segments):
             t0 = i * dt_segment
             t1 = (i + 1) * dt_segment
             tm = 0.5 * (t0 + t1)
             if i < self.dynamic_grace_intervals:
                 continue
-            for nobs in planner_input.neighbors[: self.max_neighbors]:
+            for nobs in traffic.neighbors:
                 intent = intent_by_sender.get(int(nobs.idx))
                 points = np.asarray(
                     [
@@ -1423,7 +1438,7 @@ class RmaderPlanner(ILocalPlanner):
                         inflation_m=float(inflation),
                     )
                 )
-            seen_neighbors = {int(n.idx) for n in planner_input.neighbors[: self.max_neighbors]}
+            seen_neighbors = {int(n.idx) for n in traffic.neighbors}
             for sender_id, intent in intent_by_sender.items():
                 if sender_id in seen_neighbors:
                     continue
@@ -1610,13 +1625,10 @@ class RmaderPlanner(ILocalPlanner):
         times = [idx * sample_dt for idx in range(own.shape[0])]
         min_clearance: float | None = None
 
-        intent_by_sender = {
-            int(intent.sender_id): intent
-            for intent in planner_input.neighbor_intents
-            if intent.valid and np.asarray(intent.points).size > 0
-        }
+        traffic = self._traffic(planner_input)
+        intent_by_sender = traffic.intents_by_sender
         seen: set[int] = set()
-        for nobs in planner_input.neighbors[: self.max_neighbors]:
+        for nobs in traffic.neighbors:
             seen.add(int(nobs.idx))
             intent = intent_by_sender.get(int(nobs.idx))
             other = np.asarray([self._neighbor_prediction(nobs, intent, t) for t in times], dtype=np.float32)
@@ -1751,7 +1763,7 @@ class RmaderPlanner(ILocalPlanner):
 
         repulsion = np.zeros(3, dtype=np.float32)
         support_floor = max(0.5, float(self.recovery_neighbor_range_m))
-        for nobs in planner_input.neighbors[: self.max_neighbors]:
+        for nobs in self._traffic(planner_input).neighbors:
             rel = p0 - np.asarray(nobs.pos, dtype=np.float32)
             if planner_input.planar:
                 rel[1] = 0.0

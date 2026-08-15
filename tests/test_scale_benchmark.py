@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -153,6 +154,33 @@ def test_scale_benchmark_records_timeout_rows(tmp_path: Path, monkeypatch) -> No
     assert report["scale_rows"][0]["status"] == "timeout"
     assert report["scale_rows"][0]["timeout_rate"] == 1.0
     assert report["method_summaries"][0]["max_completed_N"] is None
+
+
+def test_scale_benchmark_sets_planner_preset_only_during_runs(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("DAA_MICROBENCH_PLANNER_PRESET", raising=False)
+    seen_presets: list[str | None] = []
+
+    def _fake_run(spec, *, run_timeout_s):
+        _ = spec
+        _ = run_timeout_s
+        seen_presets.append(os.environ.get("DAA_MICROBENCH_PLANNER_PRESET"))
+        return _complete_row(spec), False
+
+    monkeypatch.setattr(scale_benchmark, "_run_episode_checked", _fake_run)
+
+    report = run_scale_benchmark(
+        out_dir=tmp_path / "scale",
+        scenarios=["config/scenarios/stacked_swap_3d.yaml"],
+        methods=["method_a"],
+        n_agents=[30],
+        seeds=[0],
+        comm_profiles=["ideal_50hz"],
+        planner_preset="scale",
+    )
+
+    assert seen_presets == ["scale"]
+    assert os.environ.get("DAA_MICROBENCH_PLANNER_PRESET") is None
+    assert report["planner_preset"] == "scale"
 
 
 def test_scale_benchmark_cli_plan_only_json(tmp_path: Path) -> None:

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import csv
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import json
 import math
+import os
 from pathlib import Path
 import time
 from typing import Any
@@ -36,6 +38,7 @@ DEFAULT_SCALE_BENCHMARK_METHODS = (
 )
 SCALE_SPAWN_PROFILES = ("none", "dense")
 GUARDRAIL_FIELDS = ("planner_timeout_count", "planner_error_count", "planner_fallback_count")
+PLANNER_PRESET_ENV = "DAA_MICROBENCH_PLANNER_PRESET"
 
 
 def _now_utc() -> str:
@@ -52,6 +55,23 @@ def _rel(path: str | Path, root: Path) -> str:
 
 def _as_list(values: tuple[str, ...] | list[str] | None, default: tuple[str, ...]) -> list[str]:
     return [str(v).strip() for v in (values if values is not None else default) if str(v).strip()]
+
+
+@contextmanager
+def _planner_preset_env(preset: str):
+    previous = os.environ.get(PLANNER_PRESET_ENV)
+    clean = str(preset or "default").strip() or "default"
+    if clean == "default":
+        os.environ.pop(PLANNER_PRESET_ENV, None)
+    else:
+        os.environ[PLANNER_PRESET_ENV] = clean
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(PLANNER_PRESET_ENV, None)
+        else:
+            os.environ[PLANNER_PRESET_ENV] = previous
 
 
 def _num(value: Any) -> float | None:
@@ -367,6 +387,7 @@ def run_scale_benchmark(
     duration_s: float | None = None,
     save_traces: bool = False,
     scale_spawn_profile: str = "none",
+    planner_preset: str = "default",
     plan_only: bool = False,
 ) -> dict[str, Any]:
     if not scenarios:
@@ -375,6 +396,7 @@ def run_scale_benchmark(
         raise ValueError(f"unknown max-runs strategy: {max_runs_strategy!r}")
     if scale_spawn_profile not in SCALE_SPAWN_PROFILES:
         raise ValueError(f"unknown scale spawn profile: {scale_spawn_profile!r}")
+    clean_planner_preset = str(planner_preset or "default").strip() or "default"
 
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -439,18 +461,19 @@ def run_scale_benchmark(
     stopped_by_wall_time = False
 
     if not plan_only:
-        for spec in selected_specs:
-            if _spec_key(spec) in completed_keys:
-                skipped_existing += 1
-                continue
-            if deadline_at is not None and time.perf_counter() >= deadline_at:
-                stopped_by_wall_time = True
-                break
-            row, timed_out = _run_episode_checked(spec, run_timeout_s=run_timeout_s)
-            append_result(run_dir, row)
-            completed_keys.add(_spec_key(spec))
-            newly_run += 1
-            newly_timed_out += int(timed_out)
+        with _planner_preset_env(clean_planner_preset):
+            for spec in selected_specs:
+                if _spec_key(spec) in completed_keys:
+                    skipped_existing += 1
+                    continue
+                if deadline_at is not None and time.perf_counter() >= deadline_at:
+                    stopped_by_wall_time = True
+                    break
+                row, timed_out = _run_episode_checked(spec, run_timeout_s=run_timeout_s)
+                append_result(run_dir, row)
+                completed_keys.add(_spec_key(spec))
+                newly_run += 1
+                newly_timed_out += int(timed_out)
         if results_csv.exists():
             write_summary(run_dir)
         else:
@@ -495,6 +518,7 @@ def run_scale_benchmark(
         "results_csv": _rel(results_csv, out),
         "summary_csv": _rel(summary_csv, out),
         "scale_summary_csv": _rel(scale_summary_csv, out),
+        "planner_preset": clean_planner_preset,
     }
     progress_path.write_text(json.dumps(_json_safe(progress), indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -526,6 +550,7 @@ def run_scale_benchmark(
         "run_timeout_s": None if run_timeout_s is None else float(run_timeout_s),
         "duration_s_override": None if duration_s is None else float(duration_s),
         "scale_spawn_profile": scale_spawn_profile,
+        "planner_preset": clean_planner_preset,
         "save_traces": bool(save_traces),
         "wall_runtime_s": round(time.perf_counter() - started, 6),
         "run_timeout_supported": _hard_timeout_supported(),

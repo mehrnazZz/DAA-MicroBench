@@ -6,6 +6,7 @@ import math
 import numpy as np
 
 from microbench.planners.base import ILocalPlanner
+from microbench.planners.locality import LocalTrafficContext, select_local_traffic
 from microbench.types import AABBObs, IntentMsg, IntentObs, NeighborObs, PlannerInput, PlannerOutput
 
 
@@ -97,6 +98,7 @@ class EgoSwarmPlanner(ILocalPlanner):
         self.horizon_s = float(cfg.get("horizon_s", 3.2))
         self.rollout_dt_s = float(cfg.get("rollout_dt_s", 0.4))
         self.max_neighbors = int(cfg.get("max_neighbors", 8))
+        self.max_intents = int(cfg.get("max_intents", max(self.max_neighbors, 12)))
         self.max_candidates = int(cfg.get("max_candidates", 48))
         self.offset_scales_m = tuple(float(x) for x in cfg.get("offset_scales_m", (0.0, 2.0, 4.0, 7.0)))
         self.vertical_offset_scales_m = tuple(float(x) for x in cfg.get("vertical_offset_scales_m", (2.0, 4.0)))
@@ -123,90 +125,111 @@ class EgoSwarmPlanner(ILocalPlanner):
         self.max_intent_points = int(cfg.get("max_intent_points", 10))
         self._last_plan: np.ndarray | None = None
         self._last_label: str | None = None
+        self._traffic_context: LocalTrafficContext | None = None
         self.seed = 0
 
     def reset(self, seed: int) -> None:
         self.seed = int(seed)
         self._last_plan = None
         self._last_label = None
+        self._traffic_context = None
 
     def compute_cmd(self, planner_input: PlannerInput) -> PlannerOutput:
+        self._traffic_context = select_local_traffic(
+            planner_input,
+            max_neighbors=self.max_neighbors,
+            max_intents=self.max_intents,
+        )
         ego = planner_input.ego
         current = np.asarray(ego.vel, dtype=np.float32).copy()
         if planner_input.planar:
             current[1] = 0.0
+        try:
+            traffic = self._traffic(planner_input)
+            candidates = self._candidate_trajectories(planner_input)
+            best_candidate = candidates[0]
+            best_score: _Score | None = None
+            best_rollout = np.empty((0, 3), dtype=np.float32)
+            raw_scores: list[_Score] = []
+            prior_label = self._last_label
+            for candidate in candidates:
+                rollout, _velocities, _first_cmd = self._rollout(planner_input, candidate.desired_points, current)
+                score = self._score(planner_input, candidate, rollout, _velocities)
+                raw_scores.append(score)
+                if best_score is None or score.total < best_score.total:
+                    best_candidate = candidate
+                    best_score = score
+                    best_rollout = rollout
 
-        candidates = self._candidate_trajectories(planner_input)
-        best_candidate = candidates[0]
-        best_score: _Score | None = None
-        best_rollout = np.empty((0, 3), dtype=np.float32)
-        raw_scores: list[_Score] = []
-        prior_label = self._last_label
-        for candidate in candidates:
-            rollout, _velocities, _first_cmd = self._rollout(planner_input, candidate.desired_points, current)
-            score = self._score(planner_input, candidate, rollout, _velocities)
-            raw_scores.append(score)
-            if best_score is None or score.total < best_score.total:
-                best_candidate = candidate
-                best_score = score
-                best_rollout = rollout
+            assert best_score is not None
+            first_target = best_rollout[0] if best_rollout.size else np.asarray(ego.pos, dtype=np.float32)
+            desired_v = (first_target - np.asarray(ego.pos, dtype=np.float32)) / max(1e-6, self.rollout_dt_s)
+            v_cmd = _limit_delta(desired_v, current, float(ego.a_max) * float(planner_input.dt))
+            v_cmd = _clamp_speed(v_cmd, float(ego.v_max))
+            if planner_input.planar:
+                v_cmd[1] = 0.0
 
-        assert best_score is not None
-        first_target = best_rollout[0] if best_rollout.size else np.asarray(ego.pos, dtype=np.float32)
-        desired_v = (first_target - np.asarray(ego.pos, dtype=np.float32)) / max(1e-6, self.rollout_dt_s)
-        v_cmd = _limit_delta(desired_v, current, float(ego.a_max) * float(planner_input.dt))
-        v_cmd = _clamp_speed(v_cmd, float(ego.v_max))
-        if planner_input.planar:
-            v_cmd[1] = 0.0
+            intent_points = self._intent_points(planner_input, best_rollout)
+            intent = IntentMsg(
+                sender_id=int(ego.idx),
+                timestamp_send_s=float(planner_input.t),
+                expiry_s=float(planner_input.t) + self.intent_ttl_s,
+                kind="EGO_SWARM_TRAJECTORY",
+                tube_radius_m=float(ego.radius) + self.intent_tube_margin_m,
+                points=intent_points.astype(float),
+                dt_plan_s=float(self.rollout_dt_s),
+                mode=str(best_candidate.label),
+            )
+            self._last_plan = best_rollout.copy()
+            self._last_label = best_candidate.label
 
-        intent_points = self._intent_points(planner_input, best_rollout)
-        intent = IntentMsg(
-            sender_id=int(ego.idx),
-            timestamp_send_s=float(planner_input.t),
-            expiry_s=float(planner_input.t) + self.intent_ttl_s,
-            kind="EGO_SWARM_TRAJECTORY",
-            tube_radius_m=float(ego.radius) + self.intent_tube_margin_m,
-            points=intent_points.astype(float),
-            dt_plan_s=float(self.rollout_dt_s),
-            mode=str(best_candidate.label),
-        )
-        self._last_plan = best_rollout.copy()
-        self._last_label = best_candidate.label
+            return PlannerOutput(
+                v_cmd=v_cmd.astype(float),
+                intent_out=intent,
+                debug_info={
+                    "ego_swarm_algorithm": "clean_room_receding_horizon_trajectory_sharing",
+                    "ego_swarm_reference": "EGO-Swarm-inspired; not a port of the GPL ROS/C++ implementation",
+                    "ego_swarm_horizon_s": float(self.horizon_s),
+                    "ego_swarm_rollout_dt_s": float(self.rollout_dt_s),
+                    "ego_swarm_horizon_steps": int(self._horizon_steps()),
+                    "ego_swarm_candidates": int(len(candidates)),
+                    "ego_swarm_best_topology": str(best_candidate.label),
+                    "ego_swarm_best_cost": float(best_score.total),
+                    "ego_swarm_final_goal_dist_m": float(best_score.final_goal_dist_m),
+                    "ego_swarm_progress_m": float(best_score.progress_m),
+                    "ego_swarm_path_length_m": float(best_score.path_length_m),
+                    "ego_swarm_smoothness_cost": float(best_score.smoothness_cost),
+                    "ego_swarm_swarm_penalty": float(best_score.swarm_penalty),
+                    "ego_swarm_obstacle_penalty": float(best_score.obstacle_penalty),
+                    "ego_swarm_min_swarm_clearance_m": best_score.min_swarm_clearance_m,
+                    "ego_swarm_min_obstacle_clearance_m": best_score.min_obstacle_clearance_m,
+                    "ego_swarm_predicted_swarm_conflict": bool(best_score.predicted_swarm_conflict),
+                    "ego_swarm_predicted_obstacle_conflict": bool(best_score.predicted_obstacle_conflict),
+                    "ego_swarm_neighbor_count_considered": int(len(traffic.neighbors)),
+                    "ego_swarm_intent_count_considered": int(traffic.selected_intent_count),
+                    "ego_swarm_intent_count_available": int(traffic.input_valid_intent_count),
+                    "ego_swarm_intent_count_pruned": int(traffic.pruned_intent_count),
+                    "ego_swarm_obstacle_count_considered": int(len(planner_input.obstacles)),
+                    "ego_swarm_planar": bool(planner_input.planar),
+                    "ego_swarm_intent_points": int(intent_points.shape[0]),
+                    "ego_swarm_accel_delta_norm": float(_norm(v_cmd - current)),
+                    "ego_swarm_accel_delta_limit": float(float(ego.a_max) * float(planner_input.dt)),
+                    "ego_swarm_prior_label": prior_label,
+                    "ego_swarm_candidate_cost_min": float(min(score.total for score in raw_scores)),
+                    "ego_swarm_candidate_cost_max": float(max(score.total for score in raw_scores)),
+                },
+            )
+        finally:
+            self._traffic_context = None
 
-        return PlannerOutput(
-            v_cmd=v_cmd.astype(float),
-            intent_out=intent,
-            debug_info={
-                "ego_swarm_algorithm": "clean_room_receding_horizon_trajectory_sharing",
-                "ego_swarm_reference": "EGO-Swarm-inspired; not a port of the GPL ROS/C++ implementation",
-                "ego_swarm_horizon_s": float(self.horizon_s),
-                "ego_swarm_rollout_dt_s": float(self.rollout_dt_s),
-                "ego_swarm_horizon_steps": int(self._horizon_steps()),
-                "ego_swarm_candidates": int(len(candidates)),
-                "ego_swarm_best_topology": str(best_candidate.label),
-                "ego_swarm_best_cost": float(best_score.total),
-                "ego_swarm_final_goal_dist_m": float(best_score.final_goal_dist_m),
-                "ego_swarm_progress_m": float(best_score.progress_m),
-                "ego_swarm_path_length_m": float(best_score.path_length_m),
-                "ego_swarm_smoothness_cost": float(best_score.smoothness_cost),
-                "ego_swarm_swarm_penalty": float(best_score.swarm_penalty),
-                "ego_swarm_obstacle_penalty": float(best_score.obstacle_penalty),
-                "ego_swarm_min_swarm_clearance_m": best_score.min_swarm_clearance_m,
-                "ego_swarm_min_obstacle_clearance_m": best_score.min_obstacle_clearance_m,
-                "ego_swarm_predicted_swarm_conflict": bool(best_score.predicted_swarm_conflict),
-                "ego_swarm_predicted_obstacle_conflict": bool(best_score.predicted_obstacle_conflict),
-                "ego_swarm_neighbor_count_considered": int(min(len(planner_input.neighbors), self.max_neighbors)),
-                "ego_swarm_intent_count_considered": int(sum(1 for intent_obs in planner_input.neighbor_intents if intent_obs.valid)),
-                "ego_swarm_obstacle_count_considered": int(len(planner_input.obstacles)),
-                "ego_swarm_planar": bool(planner_input.planar),
-                "ego_swarm_intent_points": int(intent_points.shape[0]),
-                "ego_swarm_accel_delta_norm": float(_norm(v_cmd - current)),
-                "ego_swarm_accel_delta_limit": float(float(ego.a_max) * float(planner_input.dt)),
-                "ego_swarm_prior_label": prior_label,
-                "ego_swarm_candidate_cost_min": float(min(score.total for score in raw_scores)),
-                "ego_swarm_candidate_cost_max": float(max(score.total for score in raw_scores)),
-            },
-        )
+    def _traffic(self, planner_input: PlannerInput) -> LocalTrafficContext:
+        if self._traffic_context is None or self._traffic_context.input_id != id(planner_input):
+            self._traffic_context = select_local_traffic(
+                planner_input,
+                max_neighbors=self.max_neighbors,
+                max_intents=self.max_intents,
+            )
+        return self._traffic_context
 
     def _horizon_steps(self) -> int:
         return max(2, int(math.ceil(max(1e-6, self.horizon_s) / max(1e-6, self.rollout_dt_s))))
@@ -282,7 +305,8 @@ class EgoSwarmPlanner(ILocalPlanner):
                     ]
                 )
 
-        for nobs in planner_input.neighbors[: self.max_neighbors]:
+        traffic = self._traffic(planner_input)
+        for nobs in traffic.neighbors:
             rel = p0 - np.asarray(nobs.pos, dtype=np.float32)
             if planner_input.planar:
                 rel[1] = 0.0
@@ -292,9 +316,7 @@ class EgoSwarmPlanner(ILocalPlanner):
             directions.append((f"agent_{int(nobs.idx)}_away", rel))
             directions.append((f"agent_{int(nobs.idx)}_side", rel + _perp_xz(rel, sign)))
 
-        for intent in planner_input.neighbor_intents:
-            if not intent.valid:
-                continue
+        for intent in traffic.intent_only:
             points = np.asarray(intent.points, dtype=np.float32)
             if points.size == 0:
                 continue
@@ -442,18 +464,15 @@ class EgoSwarmPlanner(ILocalPlanner):
     def _swarm_penalty(self, planner_input: PlannerInput, points: np.ndarray) -> tuple[float, float | None, bool]:
         if points.size == 0:
             return 0.0, None, False
-        intent_by_sender = {
-            int(intent.sender_id): intent
-            for intent in planner_input.neighbor_intents
-            if intent.valid and np.asarray(intent.points).size > 0
-        }
+        traffic = self._traffic(planner_input)
+        intent_by_sender = traffic.intents_by_sender
         seen_ids: set[int] = set()
         penalty = 0.0
         min_clearance: float | None = None
         conflict = False
         for step_idx, point in enumerate(points, start=1):
             t = step_idx * self.rollout_dt_s
-            for nobs in planner_input.neighbors[: self.max_neighbors]:
+            for nobs in traffic.neighbors:
                 seen_ids.add(int(nobs.idx))
                 other_pos = self._neighbor_prediction(nobs, intent_by_sender.get(int(nobs.idx)), step_idx, t)
                 inflation = self._neighbor_inflation(nobs)

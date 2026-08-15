@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 from dataclasses import asdict, dataclass
+import os
 
 from microbench.config import deep_merge, load_defaults
 from microbench.planners.base import ILocalPlanner
@@ -57,71 +58,100 @@ def _orca_cfg(defaults: dict, key: str) -> dict:
     return deep_merge(base, defaults.get(key, {}))
 
 
+def _planner_cfg(defaults: dict, key: str) -> dict:
+    cfg = defaults.get(key, {})
+    preset = os.environ.get("DAA_MICROBENCH_PLANNER_PRESET", "").strip()
+    if not preset or preset == "default":
+        return dict(cfg)
+    overrides = defaults.get("planner_presets", {})
+    if not isinstance(overrides, dict):
+        return dict(cfg)
+    preset_overrides = overrides.get(preset, {})
+    if not isinstance(preset_overrides, dict):
+        return dict(cfg)
+    method_overrides = preset_overrides.get(key, {})
+    if not isinstance(method_overrides, dict):
+        return dict(cfg)
+    return deep_merge(cfg, method_overrides)
+
+
+def _planner_cfg_with_base(defaults: dict, key: str, base_cfg: dict) -> dict:
+    merged = dict(defaults)
+    merged[key] = dict(base_cfg)
+    return _planner_cfg(merged, key)
+
+
 def _make_orca_heuristic() -> ILocalPlanner:
     defaults = load_defaults()
     age_cap = float(defaults.get("comm", {}).get("age_cap_s", 0.75))
-    return OrcaExpertPlanner(cfg=_orca_cfg(defaults, "orca_heuristic"), age_cap_s=age_cap)
+    return OrcaExpertPlanner(
+        cfg=_planner_cfg_with_base(defaults, "orca_heuristic", _orca_cfg(defaults, "orca_heuristic")),
+        age_cap_s=age_cap,
+    )
 
 
 def _make_orca_with_staleness() -> ILocalPlanner:
     defaults = load_defaults()
     age_cap = float(defaults.get("comm", {}).get("age_cap_s", 0.75))
-    return OrcaExpertPlanner(cfg=_orca_cfg(defaults, "orca_with_staleness"), age_cap_s=age_cap)
+    return OrcaExpertPlanner(
+        cfg=_planner_cfg_with_base(defaults, "orca_with_staleness", _orca_cfg(defaults, "orca_with_staleness")),
+        age_cap_s=age_cap,
+    )
 
 
 def _make_cbf_qp() -> ILocalPlanner:
     defaults = load_defaults()
-    return CbfQpPlanner(cfg=defaults.get("cbf_qp", {}))
+    return CbfQpPlanner(cfg=_planner_cfg(defaults, "cbf_qp"))
 
 
 def _make_mpc_local() -> ILocalPlanner:
     defaults = load_defaults()
-    return MpcLocalPlanner(cfg=defaults.get("mpc_local", {}))
+    return MpcLocalPlanner(cfg=_planner_cfg(defaults, "mpc_local"))
 
 
 def _make_mpc_nonlinear() -> ILocalPlanner:
     defaults = load_defaults()
-    return NonlinearMpcPlanner(cfg=defaults.get("mpc_nonlinear", {}))
+    return NonlinearMpcPlanner(cfg=_planner_cfg(defaults, "mpc_nonlinear"))
 
 
 def _make_dmpc_best_response() -> ILocalPlanner:
     defaults = load_defaults()
-    return DistributedMpcBestResponsePlanner(cfg=defaults.get("dmpc_best_response", {}))
+    return DistributedMpcBestResponsePlanner(cfg=_planner_cfg(defaults, "dmpc_best_response"))
 
 
 def _make_bvc_tube_dmpc() -> ILocalPlanner:
     defaults = load_defaults()
-    return BvcTubeDmpcPlanner(cfg=defaults.get("bvc_tube_dmpc", {}))
+    return BvcTubeDmpcPlanner(cfg=_planner_cfg(defaults, "bvc_tube_dmpc"))
 
 
 def _make_dynamic_tube_dmpc() -> ILocalPlanner:
     defaults = load_defaults()
-    return DynamicTubeDmpcPlanner(cfg=defaults.get("dynamic_tube_dmpc", {}))
+    return DynamicTubeDmpcPlanner(cfg=_planner_cfg(defaults, "dynamic_tube_dmpc"))
 
 
 def _make_rmader() -> ILocalPlanner:
     defaults = load_defaults()
-    return RmaderPlanner(cfg=defaults.get("rmader", {}))
+    return RmaderPlanner(cfg=_planner_cfg(defaults, "rmader"))
 
 
 def _make_ego_swarm() -> ILocalPlanner:
     defaults = load_defaults()
-    return EgoSwarmPlanner(cfg=defaults.get("ego_swarm", {}))
+    return EgoSwarmPlanner(cfg=_planner_cfg(defaults, "ego_swarm"))
 
 
 def _make_ego_swarm_opt() -> ILocalPlanner:
     defaults = load_defaults()
-    return EgoSwarmOptimizingPlanner(cfg=defaults.get("ego_swarm_opt", {}))
+    return EgoSwarmOptimizingPlanner(cfg=_planner_cfg(defaults, "ego_swarm_opt"))
 
 
 def _make_velocity_obstacle() -> ILocalPlanner:
     defaults = load_defaults()
-    return VelocityObstaclePlanner(cfg=defaults.get("velocity_obstacle", {}))
+    return VelocityObstaclePlanner(cfg=_planner_cfg(defaults, "velocity_obstacle"))
 
 
 def _make_reciprocal_velocity_obstacle() -> ILocalPlanner:
     defaults = load_defaults()
-    return ReciprocalVelocityObstaclePlanner(cfg=defaults.get("reciprocal_velocity_obstacle", {}))
+    return ReciprocalVelocityObstaclePlanner(cfg=_planner_cfg(defaults, "reciprocal_velocity_obstacle"))
 
 
 _FACTORIES: dict[str, Callable[[], ILocalPlanner]] = {

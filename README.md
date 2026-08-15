@@ -446,10 +446,11 @@ python -m microbench.cli scale-benchmark \
   --comm realistic_v2v_50hz \
   --duration-s 60 \
   --scale-spawn-profile dense \
+  --planner-preset scale \
   --run-timeout-s 360
 ```
 
-This writes raw `results.csv`, standard `summary.csv`, `scale_summary.csv`, and `scale_benchmark.json`. The scale report separates safety from runtime feasibility: a method that times out at high N is recorded as a failed scale row, not silently dropped.
+This writes raw `results.csv`, standard `summary.csv`, `scale_summary.csv`, and `scale_benchmark.json`. The scale report separates safety from runtime feasibility: a method that times out at high N is recorded as a failed scale row, not silently dropped. `--planner-preset scale` applies documented compute-budget overrides for large-fleet stress tests; omit it for the fuller default optimizer settings.
 
 Run the generated agentic stress suite:
 

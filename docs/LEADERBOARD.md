@@ -176,10 +176,11 @@ python -m microbench.cli scale-benchmark \
   --comm realistic_v2v_50hz \
   --duration-s 60 \
   --scale-spawn-profile dense \
+  --planner-preset scale \
   --run-timeout-s 360
 ```
 
-This writes raw `results.csv`, standard `summary.csv`, `scale_summary.csv`, `scale_benchmark_progress.json`, and `scale_benchmark.json`. Use `--scale-spawn-profile dense` only when a copied scenario needs a placement profile for large N; it widens four-way spawn lanes in the generated scale copy and leaves the source scenario unchanged. Timeout and partial-timeout rows are first-class evidence, but they are not successful leaderboard rows.
+This writes raw `results.csv`, standard `summary.csv`, `scale_summary.csv`, `scale_benchmark_progress.json`, and `scale_benchmark.json`. Use `--scale-spawn-profile dense` only when a copied scenario needs a placement profile for large N; it widens four-way spawn lanes in the generated scale copy and leaves the source scenario unchanged. Use `--planner-preset scale` for compute-bounded high-N optimizer sweeps; omit it when auditing the fuller default planner settings. Timeout and partial-timeout rows are first-class evidence, but they are not successful leaderboard rows.
 
 Optionally publish the same run to W&B as dashboard tables:
 

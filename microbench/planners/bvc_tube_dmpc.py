@@ -8,6 +8,7 @@ import numpy as np
 
 from microbench.comm.messages import make_intent_trajectory
 from microbench.planners.base import ILocalPlanner
+from microbench.planners.locality import LocalTrafficContext, select_local_traffic
 from microbench.types import AABBObs, IntentMsg, IntentObs, NeighborObs, PlannerInput, PlannerOutput
 
 
@@ -135,6 +136,7 @@ class BvcTubeDmpcPlanner(ILocalPlanner):
         self.horizon_steps = int(cfg.get("horizon_steps", 7))
         self.replan_period_s = float(cfg.get("replan_period_s", 0.2))
         self.max_neighbors = int(cfg.get("max_neighbors", 10))
+        self.max_intents = int(cfg.get("max_intents", max(self.max_neighbors, 12)))
         self.max_initializations = int(cfg.get("max_initializations", 4))
         self.opt_iterations = int(cfg.get("opt_iterations", 5))
         self.projection_iterations = int(cfg.get("projection_iterations", 5))
@@ -171,6 +173,7 @@ class BvcTubeDmpcPlanner(ILocalPlanner):
         self._last_label: str | None = None
         self._last_plan_t: float | None = None
         self._last_replan_t: float | None = None
+        self._traffic_context: LocalTrafficContext | None = None
 
     def reset(self, seed: int) -> None:
         self.seed = int(seed)
@@ -178,8 +181,15 @@ class BvcTubeDmpcPlanner(ILocalPlanner):
         self._last_label = None
         self._last_plan_t = None
         self._last_replan_t = None
+        self._traffic_context = None
 
     def compute_cmd(self, planner_input: PlannerInput) -> PlannerOutput:
+        self._traffic_context = select_local_traffic(
+            planner_input,
+            max_neighbors=self.max_neighbors,
+            max_intents=self.max_intents,
+        )
+        traffic = self._traffic(planner_input)
         ego = planner_input.ego
         current = np.asarray(ego.vel, dtype=np.float32).copy()
         if planner_input.planar:
@@ -256,50 +266,64 @@ class BvcTubeDmpcPlanner(ILocalPlanner):
         report = used.tube_report
         kin = used.kinematic_report
         best_report = best.tube_report
-        debug = {
-            "bvc_tube_dmpc_algorithm": "tube_based_distributed_mpc_buffered_voronoi_cells",
-            "bvc_tube_dmpc_reference": "clean-room BVC/B-UAVC-style hard spatial partitioning baseline",
-            "bvc_tube_dmpc_solver": "projected_convex_tube_position_qp",
-            "bvc_tube_dmpc_solver_status": str(best.solver_status),
-            "bvc_tube_dmpc_horizon_steps": int(used.positions.shape[0] - 1),
-            "bvc_tube_dmpc_step_dt_s": float(dt),
-            "bvc_tube_dmpc_initializations": int(len(seeds)),
-            "bvc_tube_dmpc_iterations": int(best.iterations),
-            "bvc_tube_dmpc_replanned": bool(replanned),
-            "bvc_tube_dmpc_cached_reuse": bool(not replanned),
-            "bvc_tube_dmpc_replan_period_s": float(self.replan_period_s),
-            "bvc_tube_dmpc_best_topology": str(best.label),
-            "bvc_tube_dmpc_used_topology": str(used.label),
-            "bvc_tube_dmpc_initial_cost": float(best.initial_cost),
-            "bvc_tube_dmpc_final_cost": float(best.final_cost),
-            "bvc_tube_dmpc_cost_reduction": float(best.initial_cost - best.final_cost),
-            "bvc_tube_dmpc_path_length_m": float(used.path_length_m),
-            "bvc_tube_dmpc_smoothness_cost": float(used.smoothness_cost),
-            "bvc_tube_dmpc_hard_cell_ok": bool(report.hard_ok),
-            "bvc_tube_dmpc_candidate_hard_cell_ok": bool(best_report.hard_ok),
-            "bvc_tube_dmpc_cell_constraint_count": int(len(report.constraints)),
-            "bvc_tube_dmpc_neighbor_constraint_count": int(report.neighbor_constraint_count),
-            "bvc_tube_dmpc_intent_constraint_count": int(report.intent_constraint_count),
-            "bvc_tube_dmpc_obstacle_constraint_count": int(report.obstacle_constraint_count),
-            "bvc_tube_dmpc_max_cell_violation_m": float(report.max_violation_m),
-            "bvc_tube_dmpc_candidate_max_cell_violation_m": float(best_report.max_violation_m),
-            "bvc_tube_dmpc_sum_cell_violation_m": float(report.sum_violation_m),
-            "bvc_tube_dmpc_min_cell_slack_m": report.min_slack_m,
-            "bvc_tube_dmpc_kinematic_ok": bool(kin.ok),
-            "bvc_tube_dmpc_max_speed_violation_mps": float(kin.max_speed_violation_mps),
-            "bvc_tube_dmpc_max_accel_violation_mps2": float(kin.max_accel_violation_mps2),
-            "bvc_tube_dmpc_fallback": str(used.fallback),
-            "bvc_tube_dmpc_neighbor_count_considered": int(min(len(planner_input.neighbors), self.max_neighbors)),
-            "bvc_tube_dmpc_intent_count_considered": int(sum(1 for intent_obs in planner_input.neighbor_intents if intent_obs.valid)),
-            "bvc_tube_dmpc_obstacle_count_considered": int(len(planner_input.obstacles)),
-            "bvc_tube_dmpc_agent_messages": 1,
-            "bvc_tube_dmpc_planar": bool(planner_input.planar),
-            "bvc_tube_dmpc_intent_points": int(intent_points.shape[0]),
-            "bvc_tube_dmpc_prior_label": prior_label,
-            "bvc_tube_dmpc_accel_delta_norm": float(_norm(v_cmd - current)),
-            "bvc_tube_dmpc_accel_delta_limit": float(float(ego.a_max) * float(planner_input.dt)),
-        }
-        return PlannerOutput(v_cmd=v_cmd.astype(float), intent_out=intent, messages_out=[msg], debug_info=debug)
+        try:
+            debug = {
+                "bvc_tube_dmpc_algorithm": "tube_based_distributed_mpc_buffered_voronoi_cells",
+                "bvc_tube_dmpc_reference": "clean-room BVC/B-UAVC-style hard spatial partitioning baseline",
+                "bvc_tube_dmpc_solver": "projected_convex_tube_position_qp",
+                "bvc_tube_dmpc_solver_status": str(best.solver_status),
+                "bvc_tube_dmpc_horizon_steps": int(used.positions.shape[0] - 1),
+                "bvc_tube_dmpc_step_dt_s": float(dt),
+                "bvc_tube_dmpc_initializations": int(len(seeds)),
+                "bvc_tube_dmpc_iterations": int(best.iterations),
+                "bvc_tube_dmpc_replanned": bool(replanned),
+                "bvc_tube_dmpc_cached_reuse": bool(not replanned),
+                "bvc_tube_dmpc_replan_period_s": float(self.replan_period_s),
+                "bvc_tube_dmpc_best_topology": str(best.label),
+                "bvc_tube_dmpc_used_topology": str(used.label),
+                "bvc_tube_dmpc_initial_cost": float(best.initial_cost),
+                "bvc_tube_dmpc_final_cost": float(best.final_cost),
+                "bvc_tube_dmpc_cost_reduction": float(best.initial_cost - best.final_cost),
+                "bvc_tube_dmpc_path_length_m": float(used.path_length_m),
+                "bvc_tube_dmpc_smoothness_cost": float(used.smoothness_cost),
+                "bvc_tube_dmpc_hard_cell_ok": bool(report.hard_ok),
+                "bvc_tube_dmpc_candidate_hard_cell_ok": bool(best_report.hard_ok),
+                "bvc_tube_dmpc_cell_constraint_count": int(len(report.constraints)),
+                "bvc_tube_dmpc_neighbor_constraint_count": int(report.neighbor_constraint_count),
+                "bvc_tube_dmpc_intent_constraint_count": int(report.intent_constraint_count),
+                "bvc_tube_dmpc_obstacle_constraint_count": int(report.obstacle_constraint_count),
+                "bvc_tube_dmpc_max_cell_violation_m": float(report.max_violation_m),
+                "bvc_tube_dmpc_candidate_max_cell_violation_m": float(best_report.max_violation_m),
+                "bvc_tube_dmpc_sum_cell_violation_m": float(report.sum_violation_m),
+                "bvc_tube_dmpc_min_cell_slack_m": report.min_slack_m,
+                "bvc_tube_dmpc_kinematic_ok": bool(kin.ok),
+                "bvc_tube_dmpc_max_speed_violation_mps": float(kin.max_speed_violation_mps),
+                "bvc_tube_dmpc_max_accel_violation_mps2": float(kin.max_accel_violation_mps2),
+                "bvc_tube_dmpc_fallback": str(used.fallback),
+                "bvc_tube_dmpc_neighbor_count_considered": int(len(traffic.neighbors)),
+                "bvc_tube_dmpc_intent_count_considered": int(traffic.selected_intent_count),
+                "bvc_tube_dmpc_intent_count_available": int(traffic.input_valid_intent_count),
+                "bvc_tube_dmpc_intent_count_pruned": int(traffic.pruned_intent_count),
+                "bvc_tube_dmpc_obstacle_count_considered": int(len(planner_input.obstacles)),
+                "bvc_tube_dmpc_agent_messages": 1,
+                "bvc_tube_dmpc_planar": bool(planner_input.planar),
+                "bvc_tube_dmpc_intent_points": int(intent_points.shape[0]),
+                "bvc_tube_dmpc_prior_label": prior_label,
+                "bvc_tube_dmpc_accel_delta_norm": float(_norm(v_cmd - current)),
+                "bvc_tube_dmpc_accel_delta_limit": float(float(ego.a_max) * float(planner_input.dt)),
+            }
+            return PlannerOutput(v_cmd=v_cmd.astype(float), intent_out=intent, messages_out=[msg], debug_info=debug)
+        finally:
+            self._traffic_context = None
+
+    def _traffic(self, planner_input: PlannerInput) -> LocalTrafficContext:
+        if self._traffic_context is None or self._traffic_context.input_id != id(planner_input):
+            self._traffic_context = select_local_traffic(
+                planner_input,
+                max_neighbors=self.max_neighbors,
+                max_intents=self.max_intents,
+            )
+        return self._traffic_context
 
     def _maybe_reuse_plan(self, planner_input: PlannerInput) -> _PlanResult | None:
         if self.replan_period_s <= 0.0:
@@ -435,7 +459,7 @@ class BvcTubeDmpcPlanner(ILocalPlanner):
             if not planner_input.planar:
                 directions.append(("vertical_up", np.asarray([0.0, 1.0, 0.0], dtype=np.float32)))
                 directions.append(("vertical_down", np.asarray([0.0, -1.0, 0.0], dtype=np.float32)))
-        for nobs in planner_input.neighbors[: self.max_neighbors]:
+        for nobs in self._traffic(planner_input).neighbors:
             rel = p0 - np.asarray(nobs.pos, dtype=np.float32)
             if planner_input.planar:
                 rel[1] = 0.0
@@ -627,16 +651,13 @@ class BvcTubeDmpcPlanner(ILocalPlanner):
         constraints: list[_TubeConstraint] = []
         dt = self._dt()
         obstacles = self._obstacle_data(planner_input)
-        intent_by_sender = {
-            int(intent.sender_id): intent
-            for intent in planner_input.neighbor_intents
-            if intent.valid and np.asarray(intent.points).size > 0
-        }
+        traffic = self._traffic(planner_input)
+        intent_by_sender = traffic.intents_by_sender
         seen_neighbors: set[int] = set()
         for k in range(1, positions.shape[0]):
             anchor = np.asarray(positions[k], dtype=np.float32)
             t = k * dt
-            for nobs in planner_input.neighbors[: self.max_neighbors]:
+            for nobs in traffic.neighbors:
                 seen_neighbors.add(int(nobs.idx))
                 intent = intent_by_sender.get(int(nobs.idx))
                 other = self._neighbor_prediction(nobs, intent, t)

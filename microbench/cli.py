@@ -889,6 +889,7 @@ def _scale_benchmark(args) -> None:
         duration_s=args.duration_s,
         save_traces=bool(args.save_traces),
         scale_spawn_profile=str(args.scale_spawn_profile),
+        planner_preset=str(args.planner_preset),
         plan_only=bool(args.plan_only),
     )
 
@@ -1698,6 +1699,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=SCALE_SPAWN_PROFILES,
         default="none",
         help="Optional spawn adaptation for copied scale scenario files; dense widens four-way lanes for larger N",
+    )
+    p_scale.add_argument(
+        "--planner-preset",
+        default="default",
+        help="Planner config preset for scale rows; use 'scale' for bounded high-N optimizer effort",
     )
     p_scale.add_argument("--plan-only", action="store_true", help="Write prepared scenario files and report the planned matrix")
     p_scale.add_argument("--json", action="store_true", help="Emit machine-readable scale benchmark report")

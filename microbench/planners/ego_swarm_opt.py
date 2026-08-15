@@ -7,6 +7,7 @@ from typing import Any
 import numpy as np
 
 from microbench.planners.base import ILocalPlanner
+from microbench.planners.locality import LocalTrafficContext, select_local_traffic
 from microbench.types import AABBObs, IntentMsg, IntentObs, NeighborObs, PlannerInput, PlannerOutput
 
 
@@ -153,6 +154,7 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
         self.control_points = int(cfg.get("control_points", 5))
         self.curve_samples = int(cfg.get("curve_samples", 7))
         self.max_neighbors = int(cfg.get("max_neighbors", 8))
+        self.max_intents = int(cfg.get("max_intents", max(self.max_neighbors, 12)))
         self.max_initializations = int(cfg.get("max_initializations", 3))
         self.solver = str(cfg.get("solver", "projected_gradient")).strip().lower()
         self.opt_iterations = int(cfg.get("opt_iterations", 3))
@@ -187,14 +189,22 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
 
         self._last_control_points: np.ndarray | None = None
         self._last_label: str | None = None
+        self._traffic_context: LocalTrafficContext | None = None
         self.seed = 0
 
     def reset(self, seed: int) -> None:
         self.seed = int(seed)
         self._last_control_points = None
         self._last_label = None
+        self._traffic_context = None
 
     def compute_cmd(self, planner_input: PlannerInput) -> PlannerOutput:
+        self._traffic_context = select_local_traffic(
+            planner_input,
+            max_neighbors=self.max_neighbors,
+            max_intents=self.max_intents,
+        )
+        traffic = self._traffic(planner_input)
         ego = planner_input.ego
         current = np.asarray(ego.vel, dtype=np.float32).copy()
         if planner_input.planar:
@@ -261,8 +271,10 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
                 "ego_swarm_opt_min_obstacle_clearance_m": best.min_obstacle_clearance_m,
                 "ego_swarm_opt_predicted_swarm_conflict": bool(best.predicted_swarm_conflict),
                 "ego_swarm_opt_predicted_obstacle_conflict": bool(best.predicted_obstacle_conflict),
-                "ego_swarm_opt_neighbor_count_considered": int(min(len(planner_input.neighbors), self.max_neighbors)),
-                "ego_swarm_opt_intent_count_considered": int(sum(1 for intent_obs in planner_input.neighbor_intents if intent_obs.valid)),
+                "ego_swarm_opt_neighbor_count_considered": int(len(traffic.neighbors)),
+                "ego_swarm_opt_intent_count_considered": int(traffic.selected_intent_count),
+                "ego_swarm_opt_intent_count_available": int(traffic.input_valid_intent_count),
+                "ego_swarm_opt_intent_count_pruned": int(traffic.pruned_intent_count),
                 "ego_swarm_opt_obstacle_count_considered": int(len(planner_input.obstacles)),
                 "ego_swarm_opt_planar": bool(planner_input.planar),
                 "ego_swarm_opt_intent_points": int(intent_points.shape[0]),
@@ -271,6 +283,15 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
                 "ego_swarm_opt_prior_label": prior_label,
             },
         )
+
+    def _traffic(self, planner_input: PlannerInput) -> LocalTrafficContext:
+        if self._traffic_context is None or self._traffic_context.input_id != id(planner_input):
+            self._traffic_context = select_local_traffic(
+                planner_input,
+                max_neighbors=self.max_neighbors,
+                max_intents=self.max_intents,
+            )
+        return self._traffic_context
 
     def _control_point_count(self) -> int:
         return max(5, int(self.control_points))
@@ -351,7 +372,8 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
                 directions.append(("vertical_up", np.asarray([0.0, 1.0, 0.0], dtype=np.float32)))
                 directions.append(("vertical_down", np.asarray([0.0, -1.0, 0.0], dtype=np.float32)))
 
-        for nobs in planner_input.neighbors[: self.max_neighbors]:
+        traffic = self._traffic(planner_input)
+        for nobs in traffic.neighbors:
             rel = p0 - np.asarray(nobs.pos, dtype=np.float32)
             if planner_input.planar:
                 rel[1] = 0.0
@@ -361,9 +383,7 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
             directions.append((f"agent_{int(nobs.idx)}_away", rel))
             directions.append((f"agent_{int(nobs.idx)}_side", rel + _perp_xz(rel, sign)))
 
-        for intent in planner_input.neighbor_intents:
-            if not intent.valid:
-                continue
+        for intent in traffic.intent_only:
             points = np.asarray(intent.points, dtype=np.float32)
             if points.ndim != 2 or points.shape[0] == 0:
                 continue
@@ -712,11 +732,8 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
         grad = np.zeros_like(samples, dtype=np.float32)
         if samples.size == 0:
             return 0.0, grad, None, False
-        intent_by_sender = {
-            int(intent.sender_id): intent
-            for intent in planner_input.neighbor_intents
-            if intent.valid and np.asarray(intent.points).size > 0
-        }
+        traffic = self._traffic(planner_input)
+        intent_by_sender = traffic.intents_by_sender
         sample_dt = self.horizon_s / max(1, samples.shape[0] - 1)
         seen_ids: set[int] = set()
         penalty = 0.0
@@ -725,7 +742,7 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
         for step_idx, point in enumerate(samples[1:], start=1):
             t = step_idx * sample_dt
             sample_index = step_idx
-            for nobs in planner_input.neighbors[: self.max_neighbors]:
+            for nobs in traffic.neighbors:
                 seen_ids.add(int(nobs.idx))
                 other_pos = self._neighbor_prediction(nobs, intent_by_sender.get(int(nobs.idx)), step_idx, t)
                 inflation = self._neighbor_inflation(nobs)

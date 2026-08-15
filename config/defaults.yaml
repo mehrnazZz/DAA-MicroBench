@@ -71,6 +71,59 @@ planner_guardrails:
     bvc_tube_dmpc: 200.0  # hard spatial-partition optimizer; leaderboard still reports compute latency
     dynamic_tube_dmpc: 250.0  # paper-grade tube QP; preserve rare dense-conflict spikes for scoring
 
+planner_presets:
+  scale:
+    mpc_nonlinear:
+      max_neighbors: 6
+      max_intents: 8
+      horizon_steps: 4
+      max_initializations: 2
+      opt_iterations: 2
+      scipy_maxiter: 12
+      replan_period_s: 0.2
+    dmpc_best_response:
+      max_neighbors: 6
+      max_intents: 8
+      horizon_steps: 4
+      max_initializations: 2
+      opt_iterations: 2
+      scipy_maxiter: 12
+      command_preview_s: 0.8
+      replan_period_s: 0.2
+    bvc_tube_dmpc:
+      max_neighbors: 6
+      max_intents: 8
+      horizon_steps: 4
+      max_initializations: 2
+      opt_iterations: 1
+      projection_iterations: 2
+      replan_period_s: 0.3
+    dynamic_tube_dmpc:
+      max_neighbors: 6
+      max_intents: 8
+      horizon_steps: 5
+      qp_iterations: 3
+      projection_iterations: 1
+      tube_waypoints: 6
+      current_track_guard_iterations: 1
+      replan_period_s: 0.3
+    ego_swarm_opt:
+      max_neighbors: 6
+      max_intents: 8
+      control_points: 5
+      curve_samples: 5
+      max_initializations: 2
+      opt_iterations: 1
+    rmader:
+      max_neighbors: 6
+      max_intents: 8
+      control_points: 7
+      samples_per_interval: 2
+      max_initializations: 1
+      opt_iterations: 1
+      hard_projection_iterations: 1
+      sampled_delay_check_enabled: false
+
 
 orca_heuristic: &orca_heuristic_defaults
   time_horizon_s: 3.0
@@ -138,6 +191,7 @@ mpc_nonlinear:
   horizon_steps: 6
   replan_period_s: 0.1
   max_neighbors: 8
+  max_intents: 12
   max_initializations: 4
   solver: "projected_gradient"  # "projected_gradient", "auto", or "scipy_l_bfgs_b"
   opt_iterations: 8
@@ -181,6 +235,7 @@ dmpc_best_response:
   horizon_steps: 7
   replan_period_s: 0.1
   max_neighbors: 8
+  max_intents: 12
   max_initializations: 5
   solver: "projected_gradient"  # "projected_gradient", "auto", or "scipy_l_bfgs_b"
   opt_iterations: 8
@@ -235,6 +290,7 @@ bvc_tube_dmpc:
   horizon_steps: 7
   replan_period_s: 0.2
   max_neighbors: 10
+  max_intents: 12
   max_initializations: 4
   opt_iterations: 5
   projection_iterations: 5
@@ -270,6 +326,7 @@ dynamic_tube_dmpc:
   horizon_steps: 15
   replan_period_s: 0.3
   max_neighbors: 12
+  max_intents: 12
   r_min_prime_m: 0.4
   localization_sigma_m: 0.03
   collision_probability_delta: 0.0027
@@ -328,6 +385,7 @@ rmader:
   replan_period_s: 0.2
   fallback_replan_period_s: 0.12
   max_neighbors: 8
+  max_intents: 12
   max_initializations: 3
   opt_iterations: 3
   hard_projection_iterations: 2
@@ -386,6 +444,7 @@ ego_swarm:
   horizon_s: 3.2
   rollout_dt_s: 0.4
   max_neighbors: 8
+  max_intents: 12
   max_candidates: 48
   offset_scales_m: [0.0, 2.0, 4.0, 7.0]
   vertical_offset_scales_m: [2.0, 4.0]
@@ -417,6 +476,7 @@ ego_swarm_opt:
   control_points: 5
   curve_samples: 7
   max_neighbors: 8
+  max_intents: 12
   max_initializations: 3
   solver: "projected_gradient"  # "projected_gradient", "auto", or "scipy_l_bfgs_b"
   opt_iterations: 3

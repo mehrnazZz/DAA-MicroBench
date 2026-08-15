@@ -144,6 +144,26 @@ def test_orca_with_staleness_uses_more_conservative_stale_preset() -> None:
     assert stale_aware.responsibility_age_gain > standard.responsibility_age_gain
 
 
+def test_scale_planner_preset_overrides_optimizer_budget(monkeypatch) -> None:
+    monkeypatch.setenv("DAA_MICROBENCH_PLANNER_PRESET", "scale")
+
+    mpc = make_planner("mpc_nonlinear")
+    dmpc = make_planner("dmpc_best_response")
+    bvc = make_planner("bvc_tube_dmpc")
+    ego = make_planner("ego_swarm_opt")
+
+    assert isinstance(mpc, NonlinearMpcPlanner)
+    assert isinstance(dmpc, DistributedMpcBestResponsePlanner)
+    assert isinstance(bvc, BvcTubeDmpcPlanner)
+    assert isinstance(ego, EgoSwarmOptimizingPlanner)
+    assert mpc.max_neighbors == 6
+    assert mpc.max_intents == 8
+    assert mpc.horizon_steps == 4
+    assert dmpc.max_initializations == 2
+    assert bvc.projection_iterations == 2
+    assert ego.opt_iterations == 1
+
+
 def test_list_methods_cli_can_emit_metadata_json() -> None:
     proc = subprocess.run(
         [

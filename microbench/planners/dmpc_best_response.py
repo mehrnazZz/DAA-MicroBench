@@ -127,11 +127,8 @@ class DistributedMpcBestResponsePlanner(NonlinearMpcPlanner):
         slack_penalty = 0.0
         dt = self._dt()
 
-        intent_by_sender = {
-            int(intent.sender_id): intent
-            for intent in planner_input.neighbor_intents
-            if np.asarray(intent.points).size > 0
-        }
+        traffic = self._traffic(planner_input)
+        intent_by_sender = traffic.intents_by_sender
         usable_intent_ids = {
             sender_id for sender_id, intent in intent_by_sender.items() if self._intent_usable_for_coupling(intent)
         }
@@ -148,7 +145,7 @@ class DistributedMpcBestResponsePlanner(NonlinearMpcPlanner):
 
         for step_idx, pos in enumerate(positions, start=1):
             t = step_idx * dt
-            for nobs in planner_input.neighbors[: self.max_neighbors]:
+            for nobs in traffic.neighbors:
                 neighbor_id = int(nobs.idx)
                 neighbor_ids_seen.add(neighbor_id)
                 intent = intent_by_sender.get(neighbor_id)
