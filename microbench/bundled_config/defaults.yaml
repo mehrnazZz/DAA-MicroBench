@@ -70,6 +70,7 @@ planner_guardrails:
     rmader: 400.0         # optimizer-grade MINVO/hyperplane solve; keep dense conflict outputs instead of fallback
     bvc_tube_dmpc: 200.0  # hard spatial-partition optimizer; leaderboard still reports compute latency
     dynamic_tube_dmpc: 250.0  # paper-grade tube QP; preserve rare dense-conflict spikes for scoring
+    ego_swarm_opt: 200.0  # optimizer-grade control-point trajectory solve; preserve rare dense-conflict spikes for scoring
 
 planner_presets:
   scale:
@@ -108,13 +109,23 @@ planner_presets:
       current_track_guard_iterations: 1
       replan_period_s: 0.3
     ego_swarm_opt:
-      max_neighbors: 6
-      max_intents: 8
+      max_neighbors: 8
+      max_intents: 10
       control_points: 5
-      curve_samples: 5
-      max_initializations: 2
-      opt_iterations: 1
+      curve_samples: 7
+      max_initializations: 4
+      opt_iterations: 2
       replan_period_s: 0.2
+      safety_margin_m: 0.55
+      near_clearance_m: 2.4
+      swarm_collision_weight: 9000.0
+      swarm_clearance_weight: 220.0
+      velocity_guard_margin_m: 0.55
+      velocity_guard_activation_margin_m: 2.0
+      velocity_guard_ttc_s: 4.0
+      velocity_guard_alpha: 1.8
+      velocity_guard_brake_clearance_m: 1.0
+      velocity_guard_brake_scale: 0.35
     rmader:
       max_neighbors: 6
       max_intents: 8
@@ -499,6 +510,15 @@ ego_swarm_opt:
   stale_age_cap_s: 1.5
   intent_age_inflation_gain: 0.35
   track_uncertainty_speed_gain: 0.1
+  velocity_guard_enabled: true
+  velocity_guard_margin_m: 0.35
+  velocity_guard_activation_margin_m: 1.25
+  velocity_guard_ttc_s: 3.0
+  velocity_guard_alpha: 1.4
+  velocity_guard_iterations: 3
+  velocity_guard_brake_enabled: true
+  velocity_guard_brake_clearance_m: 0.4
+  velocity_guard_brake_scale: 0.6
   goal_weight: 3.0
   reference_weight: 0.08
   smoothness_weight: 2.2

@@ -163,8 +163,15 @@ def test_scale_planner_preset_overrides_optimizer_budget(monkeypatch) -> None:
     assert mpc.horizon_steps == 4
     assert dmpc.max_initializations == 2
     assert bvc.projection_iterations == 2
-    assert ego.opt_iterations == 1
+    assert ego.max_neighbors == 8
+    assert ego.max_intents == 10
+    assert ego.max_initializations == 4
+    assert ego.opt_iterations == 2
     assert ego.replan_period_s == 0.2
+    assert ego.safety_margin_m == 0.55
+    assert ego.velocity_guard_margin_m == 0.55
+    assert ego.velocity_guard_brake_clearance_m == 1.0
+    assert ego.velocity_guard_brake_scale == 0.35
     assert rmader.max_dynamic_hulls_per_interval == 5
     assert rmader.dynamic_broadphase_margin_m == 6.0
     assert rmader.cached_reuse_validation == "kinematic"

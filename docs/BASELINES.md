@@ -290,7 +290,7 @@ This writes the standard raw result files plus `scale_summary.csv` and `scale_be
 
 For `rmader`, the scale preset also enables ego-trajectory broadphase filtering for dynamic MINVO hulls, keeps only the closest moving hulls per interval, uses kinematic cached-plan validation between replans, and replans slightly less often. This keeps the high-N study focused on nearby deconfliction pressure instead of spending most of the run solving hard hyperplanes against distant traffic.
 
-For `ego_swarm_opt`, the scale preset uses receding cached-plan reuse between 5 Hz trajectory optimizations. This matches a more realistic trajectory-planner cadence than re-solving every simulator tick and keeps high-N rows from becoming pure optimizer-throughput tests.
+For `ego_swarm_opt`, the scale preset uses receding cached-plan reuse between 5 Hz trajectory optimizations, a larger dense-fleet local traffic budget, and a command-level velocity/yield guard. This matches a more realistic trajectory-planner cadence than re-solving every simulator tick and keeps high-N rows from becoming pure optimizer-throughput tests.
 
 Long 3D stress runs can be checkpointed. Use `--max-wall-time-s` to stop launching new episodes after a global wall-clock budget, `--resume` to continue from existing per-suite `results.csv` rows, and `--run-timeout-s` to write a failed timeout row instead of letting one episode monopolize the job:
 
@@ -610,6 +610,10 @@ Useful optimizer debug fields include:
 - `ego_swarm_opt_min_swarm_clearance_m`
 - `ego_swarm_opt_min_obstacle_clearance_m`
 - `ego_swarm_opt_intent_points`
+- `ego_swarm_opt_velocity_guard_adjusted`
+- `ego_swarm_opt_velocity_guard_constraint_count`
+- `ego_swarm_opt_velocity_guard_brake_applied`
+- `ego_swarm_opt_velocity_guard_min_clearance_m`
 
 Use `ego_swarm_opt` when comparing against `mpc_local`: `mpc_local` is a sampled velocity-command predictive baseline, while `ego_swarm_opt` optimizes a planned trajectory and publishes it as intent. That distinction is exactly what the advanced comparison lane is meant to expose.
 

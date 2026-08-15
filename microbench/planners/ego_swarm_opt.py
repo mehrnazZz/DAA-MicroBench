@@ -175,6 +175,15 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
         self.stale_age_cap_s = float(cfg.get("stale_age_cap_s", 1.5))
         self.intent_age_inflation_gain = float(cfg.get("intent_age_inflation_gain", 0.35))
         self.track_uncertainty_speed_gain = float(cfg.get("track_uncertainty_speed_gain", 0.1))
+        self.velocity_guard_enabled = bool(cfg.get("velocity_guard_enabled", True))
+        self.velocity_guard_margin_m = float(cfg.get("velocity_guard_margin_m", 0.35))
+        self.velocity_guard_activation_margin_m = float(cfg.get("velocity_guard_activation_margin_m", 1.25))
+        self.velocity_guard_ttc_s = float(cfg.get("velocity_guard_ttc_s", 3.0))
+        self.velocity_guard_alpha = float(cfg.get("velocity_guard_alpha", 1.4))
+        self.velocity_guard_iterations = int(cfg.get("velocity_guard_iterations", 3))
+        self.velocity_guard_brake_enabled = bool(cfg.get("velocity_guard_brake_enabled", True))
+        self.velocity_guard_brake_clearance_m = float(cfg.get("velocity_guard_brake_clearance_m", 0.4))
+        self.velocity_guard_brake_scale = float(cfg.get("velocity_guard_brake_scale", 0.6))
 
         self.goal_weight = float(cfg.get("goal_weight", 3.0))
         self.reference_weight = float(cfg.get("reference_weight", 0.08))
@@ -240,8 +249,15 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
         v_cmd = _clamp_speed(v_cmd, float(ego.v_max))
         if planner_input.planar:
             v_cmd[1] = 0.0
+        v_cmd, guard_info = self._apply_velocity_guard(planner_input, v_cmd, current)
 
-        intent_points = self._intent_points(planner_input, samples)
+        intent_points = self._intent_points(
+            planner_input,
+            samples,
+            immediate_v_cmd=v_cmd,
+            sample_dt=sample_dt,
+            override_immediate=bool(guard_info["ego_swarm_opt_velocity_guard_adjusted"]),
+        )
         intent = IntentMsg(
             sender_id=int(ego.idx),
             timestamp_send_s=float(planner_input.t),
@@ -300,9 +316,11 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
                 "ego_swarm_opt_obstacle_count_considered": int(len(planner_input.obstacles)),
                 "ego_swarm_opt_planar": bool(planner_input.planar),
                 "ego_swarm_opt_intent_points": int(intent_points.shape[0]),
+                "ego_swarm_opt_velocity_guard_enabled": bool(self.velocity_guard_enabled),
                 "ego_swarm_opt_accel_delta_norm": float(_norm(v_cmd - current)),
                 "ego_swarm_opt_accel_delta_limit": float(float(ego.a_max) * float(planner_input.dt)),
                 "ego_swarm_opt_prior_label": prior_label,
+                **guard_info,
             },
         )
 
@@ -341,6 +359,96 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
             return 0
         lookahead_idx = int(math.floor(max(0.0, float(plan_age_s)) / max(1e-6, float(sample_dt)))) + 1
         return min(max(1, lookahead_idx), int(sample_count) - 1)
+
+    def _apply_velocity_guard(
+        self,
+        planner_input: PlannerInput,
+        v_cmd: np.ndarray,
+        current: np.ndarray,
+    ) -> tuple[np.ndarray, dict[str, Any]]:
+        if not self.velocity_guard_enabled:
+            return np.asarray(v_cmd, dtype=np.float32), {
+                "ego_swarm_opt_velocity_guard_adjusted": False,
+                "ego_swarm_opt_velocity_guard_constraint_count": 0,
+                "ego_swarm_opt_velocity_guard_min_clearance_m": None,
+                "ego_swarm_opt_velocity_guard_min_ttc_s": None,
+                "ego_swarm_opt_velocity_guard_delta_norm": 0.0,
+                "ego_swarm_opt_velocity_guard_brake_applied": False,
+            }
+
+        ego = planner_input.ego
+        guarded = np.asarray(v_cmd, dtype=np.float32).copy()
+        start = guarded.copy()
+        max_delta = float(ego.a_max) * float(planner_input.dt)
+        active: list[tuple[np.ndarray, float]] = []
+        min_clearance: float | None = None
+        min_ttc: float | None = None
+        brake_applied = False
+
+        for nobs in self._traffic(planner_input).neighbors:
+            if not bool(nobs.valid):
+                continue
+            rel = np.asarray(ego.pos, dtype=np.float32) - np.asarray(nobs.pos, dtype=np.float32)
+            other_v = np.asarray(nobs.vel, dtype=np.float32)
+            if planner_input.planar:
+                rel[1] = 0.0
+                other_v[1] = 0.0
+            dist = _norm(rel)
+            if dist < 1.0e-6:
+                rel = np.asarray([1.0, 0.0, 0.0], dtype=np.float32)
+                dist = 1.0
+            unit = rel / dist
+            safe = float(ego.radius) + float(nobs.radius) + self.safety_margin_m + self._neighbor_inflation(nobs)
+            safe += max(0.0, float(self.velocity_guard_margin_m))
+            clearance = dist - safe
+            min_clearance = clearance if min_clearance is None else min(min_clearance, clearance)
+            rel_v_current = np.asarray(current, dtype=np.float32) - other_v
+            vv = float(np.dot(rel_v_current, rel_v_current))
+            ttc: float | None = None
+            if vv > 1.0e-9:
+                tau = -float(np.dot(rel, rel_v_current)) / vv
+                if tau >= 0.0:
+                    ttc = tau
+                    min_ttc = tau if min_ttc is None else min(min_ttc, tau)
+            within_range = dist <= safe + max(0.0, float(self.velocity_guard_activation_margin_m))
+            closing_soon = ttc is not None and ttc <= max(0.0, float(self.velocity_guard_ttc_s))
+            if not within_range and not closing_soon:
+                continue
+            rhs = float(np.dot(unit, other_v) - float(self.velocity_guard_alpha) * clearance)
+            active.append((unit.astype(np.float32), rhs))
+
+        for _ in range(max(1, self.velocity_guard_iterations)):
+            for unit, rhs in active:
+                lhs = float(np.dot(unit, guarded))
+                if lhs < rhs:
+                    guarded = guarded + unit * (rhs - lhs)
+            guarded = _limit_delta(guarded, current, max_delta)
+            guarded = _clamp_speed(guarded, float(ego.v_max))
+            if planner_input.planar:
+                guarded[1] = 0.0
+
+        if (
+            self.velocity_guard_brake_enabled
+            and active
+            and min_clearance is not None
+            and float(min_clearance) <= max(0.0, float(self.velocity_guard_brake_clearance_m))
+        ):
+            brake_scale = max(0.0, min(1.0, float(self.velocity_guard_brake_scale)))
+            guarded = _limit_delta(guarded * brake_scale, current, max_delta)
+            guarded = _clamp_speed(guarded, float(ego.v_max))
+            if planner_input.planar:
+                guarded[1] = 0.0
+            brake_applied = True
+
+        delta = _norm(guarded - start)
+        return guarded.astype(np.float32), {
+            "ego_swarm_opt_velocity_guard_adjusted": bool(delta > 1.0e-7),
+            "ego_swarm_opt_velocity_guard_constraint_count": int(len(active)),
+            "ego_swarm_opt_velocity_guard_min_clearance_m": min_clearance,
+            "ego_swarm_opt_velocity_guard_min_ttc_s": min_ttc,
+            "ego_swarm_opt_velocity_guard_delta_norm": float(delta),
+            "ego_swarm_opt_velocity_guard_brake_applied": bool(brake_applied),
+        }
 
     def _control_point_count(self) -> int:
         return max(5, int(self.control_points))
@@ -959,11 +1067,24 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
             total += _norm(b - a)
         return float(total)
 
-    def _intent_points(self, planner_input: PlannerInput, samples: np.ndarray) -> np.ndarray:
+    def _intent_points(
+        self,
+        planner_input: PlannerInput,
+        samples: np.ndarray,
+        *,
+        immediate_v_cmd: np.ndarray | None = None,
+        sample_dt: float | None = None,
+        override_immediate: bool = False,
+    ) -> np.ndarray:
         ego_pos = np.asarray(planner_input.ego.pos, dtype=np.float32)
         out = samples.copy() if samples.size else ego_pos.reshape(1, 3)
         if out.shape[0] == 0 or _norm(out[0] - ego_pos) > 1e-5:
             out = np.vstack([ego_pos, out])
+        if override_immediate and immediate_v_cmd is not None and out.shape[0] > 1:
+            dt = float(sample_dt) if sample_dt is not None else self.horizon_s / max(1, out.shape[0] - 1)
+            out[1] = ego_pos + np.asarray(immediate_v_cmd, dtype=np.float32) * max(1.0e-6, dt)
+            if planner_input.planar:
+                out[1, 1] = float(ego_pos[1])
         if self.max_intent_points > 0 and out.shape[0] > self.max_intent_points:
             idx = np.linspace(0, out.shape[0] - 1, self.max_intent_points).round().astype(int)
             out = out[idx]

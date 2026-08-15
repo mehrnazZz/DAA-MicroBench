@@ -129,6 +129,40 @@ def test_ego_swarm_opt_close_head_on_optimizes_deconfliction_topology() -> None:
     assert abs(float(out.v_cmd[2])) > 1e-6 or out.v_cmd[0] < ego.vel[0]
 
 
+def test_ego_swarm_opt_velocity_guard_projects_immediate_track_conflict() -> None:
+    ego = _agent((0.0, 0.0, 0.0), vel=(2.0, 0.0, 0.0))
+    neighbor = NeighborObs(
+        idx=1,
+        pos=np.asarray([1.2, 0.0, 0.0], dtype=np.float32),
+        vel=np.asarray([-2.0, 0.0, 0.0], dtype=np.float32),
+        radius=0.5,
+        msg_age_sec=0.0,
+        valid=True,
+    )
+    planner = EgoSwarmOptimizingPlanner(
+        cfg={
+            "horizon_s": 2.4,
+            "rollout_dt_s": 0.4,
+            "control_points": 5,
+            "curve_samples": 5,
+            "max_initializations": 1,
+            "opt_iterations": 1,
+            "velocity_guard_enabled": True,
+            "velocity_guard_iterations": 3,
+        }
+    )
+
+    out = planner.compute_cmd(_planner_input(ego=ego, neighbors=[neighbor]))
+
+    assert out.debug_info["ego_swarm_opt_velocity_guard_adjusted"] is True
+    assert out.debug_info["ego_swarm_opt_velocity_guard_constraint_count"] > 0
+    assert out.debug_info["ego_swarm_opt_velocity_guard_min_clearance_m"] < 0.0
+    assert out.debug_info["ego_swarm_opt_velocity_guard_brake_applied"] is True
+    assert out.v_cmd[0] < ego.vel[0]
+    assert out.intent_out is not None
+    assert np.isclose(out.intent_out.points[1, 0], ego.pos[0] + out.v_cmd[0] * out.intent_out.dt_plan_s)
+
+
 def test_ego_swarm_opt_obstacle_in_path_optimizes_around_or_slows() -> None:
     ego = _agent((0.0, 0.0, 0.0), vel=(1.0, 0.0, 0.0))
     obstacle = AABBObs(
