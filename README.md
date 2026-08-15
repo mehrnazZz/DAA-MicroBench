@@ -435,6 +435,22 @@ python -m microbench.cli advanced-baseline-comparison \
 
 This runs ORCA, stale-aware ORCA, CBF-QP, MPC-local, nonlinear MPC, distributed MPC, BVC tube-DMPC, dynamic tube-DMPC, RMADER, sampled EGO-Swarm-inspired trajectory sharing, optimized EGO-Swarm-style control-point planning, VO, and RVO on the same `urban_conflict_3d` lane and writes `advanced_baseline_comparison.json`, `baseline_report.json`, `results.csv`, and `summary.csv`. Use it as a quick apples-to-apples advanced-baseline artifact; the all-suite leaderboard remains the publication-grade benchmark evidence.
 
+Run a fleet-size scaling ladder:
+
+```bash
+python -m microbench.cli scale-benchmark \
+  --out-dir runs_scale_benchmark \
+  --scenarios config/scenarios/stacked_swap_3d.yaml,config/scenarios/urban_conflict_3d.yaml \
+  --n 4,8,16,30 \
+  --seeds 2 \
+  --comm realistic_v2v_50hz \
+  --duration-s 60 \
+  --scale-spawn-profile dense \
+  --run-timeout-s 360
+```
+
+This writes raw `results.csv`, standard `summary.csv`, `scale_summary.csv`, and `scale_benchmark.json`. The scale report separates safety from runtime feasibility: a method that times out at high N is recorded as a failed scale row, not silently dropped.
+
 Run the generated agentic stress suite:
 
 ```bash

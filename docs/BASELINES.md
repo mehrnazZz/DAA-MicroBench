@@ -270,6 +270,23 @@ python -m microbench.cli optimizer-suite-review \
   --require-complete
 ```
 
+Run a fleet-size scaling ladder when the question is how methods behave as N grows:
+
+```bash
+python -m microbench.cli scale-benchmark \
+  --out-dir runs_scale_benchmark \
+  --scenarios config/scenarios/stacked_swap_3d.yaml,config/scenarios/urban_conflict_3d.yaml \
+  --methods mpc_nonlinear,dmpc_best_response,bvc_tube_dmpc,dynamic_tube_dmpc,ego_swarm_opt,rmader \
+  --n 4,8,16,30 \
+  --seeds 2 \
+  --comm realistic_v2v_50hz \
+  --duration-s 60 \
+  --scale-spawn-profile dense \
+  --run-timeout-s 360
+```
+
+This writes the standard raw result files plus `scale_summary.csv` and `scale_benchmark.json`, grouped by scenario, method, communication profile, and N. Use it to report maximum completed N, timeout pressure, guardrail pressure, collision rate, and planner p95 latency. Treat timeout rows and partial-timeout rows as review blockers, not success cases.
+
 Long 3D stress runs can be checkpointed. Use `--max-wall-time-s` to stop launching new episodes after a global wall-clock budget, `--resume` to continue from existing per-suite `results.csv` rows, and `--run-timeout-s` to write a failed timeout row instead of letting one episode monopolize the job:
 
 ```bash

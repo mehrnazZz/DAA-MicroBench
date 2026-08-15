@@ -165,6 +165,22 @@ python -m microbench.cli optimizer-suite-review \
 
 It delegates runs to `baseline-leaderboard`, then writes `optimizer_suite_review.json` with method summaries, review findings, transient guardrail retry evidence, and Foxglove rerun/export commands for the most interesting cases. Capped optimizer reviews use balanced run selection by default, so checkpoints cover scenario/method groups more evenly than a prefix-only cap. Guardrail rows retry once by default only to distinguish transient local runtime spikes from persistent failures; use `--guardrail-retries 0` for a stricter audit. Use `--save-review-traces` to write full `trace_episode.jsonl` artifacts for those cases. Remove `--max-runs` and use `--suites official_alpha,official_3d_stress,official_agentic_stress --require-complete` before making publication-scale optimizer claims.
 
+For fleet-size scaling studies, use the scale benchmark runner:
+
+```bash
+python -m microbench.cli scale-benchmark \
+  --out-dir runs_scale_benchmark \
+  --scenarios config/scenarios/stacked_swap_3d.yaml,config/scenarios/urban_conflict_3d.yaml \
+  --n 4,8,16,30 \
+  --seeds 2 \
+  --comm realistic_v2v_50hz \
+  --duration-s 60 \
+  --scale-spawn-profile dense \
+  --run-timeout-s 360
+```
+
+This writes raw `results.csv`, standard `summary.csv`, `scale_summary.csv`, `scale_benchmark_progress.json`, and `scale_benchmark.json`. Use `--scale-spawn-profile dense` only when a copied scenario needs a placement profile for large N; it widens four-way spawn lanes in the generated scale copy and leaves the source scenario unchanged. Timeout and partial-timeout rows are first-class evidence, but they are not successful leaderboard rows.
+
 Optionally publish the same run to W&B as dashboard tables:
 
 ```bash

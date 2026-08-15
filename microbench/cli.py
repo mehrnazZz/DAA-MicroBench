@@ -39,8 +39,10 @@ from microbench.tools import (
     DEFAULT_ADVANCED_COMPARISON_SCENARIO,
     DEFAULT_ADVANCED_COMPARISON_SEED,
     DEFAULT_OPTIMIZER_REVIEW_SUITES,
+    DEFAULT_SCALE_BENCHMARK_METHODS,
     OPTIMIZER_REVIEW_METHODS,
     MAX_RUNS_STRATEGIES,
+    SCALE_SPAWN_PROFILES,
     build_baseline_audit,
     build_current_schema_candidate,
     compare_current_schema_golden,
@@ -52,6 +54,7 @@ from microbench.tools import (
     run_baseline_promotion_calibration,
     run_baseline_stable_review,
     run_optimizer_suite_review,
+    run_scale_benchmark,
     write_baseline_report,
     write_current_schema_golden,
 )
@@ -870,6 +873,53 @@ def _optimizer_suite_review(args) -> None:
         raise SystemExit("optimizer suite review incomplete for publication-scale claims")
 
 
+def _scale_benchmark(args) -> None:
+    report = run_scale_benchmark(
+        out_dir=args.out_dir,
+        scenarios=_expand_scenarios(args.scenarios),
+        methods=_parse_str_list(args.methods) if args.methods else None,
+        n_agents=_parse_int_list(args.n) if args.n else None,
+        seeds=_parse_int_list(args.seeds) if args.seeds else None,
+        comm_profiles=_parse_str_list(args.comm) if args.comm else None,
+        max_runs=args.max_runs,
+        max_runs_strategy=str(args.max_runs_strategy),
+        resume=bool(args.resume),
+        max_wall_time_s=args.max_wall_time_s,
+        run_timeout_s=args.run_timeout_s,
+        duration_s=args.duration_s,
+        save_traces=bool(args.save_traces),
+        scale_spawn_profile=str(args.scale_spawn_profile),
+        plan_only=bool(args.plan_only),
+    )
+
+    if args.json:
+        print(json.dumps(report, allow_nan=False, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "REVIEW"
+        print(
+            "scale-benchmark: "
+            f"{status} runs={report['selected_completed_count']}/{report['selected_run_count']} "
+            f"planned={report['planned_run_count']} timeouts={report['timeout_run_count']} "
+            f"summary={report['scale_summary_csv']}"
+        )
+        for row in report["method_summaries"]:
+            print(
+                f"  rank={row['rank']} method={row['method']} "
+                f"max_completed_N={row.get('max_completed_N')} max_clean_N={row.get('max_clean_N')} "
+                f"timeout_rate={row.get('timeout_rate_mean')} "
+                f"collision_rate={row.get('collision_episode_rate_mean')}"
+            )
+
+    if args.require_complete and not report["complete"]:
+        raise SystemExit("scale benchmark incomplete for publication-scale claims")
+    if args.require_pass and not report["ok"]:
+        raise SystemExit(
+            "scale benchmark failed: "
+            f"selected_complete={report['selected_complete']} "
+            f"timeouts={report['timeout_run_count']} stopped={report['stopped_by_wall_time']}"
+        )
+
+
 def _baseline_review(args) -> None:
     duration_s = None if args.full_duration else float(args.duration_s)
     report = run_baseline_stable_review(
@@ -1598,6 +1648,66 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fail unless the selected suites are complete enough for publication-scale claims",
     )
 
+    p_scale = sub.add_parser(
+        "scale-benchmark",
+        help="Run methods across scenario files and fleet-size ladders with timeout-aware scale reporting",
+    )
+    p_scale.add_argument("--out-dir", required=True, help="Fresh output directory for scale artifacts")
+    p_scale.add_argument(
+        "--scenarios",
+        required=True,
+        help="Comma-separated scenario paths/ids/globs, e.g. config/scenarios/stacked_swap_3d.yaml,config/scenarios/urban_conflict_3d.yaml",
+    )
+    p_scale.add_argument(
+        "--methods",
+        default=None,
+        help="Comma-separated methods; defaults to " + ",".join(DEFAULT_SCALE_BENCHMARK_METHODS),
+    )
+    p_scale.add_argument("--n", default="4,8,16,30", help="Agent-count ladder, e.g. 4,8,16,30")
+    p_scale.add_argument("--seeds", default="0", help="Seed list/range, e.g. 0:2")
+    p_scale.add_argument("--comm", default="realistic_v2v_50hz", help="Communication profile list")
+    p_scale.add_argument("--max-runs", type=int, default=None, help="Optional run cap for development checkpoints")
+    p_scale.add_argument(
+        "--max-runs-strategy",
+        choices=MAX_RUNS_STRATEGIES,
+        default="balanced",
+        help="How to choose runs when --max-runs truncates the scenario/method/N matrix",
+    )
+    p_scale.add_argument("--resume", action="store_true", help="Resume from existing scale results.csv rows")
+    p_scale.add_argument(
+        "--max-wall-time-s",
+        type=float,
+        default=None,
+        help="Optional global wall-clock budget; writes partial progress when exceeded",
+    )
+    p_scale.add_argument(
+        "--run-timeout-s",
+        type=float,
+        default=None,
+        help="Optional hard per-episode wall-clock timeout for scale jobs",
+    )
+    p_scale.add_argument(
+        "--duration-s",
+        type=float,
+        default=None,
+        help="Optional duration override applied to copied scale scenario files",
+    )
+    p_scale.add_argument("--save-traces", action="store_true", help="Save full traces for scale runs")
+    p_scale.add_argument(
+        "--scale-spawn-profile",
+        choices=SCALE_SPAWN_PROFILES,
+        default="none",
+        help="Optional spawn adaptation for copied scale scenario files; dense widens four-way lanes for larger N",
+    )
+    p_scale.add_argument("--plan-only", action="store_true", help="Write prepared scenario files and report the planned matrix")
+    p_scale.add_argument("--json", action="store_true", help="Emit machine-readable scale benchmark report")
+    p_scale.add_argument("--require-pass", action="store_true", help="Fail if selected scale runs are incomplete or timed out")
+    p_scale.add_argument(
+        "--require-complete",
+        action="store_true",
+        help="Fail unless the full requested scale matrix completed without hard timeouts",
+    )
+
     p_brv = sub.add_parser("baseline-review", help="Run optional longer stable-metadata review lanes for baseline candidates")
     p_brv.add_argument("--out-dir", required=True, help="Fresh output directory for review artifacts")
     p_brv.add_argument("--root", default=".", help="Repository root used for docs/tests coverage checks")
@@ -1872,6 +1982,9 @@ def main() -> None:
         return
     if args.cmd == "optimizer-suite-review":
         _optimizer_suite_review(args)
+        return
+    if args.cmd == "scale-benchmark":
+        _scale_benchmark(args)
         return
     if args.cmd == "baseline-review":
         _baseline_review(args)

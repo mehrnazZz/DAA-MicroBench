@@ -102,6 +102,14 @@ python -m microbench.cli optimizer-suite-review --out-dir runs_optimizer_suite_r
 
 The optimizer review retries planner-guardrail rows once by default and records retry evidence in `optimizer_suite_review.json`, so transient local runtime spikes stay visible without being confused with persistent baseline failures.
 
+Run a fleet-size scaling ladder:
+
+```bash
+python -m microbench.cli scale-benchmark --out-dir runs_scale_benchmark --scenarios config/scenarios/stacked_swap_3d.yaml,config/scenarios/urban_conflict_3d.yaml --n 4,8,16,30 --seeds 2 --comm realistic_v2v_50hz --duration-s 60 --scale-spawn-profile dense --run-timeout-s 360
+```
+
+The scale report writes `scale_summary.csv` and `scale_benchmark.json`, recording completed rows, hard timeouts, guardrail pressure, collision rates, and planner latency by scenario, method, and N.
+
 Run the all-suite baseline leaderboard:
 
 ```bash

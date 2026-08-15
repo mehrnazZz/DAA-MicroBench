@@ -28,6 +28,12 @@ from microbench.tools.optimizer_suite_review import (
     run_optimizer_suite_review,
     write_optimizer_suite_review,
 )
+from microbench.tools.scale_benchmark import (
+    DEFAULT_SCALE_BENCHMARK_METHODS,
+    SCALE_SPAWN_PROFILES,
+    run_scale_benchmark,
+    write_scale_benchmark,
+)
 from microbench.tools.baseline_promotion import (
     run_baseline_promotion_calibration,
     write_baseline_promotion_calibration,
@@ -59,8 +65,11 @@ __all__ = [
     "MAX_RUNS_STRATEGIES",
     "DEFAULT_OPTIMIZER_REVIEW_SUITES",
     "OPTIMIZER_REVIEW_METHODS",
+    "DEFAULT_SCALE_BENCHMARK_METHODS",
+    "SCALE_SPAWN_PROFILES",
     "run_baseline_leaderboard",
     "run_optimizer_suite_review",
+    "run_scale_benchmark",
     "run_advanced_baseline_comparison",
     "run_baseline_behavior_smoke",
     "run_baseline_reference_evidence",
@@ -68,6 +77,7 @@ __all__ = [
     "run_baseline_stable_review",
     "write_baseline_report",
     "write_optimizer_suite_review",
+    "write_scale_benchmark",
     "write_advanced_baseline_comparison",
     "SERIOUS_BASELINE_METHODS",
     "write_baseline_audit",
