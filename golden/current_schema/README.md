@@ -34,7 +34,7 @@ The helper runs the source episodes in a temporary directory named `daa_current_
 
 ## Purpose
 - Exercises the current result and summary schemas.
-- Freezes the current explicit result schema version (`0.4.0`).
+- Freezes the current explicit result schema version (`0.5.0`).
 - Exercises both single-method and heterogeneous-agent method labels.
 - Exercises zero-traffic communication and negotiation metric columns for schema stability.
 - Stays fast enough to regenerate during normal development.

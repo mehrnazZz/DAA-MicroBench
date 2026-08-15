@@ -28,7 +28,7 @@ def _sample_leaderboard_report(root: Path) -> dict[str, Any]:
     for path, text in (
         (results_path, "run_id,method\nr0,baseline_goal\n"),
         (summary_path, "method,score_v0\nbaseline_goal,12.0\n"),
-        (schema_path, '{"schema_version":"0.4.0"}\n'),
+        (schema_path, '{"schema_version":"0.5.0"}\n'),
         (manifest_path, "suite_id: official_smoke_generated\n"),
     ):
         path.parent.mkdir(parents=True, exist_ok=True)

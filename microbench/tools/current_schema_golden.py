@@ -38,12 +38,22 @@ RESULT_FLOAT_TOLERANCE_FIELDS = frozenset(
         "jerk_mean",
         "min_sep_min_m",
         "min_sep_p05_m",
+        "final_goal_dist_mean_m",
+        "final_goal_dist_p95_m",
+        "goal_progress_mean_m",
+        "goal_progress_fraction_mean",
+        "goal_progress_fraction_p05",
     }
 )
 SUMMARY_FLOAT_TOLERANCE_FIELDS = frozenset(
     {
         "min_sep_min_mean",
         "min_sep_p05_mean",
+        "final_goal_dist_mean_m_mean",
+        "final_goal_dist_p95_m_mean",
+        "goal_progress_mean_m_mean",
+        "goal_progress_fraction_mean",
+        "goal_progress_fraction_p05_mean",
     }
 )
 

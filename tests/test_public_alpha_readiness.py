@@ -20,7 +20,7 @@ def test_public_alpha_notes_cover_release_contract() -> None:
 
     assert "Status date: 2026-07-06" in notes
     assert "Python 3.10, 3.11, and 3.12" in notes
-    assert "Result schema version: `0.4.0`" in notes
+    assert "Result schema version: `0.5.0`" in notes
     assert "official_smoke_generated" in notes
     assert "official_3d_stress" in notes
     assert "official_agentic_stress" in notes

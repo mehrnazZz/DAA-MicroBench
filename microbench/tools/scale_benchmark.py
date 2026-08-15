@@ -248,6 +248,31 @@ def _scale_summary_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             for row in completed_rows
             if _num(row.get("completion_rate")) is not None
         ]
+        final_goal_dist_mean = [
+            _num(row.get("final_goal_dist_mean_m"))
+            for row in completed_rows
+            if _num(row.get("final_goal_dist_mean_m")) is not None
+        ]
+        final_goal_dist_p95 = [
+            _num(row.get("final_goal_dist_p95_m"))
+            for row in completed_rows
+            if _num(row.get("final_goal_dist_p95_m")) is not None
+        ]
+        goal_progress_mean = [
+            _num(row.get("goal_progress_mean_m"))
+            for row in completed_rows
+            if _num(row.get("goal_progress_mean_m")) is not None
+        ]
+        goal_progress_fraction_mean = [
+            _num(row.get("goal_progress_fraction_mean"))
+            for row in completed_rows
+            if _num(row.get("goal_progress_fraction_mean")) is not None
+        ]
+        goal_progress_fraction_p05 = [
+            _num(row.get("goal_progress_fraction_p05"))
+            for row in completed_rows
+            if _num(row.get("goal_progress_fraction_p05")) is not None
+        ]
         min_seps = [
             _num(row.get("min_sep_min_m"))
             for row in completed_rows
@@ -281,6 +306,11 @@ def _scale_summary_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "collision_pair_ticks_mean": _mean(collision_ticks),
                 "unique_collision_pairs_mean": _mean(unique_pairs),
                 "completion_rate_mean": _mean(completion_rates),
+                "final_goal_dist_mean_m_mean": _mean(final_goal_dist_mean),
+                "final_goal_dist_p95_m_mean": _mean(final_goal_dist_p95),
+                "goal_progress_mean_m_mean": _mean(goal_progress_mean),
+                "goal_progress_fraction_mean": _mean(goal_progress_fraction_mean),
+                "goal_progress_fraction_p05_mean": _mean(goal_progress_fraction_p05),
                 "min_sep_min_worst_m": _min(min_seps),
                 "planner_ms_p95_max": _max(planner_p95),
                 "episode_runtime_s_mean": _mean([float(v) for v in runtimes]),
@@ -305,6 +335,11 @@ def _write_scale_summary_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         "collision_pair_ticks_mean",
         "unique_collision_pairs_mean",
         "completion_rate_mean",
+        "final_goal_dist_mean_m_mean",
+        "final_goal_dist_p95_m_mean",
+        "goal_progress_mean_m_mean",
+        "goal_progress_fraction_mean",
+        "goal_progress_fraction_p05_mean",
         "min_sep_min_worst_m",
         "planner_ms_p95_max",
         "episode_runtime_s_mean",
@@ -344,6 +379,11 @@ def _method_summary_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             for row in items
             if _num(row.get("completion_rate_mean")) is not None
         ]
+        goal_progress_fractions = [
+            _num(row.get("goal_progress_fraction_mean"))
+            for row in items
+            if _num(row.get("goal_progress_fraction_mean")) is not None
+        ]
         planner_p95 = [_num(row.get("planner_ms_p95_max")) for row in items if _num(row.get("planner_ms_p95_max")) is not None]
         out.append(
             {
@@ -352,6 +392,7 @@ def _method_summary_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "timeout_rate_mean": _mean([float(v) for v in timeout_rates]),
                 "collision_episode_rate_mean": _mean([float(v) for v in collision_rates]),
                 "completion_rate_mean": _mean([float(v) for v in completion_rates]),
+                "goal_progress_fraction_mean": _mean([float(v) for v in goal_progress_fractions]),
                 "max_completed_N": max([int(row["N"]) for row in completed], default=None),
                 "max_clean_N": max([int(row["N"]) for row in clean], default=None),
                 "planner_ms_p95_max": _max([float(v) for v in planner_p95]),

@@ -49,7 +49,7 @@ def test_current_schema_golden_matches_fresh_regeneration(tmp_path: Path) -> Non
     report = compare_current_schema_golden(candidate_dir=candidate, golden_dir=GOLDEN_DIR)
 
     assert report["ok"], report["mismatches"]
-    assert report["schema_version"] == "0.4.0"
+    assert report["schema_version"] == "0.5.0"
     assert set(report["ignored_or_tolerated_timing_fields"]["results.csv"]) == set(RESULT_TIMING_FIELDS)
     assert set(report["ignored_or_tolerated_timing_fields"]["summary.csv"]) == set(SUMMARY_TIMING_FIELDS)
     assert set(report["tolerated_float_fields"]["results.csv"]) == set(RESULT_FLOAT_TOLERANCE_FIELDS)

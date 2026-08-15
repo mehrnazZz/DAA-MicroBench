@@ -286,7 +286,7 @@ python -m microbench.cli scale-benchmark \
   --run-timeout-s 360
 ```
 
-This writes the standard raw result files plus `scale_summary.csv` and `scale_benchmark.json`, grouped by scenario, method, communication profile, and N. Use it to report maximum completed N, timeout pressure, guardrail pressure, collision rate, and planner p95 latency. `--planner-preset scale` bounds optimizer effort for high-N studies while preserving the normal full/default planner settings for standard runs. Treat timeout rows and partial-timeout rows as review blockers, not success cases.
+This writes the standard raw result files plus `scale_summary.csv` and `scale_benchmark.json`, grouped by scenario, method, communication profile, and N. Use it to report maximum completed N, timeout pressure, guardrail pressure, collision rate, completion rate, final goal distance, progress fraction, and planner p95 latency. `--planner-preset scale` bounds optimizer effort for high-N studies while preserving the normal full/default planner settings for standard runs. Treat timeout rows and partial-timeout rows as review blockers, not success cases.
 
 For `mpc_nonlinear`, `dmpc_best_response`, and `bvc_tube_dmpc`, the scale preset keeps optimizer effort bounded while using dense-fleet local traffic budgets, stronger safety margins, and command-level velocity/yield guarding. This keeps the high-N row focused on deconfliction behavior instead of turning every large-fleet run into a full optimizer-throughput test.
 

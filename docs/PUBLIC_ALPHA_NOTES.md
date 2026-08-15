@@ -10,7 +10,7 @@ This is not yet a stable v1 release. The public contract is intended to be revie
 
 - Python 3.10, 3.11, and 3.12
 - Core install: `pip install -e .`
-- Result schema version: `0.4.0`
+- Result schema version: `0.5.0`
 - License: Apache-2.0
 
 ## Public Alpha Suites

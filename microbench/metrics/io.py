@@ -7,7 +7,7 @@ import math
 from collections import defaultdict
 
 
-RESULT_SCHEMA_VERSION = "0.4.0"
+RESULT_SCHEMA_VERSION = "0.5.0"
 RESULT_SCHEMA_FILENAME = "result_schema.json"
 
 RESULT_FIELDS = [
@@ -37,6 +37,11 @@ RESULT_FIELDS = [
     "min_sep_min_m",
     "min_sep_p05_m",
     "completion_rate",
+    "final_goal_dist_mean_m",
+    "final_goal_dist_p95_m",
+    "goal_progress_mean_m",
+    "goal_progress_fraction_mean",
+    "goal_progress_fraction_p05",
     "mean_time_to_goal_s",
     "p95_time_to_goal_s",
     "deadlock_time_pct",
@@ -92,6 +97,11 @@ SUMMARY_FIELDS = [
     "min_sep_p05_mean",
     "min_sep_min_mean",
     "completion_rate_mean",
+    "final_goal_dist_mean_m_mean",
+    "final_goal_dist_p95_m_mean",
+    "goal_progress_mean_m_mean",
+    "goal_progress_fraction_mean",
+    "goal_progress_fraction_p05_mean",
     "mean_time_to_goal_mean",
     "deadlock_time_pct_mean",
     "planner_ms_mean",
@@ -246,6 +256,16 @@ def write_summary(out_dir: str | Path) -> Path:
             min_sep_min = [x for x in min_sep_min if x is not None]
             comp = [_to_float(x.get("completion_rate")) for x in items]
             comp = [x for x in comp if x is not None]
+            final_goal_dist_mean = [_to_float(x.get("final_goal_dist_mean_m")) for x in items]
+            final_goal_dist_mean = [x for x in final_goal_dist_mean if x is not None]
+            final_goal_dist_p95 = [_to_float(x.get("final_goal_dist_p95_m")) for x in items]
+            final_goal_dist_p95 = [x for x in final_goal_dist_p95 if x is not None]
+            goal_progress_mean = [_to_float(x.get("goal_progress_mean_m")) for x in items]
+            goal_progress_mean = [x for x in goal_progress_mean if x is not None]
+            goal_progress_fraction_mean = [_to_float(x.get("goal_progress_fraction_mean")) for x in items]
+            goal_progress_fraction_mean = [x for x in goal_progress_fraction_mean if x is not None]
+            goal_progress_fraction_p05 = [_to_float(x.get("goal_progress_fraction_p05")) for x in items]
+            goal_progress_fraction_p05 = [x for x in goal_progress_fraction_p05 if x is not None]
             ttg = [_to_float(x.get("mean_time_to_goal_s")) for x in items]
             ttg = [x for x in ttg if x is not None]
             dead = [_to_float(x.get("deadlock_time_pct")) for x in items]
@@ -327,6 +347,11 @@ def write_summary(out_dir: str | Path) -> Path:
                 "min_sep_p05_mean": _mean(min_sep_p05),
                 "min_sep_min_mean": _mean(min_sep_min),
                 "completion_rate_mean": _mean(comp),
+                "final_goal_dist_mean_m_mean": _mean(final_goal_dist_mean),
+                "final_goal_dist_p95_m_mean": _mean(final_goal_dist_p95),
+                "goal_progress_mean_m_mean": _mean(goal_progress_mean),
+                "goal_progress_fraction_mean": _mean(goal_progress_fraction_mean),
+                "goal_progress_fraction_p05_mean": _mean(goal_progress_fraction_p05),
                 "mean_time_to_goal_mean": _mean(ttg),
                 "deadlock_time_pct_mean": _mean(dead),
                 "planner_ms_mean": _mean(pms),

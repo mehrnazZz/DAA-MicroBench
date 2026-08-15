@@ -29,7 +29,7 @@ def _header(path: Path) -> list[str]:
 def test_result_schema_manifest_is_declared_and_deterministic() -> None:
     manifest = result_schema_manifest()
 
-    assert RESULT_SCHEMA_VERSION == "0.4.0"
+    assert RESULT_SCHEMA_VERSION == "0.5.0"
     assert manifest == result_schema_manifest()
     assert manifest["schema"] == "daa_microbench.results"
     assert manifest["schema_version"] == RESULT_SCHEMA_VERSION

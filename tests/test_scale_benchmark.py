@@ -18,6 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _complete_row(spec, *, collision_episode: int = 0, completion_rate: float = 1.0) -> dict[str, Any]:
+    final_goal_dist = 8.0 if completion_rate < 1.0 else 0.5
+    progress_fraction = 0.75 if completion_rate < 1.0 else 0.99
     return {
         "run_id": Path(spec.out_dir).name,
         "method": spec.method,
@@ -38,6 +40,11 @@ def _complete_row(spec, *, collision_episode: int = 0, completion_rate: float = 
         "near_miss_episode": 0,
         "min_sep_min_m": -0.1 if collision_episode else 1.5,
         "completion_rate": completion_rate,
+        "final_goal_dist_mean_m": final_goal_dist,
+        "final_goal_dist_p95_m": final_goal_dist + 1.0,
+        "goal_progress_mean_m": 24.0,
+        "goal_progress_fraction_mean": progress_fraction,
+        "goal_progress_fraction_p05": max(0.0, progress_fraction - 0.1),
         "planner_ms_per_tick_per_agent_p95": 3.0 + spec.n_agents,
         "planner_timeout_count": 0,
         "planner_error_count": 0,
@@ -124,11 +131,14 @@ def test_scale_benchmark_aggregates_across_n_ladder(tmp_path: Path, monkeypatch)
     scale_rows = {int(row["N"]): row for row in report["scale_rows"]}
     assert scale_rows[4]["collision_episode_rate"] == 0.0
     assert scale_rows[8]["collision_episode_rate"] == 1.0
+    assert scale_rows[4]["goal_progress_fraction_mean"] == 0.99
+    assert scale_rows[4]["final_goal_dist_mean_m_mean"] == 0.5
 
     with Path(report["scale_summary_csv"]).open("r", newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     assert len(rows) == 2
     assert {row["N"] for row in rows} == {"4", "8"}
+    assert "goal_progress_fraction_mean" in rows[0]
 
 
 def test_scale_benchmark_records_timeout_rows(tmp_path: Path, monkeypatch) -> None:

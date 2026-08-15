@@ -19,6 +19,11 @@ class EpisodeMetrics:
     min_sep_min_m: float
     min_sep_p05_m: float
     completion_rate: float
+    final_goal_dist_mean_m: float
+    final_goal_dist_p95_m: float
+    goal_progress_mean_m: float
+    goal_progress_fraction_mean: float
+    goal_progress_fraction_p05: float
     mean_time_to_goal_s: float
     p95_time_to_goal_s: float
     deadlock_time_pct: float
@@ -147,6 +152,7 @@ class EpisodeRecorder:
         spawn_goal_dists: np.ndarray,
         planner_ms_samples: np.ndarray,
         episode_runtime_s: float,
+        final_goal_dists: np.ndarray | None = None,
         comm_stats: dict[str, int] | None = None,
         planner_guardrail_stats: dict[str, int] | None = None,
     ) -> EpisodeMetrics:
@@ -165,6 +171,19 @@ class EpisodeRecorder:
         min_sep_p05 = float(np.percentile(min_seps, 5)) if len(min_seps) else 0.0
         deadlock_time_pct = float(self.deadlock_ticks / max(1, self.total_ticks))
         jerk_mean = float(np.mean(self.jerk_values)) if self.jerk_values else 0.0
+        spawn_goal_dists = np.asarray(spawn_goal_dists, dtype=float)
+        if final_goal_dists is None:
+            final_goal_dists_arr = spawn_goal_dists.copy()
+        else:
+            final_goal_dists_arr = np.asarray(final_goal_dists, dtype=float)
+        if final_goal_dists_arr.shape != spawn_goal_dists.shape:
+            raise ValueError(
+                "final_goal_dists must have the same shape as spawn_goal_dists, "
+                f"got {final_goal_dists_arr.shape} and {spawn_goal_dists.shape}"
+            )
+        goal_progress = spawn_goal_dists - final_goal_dists_arr
+        denom = np.maximum(spawn_goal_dists, 1.0e-9)
+        goal_progress_fraction = np.clip(goal_progress / denom, 0.0, 1.0)
 
         if planner_ms_samples.size:
             planner_mean = float(np.mean(planner_ms_samples))
@@ -210,6 +229,13 @@ class EpisodeRecorder:
             min_sep_min_m=min_sep_min,
             min_sep_p05_m=min_sep_p05,
             completion_rate=completion_rate,
+            final_goal_dist_mean_m=float(np.mean(final_goal_dists_arr)) if len(final_goal_dists_arr) else 0.0,
+            final_goal_dist_p95_m=float(np.percentile(final_goal_dists_arr, 95)) if len(final_goal_dists_arr) else 0.0,
+            goal_progress_mean_m=float(np.mean(goal_progress)) if len(goal_progress) else 0.0,
+            goal_progress_fraction_mean=float(np.mean(goal_progress_fraction)) if len(goal_progress_fraction) else 0.0,
+            goal_progress_fraction_p05=float(np.percentile(goal_progress_fraction, 5))
+            if len(goal_progress_fraction)
+            else 0.0,
             mean_time_to_goal_s=mean_time,
             p95_time_to_goal_s=p95_time,
             deadlock_time_pct=deadlock_time_pct,

@@ -16,7 +16,7 @@ Every run directory written by the CLI includes:
 - `summary.csv`: grouped leaderboard records.
 - `result_schema.json`: schema id, schema version, and ordered field lists for both CSV files.
 
-The current result schema version is `0.4.0`. Any change to the ordered CSV fields should update this version and the current-schema golden fixture.
+The current result schema version is `0.5.0`. Any change to the ordered CSV fields should update this version and the current-schema golden fixture.
 
 ## Official Dimensions
 
@@ -68,6 +68,8 @@ Interpretation:
 Primary mission fields:
 
 - `completion_rate_mean`
+- `goal_progress_fraction_mean`
+- `final_goal_dist_mean_m_mean`
 - `mean_time_to_goal_mean`
 - `deadlock_time_pct_mean`
 
@@ -180,7 +182,7 @@ python -m microbench.cli scale-benchmark \
   --run-timeout-s 360
 ```
 
-This writes raw `results.csv`, standard `summary.csv`, `scale_summary.csv`, `scale_benchmark_progress.json`, and `scale_benchmark.json`. Use `--scale-spawn-profile dense` only when a copied scenario needs a placement profile for large N; it widens four-way spawn lanes in the generated scale copy and leaves the source scenario unchanged. Use `--planner-preset scale` for compute-bounded high-N optimizer sweeps; omit it when auditing the fuller default planner settings. For NMPC/DMPC/BVC/RMADER-style optimizers, the scale preset uses bounded local traffic/constraint budgets plus command-level velocity/yield guarding. For RMADER, it also uses ego-trajectory broadphase filtering, true seed-budget capping, closest-dynamic-hull caps, and kinematic cached-plan validation so the high-N row measures nearby deconfliction pressure instead of distant hyperplane bookkeeping; for `ego_swarm_opt`, it uses receding cached-plan reuse between 5 Hz trajectory optimizations plus a command-level velocity/yield guard. Timeout and partial-timeout rows are first-class evidence, but they are not successful leaderboard rows.
+This writes raw `results.csv`, standard `summary.csv`, `scale_summary.csv`, `scale_benchmark_progress.json`, and `scale_benchmark.json`. Use `--scale-spawn-profile dense` only when a copied scenario needs a placement profile for large N; it widens four-way spawn lanes in the generated scale copy and leaves the source scenario unchanged. Use `--planner-preset scale` for compute-bounded high-N optimizer sweeps; omit it when auditing the fuller default planner settings. For NMPC/DMPC/BVC/RMADER-style optimizers, the scale preset uses bounded local traffic/constraint budgets plus command-level velocity/yield guarding. For RMADER, it also uses ego-trajectory broadphase filtering, true seed-budget capping, closest-dynamic-hull caps, and kinematic cached-plan validation so the high-N row measures nearby deconfliction pressure instead of distant hyperplane bookkeeping; for `ego_swarm_opt`, it uses receding cached-plan reuse between 5 Hz trajectory optimizations plus a command-level velocity/yield guard. The scale summary includes completion plus final-goal-distance and progress-fraction fields so unfinished high-N rows can be separated into “still far away” versus “near goal but not held yet.” Timeout and partial-timeout rows are first-class evidence, but they are not successful leaderboard rows.
 
 Optionally publish the same run to W&B as dashboard tables:
 

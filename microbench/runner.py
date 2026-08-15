@@ -213,6 +213,7 @@ def run_episode(spec: RunSpec) -> dict:
         spawn_goal_dists=engine.spawn_goal_dists,
         planner_ms_samples=np.asarray(engine.planner_ms_samples, dtype=float),
         episode_runtime_s=episode_runtime_s,
+        final_goal_dists=np.asarray([np.linalg.norm(s.goal - s.pos) for s in engine.states], dtype=float),
         comm_stats=engine.v2v.agent_message_stats_snapshot(),
         planner_guardrail_stats={
             "planner_timeout_count": engine.planner_timeout_count,

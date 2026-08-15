@@ -111,7 +111,7 @@ Run directories include:
 
 Safety is the first gate. Primary safety metrics are collision episode rate, unique collision pairs, collision pair ticks, time to first collision, and separation margins. Mission, observation, communication, compute, and planner guardrail metrics explain the tradeoffs behind safety.
 
-Current result schema version: `0.4.0`.
+Current result schema version: `0.5.0`.
 
 Schema changes must update:
 
