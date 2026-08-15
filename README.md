@@ -474,6 +474,16 @@ This writes raw `results.csv`, standard `summary.csv`, `scale_summary.csv`, and 
 
 For `urban_throughput_3d`, use `--duration-s 30` for a practical high-N diagnostic and `--duration-s 60` or longer for deliberate scale-evidence runs. Dense urban-throughput rows are intentionally heavier than smoke checks because they measure both safe deconfliction and mission progress under merge pressure.
 
+Build a multi-axis high-volume leaderboard from one or more scale summaries:
+
+```bash
+python -m microbench.cli high-volume-leaderboard \
+  --scale-summary runs_scale_benchmark/scale_summary.csv \
+  --out runs_scale_benchmark/high_volume_leaderboard.json
+```
+
+This writes `high_volume_leaderboard.json` and a sibling CSV with separate safety, mission-progress, runtime/scale, and robustness scores. The overall score is a weighted composite, so publish the component scores with any headline rank. When multiple summaries include the same scenario/method/comm/N cell, rows with mission-progress fields are preferred.
+
 Run the generated agentic stress suite:
 
 ```bash

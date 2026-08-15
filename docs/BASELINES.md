@@ -308,6 +308,16 @@ This writes the standard raw result files plus `scale_summary.csv` and `scale_be
 
 For `urban_throughput_3d`, `--duration-s 30` is a practical high-N diagnostic. Use `--duration-s 60` or longer as a deliberate scale-evidence run when runtime is acceptable; those rows are meant to measure mission progress under dense merge pressure, not just whether the planners avoid collision.
 
+After one or more scale runs, build the high-volume leaderboard artifact:
+
+```bash
+python -m microbench.cli high-volume-leaderboard \
+  --scale-summary runs_scale_benchmark/scale_summary.csv \
+  --out runs_scale_benchmark/high_volume_leaderboard.json
+```
+
+The leaderboard separates safety, mission progress, runtime/scale, and robustness scores. This is the preferred way to compare high-volume optimizer baselines because a single hidden score would otherwise blur “safe but slow,” “fast but stalled,” and “progressive but expensive” behaviors.
+
 For `mpc_nonlinear`, `dmpc_best_response`, and `bvc_tube_dmpc`, the scale preset keeps optimizer effort bounded while using dense-fleet local traffic budgets, stronger safety margins, and command-level velocity/yield guarding. This keeps the high-N row focused on deconfliction behavior instead of turning every large-fleet run into a full optimizer-throughput test.
 
 For `rmader`, the scale preset also enables ego-trajectory broadphase filtering for dynamic MINVO hulls, keeps only the closest moving hulls per interval, stops generating topology seeds once the configured seed budget is full, uses kinematic cached-plan validation between replans, and replans slightly less often. This keeps the high-N study focused on nearby deconfliction pressure instead of spending most of the run solving hard hyperplanes against distant traffic.

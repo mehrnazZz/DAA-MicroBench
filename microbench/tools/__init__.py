@@ -50,6 +50,12 @@ from microbench.tools.current_schema_golden import (
     write_current_schema_golden,
 )
 from microbench.tools.hard_case_mining import mine_worst_cases
+from microbench.tools.high_volume_leaderboard import (
+    DEFAULT_LATENCY_BUDGET_MS,
+    HIGH_VOLUME_LEADERBOARD_SCHEMA_VERSION,
+    build_high_volume_leaderboard,
+    write_high_volume_leaderboard,
+)
 
 __all__ = [
     "build_baseline_report",
@@ -64,12 +70,15 @@ __all__ = [
     "DEFAULT_ADVANCED_COMPARISON_SCENARIO",
     "DEFAULT_ADVANCED_COMPARISON_SEED",
     "mine_worst_cases",
+    "DEFAULT_LATENCY_BUDGET_MS",
+    "HIGH_VOLUME_LEADERBOARD_SCHEMA_VERSION",
     "MAX_RUNS_STRATEGIES",
     "DEFAULT_OPTIMIZER_REVIEW_SUITES",
     "OPTIMIZER_REVIEW_METHODS",
     "DEFAULT_SCALE_BENCHMARK_METHODS",
     "SCALE_SPAWN_PROFILES",
     "run_baseline_leaderboard",
+    "build_high_volume_leaderboard",
     "run_optimizer_suite_review",
     "run_scale_benchmark",
     "run_advanced_baseline_comparison",
@@ -88,4 +97,5 @@ __all__ = [
     "write_baseline_promotion_calibration",
     "write_baseline_stable_review",
     "write_current_schema_golden",
+    "write_high_volume_leaderboard",
 ]

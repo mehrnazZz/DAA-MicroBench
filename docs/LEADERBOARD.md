@@ -186,6 +186,16 @@ This writes raw `results.csv`, standard `summary.csv`, `scale_summary.csv`, `sca
 
 For `urban_throughput_3d`, use `--duration-s 30` for quick high-N diagnostics and `--duration-s 60` or longer for deliberate evidence runs. This scenario is intentionally throughput-focused: a safe row with low progress is still useful evidence, but it should not be described as strong mission performance.
 
+Build a high-volume leaderboard from completed scale summaries:
+
+```bash
+python -m microbench.cli high-volume-leaderboard \
+  --scale-summary runs_scale_benchmark/scale_summary.csv \
+  --out runs_scale_benchmark/high_volume_leaderboard.json
+```
+
+The report writes JSON and a sibling CSV. It ranks methods on four axes: safety, scenario-relative mission progress, runtime under a planner-latency budget, and robustness against hard timeouts/soft guardrails. The overall score defaults to safety 30%, progress 40%, runtime 20%, and robustness 10%. Treat it as a high-volume comparison artifact, not a replacement for per-suite acceptance checks.
+
 For qualitative leaderboard review, generate a single Foxglove comparison MCAP from the same scenario:
 
 ```bash

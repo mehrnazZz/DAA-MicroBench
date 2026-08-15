@@ -41,6 +41,7 @@ from microbench.tools import (
     DEFAULT_ADVANCED_COMPARISON_SEED,
     DEFAULT_OPTIMIZER_REVIEW_SUITES,
     DEFAULT_SCALE_BENCHMARK_METHODS,
+    DEFAULT_LATENCY_BUDGET_MS,
     OPTIMIZER_REVIEW_METHODS,
     MAX_RUNS_STRATEGIES,
     SCALE_SPAWN_PROFILES,
@@ -56,6 +57,7 @@ from microbench.tools import (
     run_baseline_stable_review,
     run_optimizer_suite_review,
     run_scale_benchmark,
+    write_high_volume_leaderboard,
     write_baseline_report,
     write_current_schema_golden,
 )
@@ -930,6 +932,32 @@ def _scale_benchmark(args) -> None:
         )
 
 
+def _high_volume_leaderboard(args) -> None:
+    scale_summaries: list[str] = []
+    for item in args.scale_summary:
+        scale_summaries.extend(_parse_str_list(item))
+    report = write_high_volume_leaderboard(
+        scale_summaries=scale_summaries,
+        out=args.out,
+        latency_budget_ms=float(args.latency_budget_ms),
+        generated_by="python -m microbench.cli high-volume-leaderboard",
+    )
+
+    if args.json:
+        print(json.dumps(report, allow_nan=False, indent=2, sort_keys=True))
+    else:
+        top = report["overall_ranking"][0] if report["overall_ranking"] else {}
+        print(
+            "high-volume-leaderboard: "
+            f"methods={report['method_count']} cells={report['scale_cell_count']} "
+            f"top={top.get('method')} score={top.get('overall_score')} "
+            f"report={args.out} csv={report['leaderboard_csv']}"
+        )
+        for axis, rows in report["axis_rankings"].items():
+            leader = rows[0] if rows else {}
+            print(f"  {axis}: {leader.get('method')} score={leader.get('score')}")
+
+
 def _baseline_review(args) -> None:
     duration_s = None if args.full_duration else float(args.duration_s)
     report = run_baseline_stable_review(
@@ -1741,6 +1769,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fail unless the full requested scale matrix completed without hard timeouts",
     )
 
+    p_hvl = sub.add_parser(
+        "high-volume-leaderboard",
+        help="Build a multi-axis leaderboard from one or more scale_summary.csv artifacts",
+    )
+    p_hvl.add_argument(
+        "--scale-summary",
+        action="append",
+        required=True,
+        help="Path or comma-separated paths to scale_summary.csv; repeat for multiple scale runs",
+    )
+    p_hvl.add_argument("--out", required=True, help="Output leaderboard JSON path; a sibling CSV is also written")
+    p_hvl.add_argument(
+        "--latency-budget-ms",
+        type=float,
+        default=DEFAULT_LATENCY_BUDGET_MS,
+        help="Planner p95 latency budget used for the runtime/scale axis",
+    )
+    p_hvl.add_argument("--json", action="store_true", help="Emit the full leaderboard report as JSON")
+
     p_brv = sub.add_parser("baseline-review", help="Run optional longer stable-metadata review lanes for baseline candidates")
     p_brv.add_argument("--out-dir", required=True, help="Fresh output directory for review artifacts")
     p_brv.add_argument("--root", default=".", help="Repository root used for docs/tests coverage checks")
@@ -2018,6 +2065,9 @@ def main() -> None:
         return
     if args.cmd == "scale-benchmark":
         _scale_benchmark(args)
+        return
+    if args.cmd == "high-volume-leaderboard":
+        _high_volume_leaderboard(args)
         return
     if args.cmd == "baseline-review":
         _baseline_review(args)

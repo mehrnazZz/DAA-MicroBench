@@ -116,6 +116,12 @@ python -m microbench.cli scale-benchmark --out-dir runs_scale_benchmark --scenar
 
 The scale report writes `scale_summary.csv` and `scale_benchmark.json`, recording completed rows, hard timeouts, guardrail pressure, collision rates, completion, final goal distance, progress fraction, and planner latency by scenario, method, and N. `--planner-preset scale` bounds optimizer effort for large-fleet studies, including NMPC/DMPC/BVC/RMADER command-level velocity/yield guarding, RMADER dynamic-hull/cached-validation/seed-budget limits, and EGO-Swarm optimized receding cached-plan reuse plus command-level velocity/yield guarding; omit it for the fuller default planner settings.
 
+Turn scale summaries into a high-volume leaderboard:
+
+```bash
+python -m microbench.cli high-volume-leaderboard --scale-summary runs_scale_benchmark/scale_summary.csv --out runs_scale_benchmark/high_volume_leaderboard.json
+```
+
 Run the all-suite baseline leaderboard:
 
 ```bash
