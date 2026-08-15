@@ -94,6 +94,12 @@ Run the compact shared 3D advanced-baseline comparison:
 python -m microbench.cli advanced-baseline-comparison --out-dir runs_advanced_baseline_comparison --require-pass
 ```
 
+Generate a single panelized Foxglove MCAP for optimizer comparison on the urban-throughput map:
+
+```bash
+python -m microbench.cli advanced-baseline-comparison --out-dir runs_urban_throughput_comparison --scenario config/scenarios/urban_throughput_3d.yaml --methods dmpc_best_response,bvc_tube_dmpc,dynamic_tube_dmpc,mpc_nonlinear,ego_swarm_opt,rmader --n 8 --seed 2 --comm realistic_v2v_50hz --duration-s 20 --export-foxglove-mcap
+```
+
 Run a capped optimizer-grade suite review for NMPC versus EGO-Swarm optimization:
 
 ```bash
@@ -145,6 +151,8 @@ python -m microbench.cli foxglove-comparison-export \
 ```
 
 The comparison export writes per-method topics under `/daa/comparison/<method>/...` and shared namespaced transforms on `/tf`.
+
+`advanced-baseline-comparison --export-foxglove-mcap` saves the per-method traces and writes the same combined `baseline_comparison.mcap` automatically.
 
 Render a multi-panel episode report from a saved trace:
 

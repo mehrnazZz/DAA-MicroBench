@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 import subprocess
@@ -60,6 +61,32 @@ def test_advanced_baseline_comparison_save_traces_writes_full_episode_trace(tmp_
     traces = sorted((out_dir / "episodes").glob("*/trace_episode.jsonl"))
     assert len(traces) == 1
     assert traces[0].stat().st_size > 0
+    assert report["foxglove_mcap"] is None
+
+
+def test_advanced_baseline_comparison_can_export_foxglove_mcap(tmp_path: Path) -> None:
+    if importlib.util.find_spec("mcap") is None:
+        return
+    out_dir = tmp_path / "comparison_mcap"
+    report = run_advanced_baseline_comparison(
+        out_dir=out_dir,
+        scenario=ROOT / "config/scenarios/urban_throughput_3d.yaml",
+        methods=["reciprocal_velocity_obstacle"],
+        duration_s=0.2,
+        n_agents=4,
+        seed=2,
+        comm_profile="ideal_50hz",
+        export_foxglove_mcap=True,
+        mcap_trail_frames=4,
+        mcap_max_sensing_links=4,
+    )
+
+    assert report["ok"] is True
+    assert report["comparison_type"] == "advanced_baseline_3d_urban_throughput"
+    assert report["save_traces"] is True
+    assert report["foxglove_mcap"]["labels"] == ["reciprocal_velocity_obstacle"]
+    assert Path(report["foxglove_mcap"]["path"]).exists()
+    assert Path(report["foxglove_mcap"]["trace_paths"]["reciprocal_velocity_obstacle"]).exists()
 
 
 def test_advanced_baseline_comparison_cli_json(tmp_path: Path) -> None:

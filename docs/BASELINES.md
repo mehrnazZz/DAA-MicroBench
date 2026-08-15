@@ -223,6 +223,24 @@ python -m microbench.cli advanced-baseline-comparison \
 
 This runs `orca_heuristic`, `orca_with_staleness`, `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, and `reciprocal_velocity_obstacle` on the same `urban_conflict_3d` scenario, with the same seed, agent count, duration override, and communication profile. It writes `advanced_baseline_comparison.json`, `baseline_report.json`, `results.csv`, `summary.csv`, and a copied scenario file under `_comparison_scenario/`. Use it as a quick apples-to-apples advanced-baseline artifact before spending time on the full official leaderboard.
 
+For a panelized Foxglove comparison on the denser urban-throughput map:
+
+```bash
+python -m microbench.cli advanced-baseline-comparison \
+  --out-dir runs_urban_throughput_comparison \
+  --scenario config/scenarios/urban_throughput_3d.yaml \
+  --methods dmpc_best_response,bvc_tube_dmpc,dynamic_tube_dmpc,mpc_nonlinear,ego_swarm_opt,rmader \
+  --n 8 \
+  --seed 2 \
+  --comm realistic_v2v_50hz \
+  --duration-s 20 \
+  --export-foxglove-mcap \
+  --mcap-trail-frames 1000 \
+  --mcap-max-sensing-links 80
+```
+
+This writes one `baseline_comparison.mcap` with per-method topics under `/daa/comparison/<method>/...`, suitable for a 2x3 Foxglove dashboard.
+
 Build an all-official-suite baseline leaderboard:
 
 ```bash
@@ -287,6 +305,8 @@ python -m microbench.cli scale-benchmark \
 ```
 
 This writes the standard raw result files plus `scale_summary.csv` and `scale_benchmark.json`, grouped by scenario, method, communication profile, and N. Use it to report maximum completed N, timeout pressure, guardrail pressure, collision rate, completion rate, final goal distance, progress fraction, and planner p95 latency. `--planner-preset scale` bounds optimizer effort for high-N studies while preserving the normal full/default planner settings for standard runs. Treat timeout rows and partial-timeout rows as review blockers, not success cases.
+
+For `urban_throughput_3d`, `--duration-s 30` is a practical high-N diagnostic. Use `--duration-s 60` or longer as a deliberate scale-evidence run when runtime is acceptable; those rows are meant to measure mission progress under dense merge pressure, not just whether the planners avoid collision.
 
 For `mpc_nonlinear`, `dmpc_best_response`, and `bvc_tube_dmpc`, the scale preset keeps optimizer effort bounded while using dense-fleet local traffic budgets, stronger safety margins, and command-level velocity/yield guarding. This keeps the high-N row focused on deconfliction behavior instead of turning every large-fleet run into a full optimizer-throughput test.
 

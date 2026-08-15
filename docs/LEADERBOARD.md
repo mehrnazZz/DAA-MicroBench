@@ -184,6 +184,22 @@ python -m microbench.cli scale-benchmark \
 
 This writes raw `results.csv`, standard `summary.csv`, `scale_summary.csv`, `scale_benchmark_progress.json`, and `scale_benchmark.json`. Use `--scale-spawn-profile dense` only when a copied scenario needs a placement profile for large N; it widens four-way spawn lanes in the generated scale copy and leaves the source scenario unchanged. Use `--planner-preset scale` for compute-bounded high-N optimizer sweeps; omit it when auditing the fuller default planner settings. For NMPC/DMPC/BVC/RMADER-style optimizers, the scale preset uses bounded local traffic/constraint budgets plus command-level velocity/yield guarding. For RMADER, it also uses ego-trajectory broadphase filtering, true seed-budget capping, closest-dynamic-hull caps, and kinematic cached-plan validation so the high-N row measures nearby deconfliction pressure instead of distant hyperplane bookkeeping; for `ego_swarm_opt`, it uses receding cached-plan reuse between 5 Hz trajectory optimizations plus a command-level velocity/yield guard. The scale summary includes completion plus final-goal-distance and progress-fraction fields so unfinished high-N rows can be separated into “still far away” versus “near goal but not held yet.” Timeout and partial-timeout rows are first-class evidence, but they are not successful leaderboard rows.
 
+For `urban_throughput_3d`, use `--duration-s 30` for quick high-N diagnostics and `--duration-s 60` or longer for deliberate evidence runs. This scenario is intentionally throughput-focused: a safe row with low progress is still useful evidence, but it should not be described as strong mission performance.
+
+For qualitative leaderboard review, generate a single Foxglove comparison MCAP from the same scenario:
+
+```bash
+python -m microbench.cli advanced-baseline-comparison \
+  --out-dir runs_urban_throughput_comparison \
+  --scenario config/scenarios/urban_throughput_3d.yaml \
+  --methods dmpc_best_response,bvc_tube_dmpc,dynamic_tube_dmpc,mpc_nonlinear,ego_swarm_opt,rmader \
+  --n 8 \
+  --seed 2 \
+  --comm realistic_v2v_50hz \
+  --duration-s 20 \
+  --export-foxglove-mcap
+```
+
 Optionally publish the same run to W&B as dashboard tables:
 
 ```bash

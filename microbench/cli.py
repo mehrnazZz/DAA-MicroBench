@@ -35,6 +35,7 @@ from microbench.tools import (
     DEFAULT_ADVANCED_COMPARISON_COMM_PROFILE,
     DEFAULT_ADVANCED_COMPARISON_DURATION_S,
     DEFAULT_ADVANCED_COMPARISON_METHODS,
+    DEFAULT_ADVANCED_COMPARISON_MCAP,
     DEFAULT_ADVANCED_COMPARISON_N_AGENTS,
     DEFAULT_ADVANCED_COMPARISON_SCENARIO,
     DEFAULT_ADVANCED_COMPARISON_SEED,
@@ -781,6 +782,11 @@ def _advanced_baseline_comparison(args) -> None:
         comm_profile=str(args.comm),
         duration_s=duration_s,
         save_traces=bool(args.save_traces),
+        export_foxglove_mcap=bool(args.export_foxglove_mcap),
+        foxglove_mcap_path=args.foxglove_mcap_out,
+        mcap_trail_frames=int(args.mcap_trail_frames),
+        mcap_max_sensing_links=int(args.mcap_max_sensing_links),
+        mcap_compression=str(args.mcap_compression),
     )
 
     if args.json:
@@ -798,6 +804,8 @@ def _advanced_baseline_comparison(args) -> None:
                 f"collision_rate={row.get('collision_episode_rate')} completion={row.get('completion_rate_mean')} "
                 f"min_sep={row.get('min_sep_min_mean')}"
             )
+        if report.get("foxglove_mcap"):
+            print(f"  foxglove_mcap: {report['foxglove_mcap']['path']}")
 
     if args.require_pass and not report["ok"]:
         raise SystemExit(
@@ -1573,6 +1581,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_abc.add_argument("--full-duration", action="store_true", help="Use the scenario's configured duration")
     p_abc.add_argument("--save-traces", action="store_true", help="Save per-method episode traces")
+    p_abc.add_argument(
+        "--export-foxglove-mcap",
+        action="store_true",
+        help="Save traces and export one panelized Foxglove MCAP comparison file",
+    )
+    p_abc.add_argument(
+        "--foxglove-mcap-out",
+        default=None,
+        help=f"Optional MCAP output path; defaults to <out-dir>/{DEFAULT_ADVANCED_COMPARISON_MCAP}",
+    )
+    p_abc.add_argument("--mcap-trail-frames", type=int, default=200, help="Foxglove trail history frames")
+    p_abc.add_argument("--mcap-max-sensing-links", type=int, default=200, help="Maximum sensing/V2V links per frame")
+    p_abc.add_argument(
+        "--mcap-compression",
+        choices=("none", "lz4", "zstd"),
+        default="zstd",
+        help="MCAP chunk compression for the comparison export",
+    )
     p_abc.add_argument("--json", action="store_true", help="Emit machine-readable comparison report")
     p_abc.add_argument(
         "--require-pass",

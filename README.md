@@ -29,6 +29,24 @@ python -m microbench.cli foxglove-export \
 
 Open the MCAP in Foxglove Studio for the robotics-grade 3D view.
 
+For a panelized optimizer comparison on the denser urban-throughput map:
+
+```bash
+python -m microbench.cli advanced-baseline-comparison \
+  --out-dir runs_urban_throughput_comparison \
+  --scenario config/scenarios/urban_throughput_3d.yaml \
+  --methods dmpc_best_response,bvc_tube_dmpc,dynamic_tube_dmpc,mpc_nonlinear,ego_swarm_opt,rmader \
+  --n 8 \
+  --seed 2 \
+  --comm realistic_v2v_50hz \
+  --duration-s 20 \
+  --export-foxglove-mcap \
+  --mcap-trail-frames 1000 \
+  --mcap-max-sensing-links 80
+```
+
+Open `runs_urban_throughput_comparison/baseline_comparison.mcap` in Foxglove and assign one panel to each `/daa/comparison/<method>/...` topic group.
+
 ## 1) What This Is (and Is Not)
 
 - This repo is a fast local-planning benchmark for multi-agent collision avoidance.
@@ -435,6 +453,8 @@ python -m microbench.cli advanced-baseline-comparison \
 
 This runs ORCA, stale-aware ORCA, CBF-QP, MPC-local, nonlinear MPC, distributed MPC, BVC tube-DMPC, dynamic tube-DMPC, RMADER, sampled EGO-Swarm-inspired trajectory sharing, optimized EGO-Swarm-style control-point planning, VO, and RVO on the same `urban_conflict_3d` lane and writes `advanced_baseline_comparison.json`, `baseline_report.json`, `results.csv`, and `summary.csv`. Use it as a quick apples-to-apples advanced-baseline artifact; the all-suite leaderboard remains the publication-grade benchmark evidence.
 
+Add `--export-foxglove-mcap` to save per-method traces and write a single panelized `baseline_comparison.mcap` alongside the CSV/JSON artifacts. For an environment-rich throughput demo, pass `--scenario config/scenarios/urban_throughput_3d.yaml` and the optimizer methods shown in the featured demo command.
+
 Run a fleet-size scaling ladder:
 
 ```bash
@@ -451,6 +471,8 @@ python -m microbench.cli scale-benchmark \
 ```
 
 This writes raw `results.csv`, standard `summary.csv`, `scale_summary.csv`, and `scale_benchmark.json`. The scale report separates safety from runtime feasibility: a method that times out at high N is recorded as a failed scale row, not silently dropped. It also reports final goal distance and progress fraction, so unfinished dense-fleet rows can still be judged for mission progress. `--planner-preset scale` applies documented compute-budget overrides for large-fleet stress tests; for NMPC/DMPC/BVC/RMADER-style optimizers, this includes bounded local traffic/constraint budgets plus command-level velocity/yield guarding; for RMADER, it also includes nearby dynamic-hull filtering, true seed-budget capping, and kinematic cached-plan validation between replans; for `ego_swarm_opt`, it uses receding cached-plan reuse between 5 Hz trajectory optimizations plus a command-level velocity/yield guard. Omit the preset for the fuller default optimizer settings.
+
+For `urban_throughput_3d`, use `--duration-s 30` for a practical high-N diagnostic and `--duration-s 60` or longer for deliberate scale-evidence runs. Dense urban-throughput rows are intentionally heavier than smoke checks because they measure both safe deconfliction and mission progress under merge pressure.
 
 Run the generated agentic stress suite:
 
@@ -711,6 +733,18 @@ python -m microbench.cli foxglove-comparison-export \
 ```
 
 The comparison MCAP keeps a shared `/tf` stream with namespaced frame ids and writes per-method topics under `/daa/comparison/<method>/...`, so Foxglove panels can subscribe to one method at a time.
+
+The `advanced-baseline-comparison` command can generate the same combined MCAP directly:
+
+```bash
+python -m microbench.cli advanced-baseline-comparison \
+  --out-dir runs_urban_throughput_comparison \
+  --scenario config/scenarios/urban_throughput_3d.yaml \
+  --methods dmpc_best_response,bvc_tube_dmpc,dynamic_tube_dmpc,mpc_nonlinear,ego_swarm_opt,rmader \
+  --n 8 \
+  --duration-s 20 \
+  --export-foxglove-mcap
+```
 
 Episode analysis report:
 

@@ -10,6 +10,8 @@ import yaml
 from microbench.config import load_yaml, resolve_config_path
 from microbench.metrics import append_result, write_summary
 from microbench.metrics.io import RESULT_SCHEMA_FILENAME
+from microbench.metrics.recorder import episode_dir_name
+from microbench.replay import export_foxglove_comparison_mcap
 from microbench.runner import run_episode
 from microbench.tools.baseline_report import build_baseline_report
 from microbench.types import RunSpec
@@ -36,6 +38,7 @@ DEFAULT_ADVANCED_COMPARISON_N_AGENTS = 4
 DEFAULT_ADVANCED_COMPARISON_SEED = 2
 DEFAULT_ADVANCED_COMPARISON_COMM_PROFILE = "realistic_v2v_50hz"
 DEFAULT_ADVANCED_COMPARISON_DURATION_S = 18.0
+DEFAULT_ADVANCED_COMPARISON_MCAP = "baseline_comparison.mcap"
 
 
 def _as_list(values: tuple[str, ...] | list[str] | None, default: tuple[str, ...]) -> list[str]:
@@ -141,6 +144,71 @@ def _project_episode_row(row: dict[str, Any]) -> dict[str, Any]:
     })
 
 
+def _comparison_type(scenario_stem: str) -> str:
+    if scenario_stem == "urban_conflict_3d":
+        return "advanced_baseline_3d_conflict"
+    if scenario_stem == "urban_throughput_3d":
+        return "advanced_baseline_3d_urban_throughput"
+    return "advanced_baseline_3d_custom"
+
+
+def _trace_path_for_row(out_dir: Path, row: dict[str, Any]) -> Path:
+    return out_dir / "episodes" / episode_dir_name(
+        scenario=str(row.get("scenario")),
+        method=str(row.get("method")),
+        n_agents=int(row.get("N")),
+        seed=int(row.get("seed")),
+        comm_profile=str(row.get("comm_profile") or ""),
+    ) / "trace_episode.jsonl"
+
+
+def _export_comparison_mcap(
+    *,
+    out_dir: Path,
+    rows: list[dict[str, Any]],
+    mcap_path: str | Path | None,
+    trail_frames: int,
+    max_sensing_links: int,
+    compression: str,
+) -> dict[str, Any]:
+    labels: list[str] = []
+    traces: list[str] = []
+    missing: list[str] = []
+    trace_paths: dict[str, str] = {}
+
+    for row in rows:
+        method = str(row.get("method"))
+        trace_path = _trace_path_for_row(out_dir, row)
+        trace_paths[method] = str(trace_path)
+        if not trace_path.exists():
+            missing.append(str(trace_path))
+            continue
+        labels.append(method)
+        traces.append(str(trace_path))
+
+    if missing:
+        raise RuntimeError("cannot export Foxglove comparison MCAP; missing trace(s): " + ", ".join(missing))
+
+    out_path = Path(mcap_path) if mcap_path is not None else out_dir / DEFAULT_ADVANCED_COMPARISON_MCAP
+    exported = export_foxglove_comparison_mcap(
+        traces,
+        str(out_path),
+        labels=labels,
+        trail_frames=int(trail_frames),
+        max_sensing_links=int(max_sensing_links),
+        compression=str(compression),
+    )
+    return {
+        "path": str(exported),
+        "labels": labels,
+        "trace_paths": trace_paths,
+        "topic_root": "/daa/comparison",
+        "trail_frames": int(trail_frames),
+        "max_sensing_links": int(max_sensing_links),
+        "compression": str(compression),
+    }
+
+
 def run_advanced_baseline_comparison(
     *,
     out_dir: str | Path,
@@ -151,18 +219,24 @@ def run_advanced_baseline_comparison(
     comm_profile: str = DEFAULT_ADVANCED_COMPARISON_COMM_PROFILE,
     duration_s: float | None = DEFAULT_ADVANCED_COMPARISON_DURATION_S,
     save_traces: bool = False,
+    export_foxglove_mcap: bool = False,
+    foxglove_mcap_path: str | Path | None = None,
+    mcap_trail_frames: int = 200,
+    mcap_max_sensing_links: int = 200,
+    mcap_compression: str = "zstd",
 ) -> dict[str, Any]:
     out = Path(out_dir)
     if (out / "results.csv").exists():
         raise RuntimeError(f"advanced baseline comparison output already exists: {out / 'results.csv'}")
     out.mkdir(parents=True, exist_ok=True)
 
+    effective_save_traces = bool(save_traces or export_foxglove_mcap)
     method_values = _as_list(methods, DEFAULT_ADVANCED_COMPARISON_METHODS)
     source_scenario, scenario_path, effective_duration_s = _prepare_scenario(
         scenario=scenario,
         out_dir=out,
         duration_s=duration_s,
-        save_traces=bool(save_traces),
+        save_traces=effective_save_traces,
     )
 
     rows: list[dict[str, Any]] = []
@@ -174,7 +248,7 @@ def run_advanced_baseline_comparison(
             seed=int(seed),
             comm_profile=str(comm_profile),
             out_dir=str(out),
-            save_trace=bool(save_traces),
+            save_trace=effective_save_traces,
         )
         row = run_episode(spec)
         append_result(out, row)
@@ -202,20 +276,32 @@ def run_advanced_baseline_comparison(
         if not _critical_metrics_finite(row)
     ]
     ranking = _rank_rows(baseline_report)
+    scenario_stem = Path(scenario_path).stem
+    foxglove_mcap = None
+    if export_foxglove_mcap:
+        foxglove_mcap = _export_comparison_mcap(
+            out_dir=out,
+            rows=rows,
+            mcap_path=foxglove_mcap_path,
+            trail_frames=mcap_trail_frames,
+            max_sensing_links=mcap_max_sensing_links,
+            compression=mcap_compression,
+        )
     report = _json_safe({
         "schema_version": ADVANCED_BASELINE_COMPARISON_SCHEMA_VERSION,
-        "comparison_type": "advanced_baseline_3d_conflict",
+        "comparison_type": _comparison_type(scenario_stem),
         "ok": bool(complete and not guardrail_failures and not nonfinite_methods),
         "complete": bool(complete),
         "methods": method_values,
         "scenario_source": str(source_scenario),
         "scenario_path": str(scenario_path),
-        "scenario": Path(scenario_path).stem,
+        "scenario": scenario_stem,
         "duration_s": effective_duration_s,
         "n_agents": int(n_agents),
         "seed": int(seed),
         "comm_profile": str(comm_profile),
-        "save_traces": bool(save_traces),
+        "save_traces": effective_save_traces,
+        "foxglove_mcap": foxglove_mcap,
         "planned_run_count": len(method_values),
         "run_count": len(rows),
         "results_csv": str(out / "results.csv"),
