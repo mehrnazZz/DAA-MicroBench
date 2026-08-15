@@ -288,6 +288,10 @@ python -m microbench.cli scale-benchmark \
 
 This writes the standard raw result files plus `scale_summary.csv` and `scale_benchmark.json`, grouped by scenario, method, communication profile, and N. Use it to report maximum completed N, timeout pressure, guardrail pressure, collision rate, and planner p95 latency. `--planner-preset scale` bounds optimizer effort for high-N studies while preserving the normal full/default planner settings for standard runs. Treat timeout rows and partial-timeout rows as review blockers, not success cases.
 
+For `rmader`, the scale preset also enables ego-trajectory broadphase filtering for dynamic MINVO hulls, keeps only the closest moving hulls per interval, uses kinematic cached-plan validation between replans, and replans slightly less often. This keeps the high-N study focused on nearby deconfliction pressure instead of spending most of the run solving hard hyperplanes against distant traffic.
+
+For `ego_swarm_opt`, the scale preset uses receding cached-plan reuse between 5 Hz trajectory optimizations. This matches a more realistic trajectory-planner cadence than re-solving every simulator tick and keeps high-N rows from becoming pure optimizer-throughput tests.
+
 Long 3D stress runs can be checkpointed. Use `--max-wall-time-s` to stop launching new episodes after a global wall-clock budget, `--resume` to continue from existing per-suite `results.csv` rows, and `--run-timeout-s` to write a failed timeout row instead of letting one episode monopolize the job:
 
 ```bash
@@ -539,6 +543,9 @@ Useful RMADER debug fields include:
 - `rmader_candidate_max_accel_violation_mps2`
 - `rmader_plan_version`
 - `rmader_agent_messages`
+- `rmader_cached_reuse_validation`
+- `rmader_dynamic_broadphase_margin_m`
+- `rmader_max_dynamic_hulls_per_interval`
 
 Use `rmader` when comparing robust trajectory publication and hard convex-separation behavior against `dmpc_best_response`, `mpc_nonlinear`, and `ego_swarm_opt`. It is an original Python implementation adapted to DAA Microbench's local velocity-command contract, not a ROS/Gurobi port of the MIT ACL RMADER/MADER codebase.
 
@@ -591,6 +598,10 @@ Useful optimizer debug fields include:
 - `ego_swarm_opt_control_points`
 - `ego_swarm_opt_curve_samples`
 - `ego_swarm_opt_initializations`
+- `ego_swarm_opt_replanned`
+- `ego_swarm_opt_cached_reuse`
+- `ego_swarm_opt_replan_period_s`
+- `ego_swarm_opt_plan_age_s`
 - `ego_swarm_opt_best_topology`
 - `ego_swarm_opt_initial_cost`
 - `ego_swarm_opt_final_cost`

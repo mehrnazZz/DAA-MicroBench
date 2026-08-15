@@ -450,7 +450,7 @@ python -m microbench.cli scale-benchmark \
   --run-timeout-s 360
 ```
 
-This writes raw `results.csv`, standard `summary.csv`, `scale_summary.csv`, and `scale_benchmark.json`. The scale report separates safety from runtime feasibility: a method that times out at high N is recorded as a failed scale row, not silently dropped. `--planner-preset scale` applies documented compute-budget overrides for large-fleet stress tests; omit it for the fuller default optimizer settings.
+This writes raw `results.csv`, standard `summary.csv`, `scale_summary.csv`, and `scale_benchmark.json`. The scale report separates safety from runtime feasibility: a method that times out at high N is recorded as a failed scale row, not silently dropped. `--planner-preset scale` applies documented compute-budget overrides for large-fleet stress tests; for RMADER, this includes nearby dynamic-hull filtering, caps for high-N MINVO/hyperplane work, and kinematic cached-plan validation between replans; for `ego_swarm_opt`, it uses receding cached-plan reuse between 5 Hz trajectory optimizations. Omit the preset for the fuller default optimizer settings.
 
 Run the generated agentic stress suite:
 

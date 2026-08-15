@@ -317,6 +317,36 @@ def test_rmader_cached_fallback_remains_unaccepted_and_expires_quickly() -> None
     assert expired.debug_info["rmader_replanned"] is True
 
 
+def test_rmader_cached_reuse_can_use_kinematic_validation_mode() -> None:
+    ego = _agent((0.0, 0.0, 0.0))
+    ctx = AgentContext(agent_id=0, method="rmader", seed=0, priority=0)
+    planner = RmaderPlanner(
+        cfg={
+            "horizon_s": 2.4,
+            "control_points": 8,
+            "samples_per_interval": 2,
+            "replan_period_s": 0.2,
+            "cached_reuse_validation": "kinematic",
+            "max_initializations": 1,
+            "opt_iterations": 1,
+            "hard_projection_iterations": 1,
+            "jerk_limit_mps3": 100.0,
+        }
+    )
+
+    first = planner.compute_cmd(_planner_input(ego=ego, context=ctx, t=0.0))
+    reused = planner.compute_cmd(_planner_input(ego=ego, context=ctx, t=0.02))
+
+    assert first.debug_info["rmader_replanned"] is True
+    assert reused.debug_info["rmader_replanned"] is False
+    assert reused.debug_info["rmader_cached_reuse_validation"] == "kinematic"
+    assert reused.debug_info["rmader_solver_status"] == "cached_committed_minvo_plan"
+    assert reused.debug_info["rmader_hard_constraint_count"] == 0
+    assert reused.debug_info["rmader_max_speed_violation_mps"] >= 0.0
+    assert reused.debug_info["rmader_max_accel_violation_mps2"] >= 0.0
+    assert reused.debug_info["rmader_max_jerk_violation_mps3"] >= 0.0
+
+
 def test_rmader_uses_intent_only_hulls() -> None:
     ego = _agent((0.0, 0.0, 0.0))
     planner = _tiny_rmader()
@@ -371,6 +401,75 @@ def test_rmader_static_obstacle_broadphase_filters_far_obstacles() -> None:
 
     assert [h.source_kind for h in far_hulls] == []
     assert any(h.source_kind == "obstacle_aabb" for h in near_hulls)
+
+
+def test_rmader_dynamic_broadphase_filters_far_dynamic_hulls() -> None:
+    planner = _tiny_rmader()
+    planner.dynamic_broadphase_margin_m = 0.5
+    ego = _agent((0.0, 0.0, 0.0), goal=(50.0, 0.0, 0.0))
+    near = _neighbor(pos=(4.0, 0.0, 0.0))
+    far = NeighborObs(
+        idx=2,
+        pos=np.asarray([30.0, 0.0, 0.0], dtype=np.float32),
+        vel=np.zeros(3, dtype=np.float32),
+        radius=0.5,
+        msg_age_sec=0.0,
+        valid=True,
+    )
+    inp = _planner_input(ego=ego, neighbors=[near, far], planar=False)
+    cp = planner._control_polygon(
+        inp, planner._local_target(inp), np.zeros(3, dtype=np.float32), "direct"
+    ).control_points
+    minvo = planner._minvo_intervals(cp)
+
+    hulls = planner._build_interval_hulls(
+        inp,
+        minvo.shape[0],
+        planner._segment_dt(),
+        own_minvo=minvo,
+    )
+
+    source_ids = {h.source_id for h in hulls if h.source_kind in {"neighbor_cv", "neighbor_intent", "intent_only"}}
+    assert 1 in source_ids
+    assert 2 not in source_ids
+
+
+def test_rmader_dynamic_hull_cap_keeps_closest_sources_per_interval() -> None:
+    planner = _tiny_rmader()
+    planner.dynamic_broadphase_margin_m = None
+    planner.max_dynamic_hulls_per_interval = 1
+    ego = _agent((0.0, 0.0, 0.0), goal=(50.0, 0.0, 0.0))
+    neighbors = [
+        _neighbor(pos=(7.0, 0.0, 0.0)),
+        NeighborObs(
+            idx=2,
+            pos=np.asarray([9.0, 0.0, 0.0], dtype=np.float32),
+            vel=np.zeros(3, dtype=np.float32),
+            radius=0.5,
+            msg_age_sec=0.0,
+            valid=True,
+        ),
+    ]
+    inp = _planner_input(ego=ego, neighbors=neighbors, planar=False)
+    cp = planner._control_polygon(
+        inp, planner._local_target(inp), np.zeros(3, dtype=np.float32), "direct"
+    ).control_points
+    minvo = planner._minvo_intervals(cp)
+
+    hulls = planner._build_interval_hulls(
+        inp,
+        minvo.shape[0],
+        planner._segment_dt(),
+        own_minvo=minvo,
+    )
+
+    dynamic_hulls = [h for h in hulls if h.source_kind in {"neighbor_cv", "neighbor_intent", "intent_only"}]
+    per_interval_counts = {
+        interval_idx: sum(1 for hull in dynamic_hulls if hull.interval_idx == interval_idx)
+        for interval_idx in range(minvo.shape[0])
+    }
+    assert dynamic_hulls
+    assert all(count <= 1 for count in per_interval_counts.values())
 
 
 def test_rmader_preserves_3d_command_shape() -> None:

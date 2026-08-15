@@ -114,6 +114,7 @@ planner_presets:
       curve_samples: 5
       max_initializations: 2
       opt_iterations: 1
+      replan_period_s: 0.2
     rmader:
       max_neighbors: 6
       max_intents: 8
@@ -122,6 +123,11 @@ planner_presets:
       max_initializations: 1
       opt_iterations: 1
       hard_projection_iterations: 1
+      dynamic_broadphase_margin_m: 6.0
+      max_dynamic_hulls_per_interval: 5
+      cached_reuse_validation: kinematic
+      replan_period_s: 0.45
+      fallback_replan_period_s: 0.25
       sampled_delay_check_enabled: false
 
 

@@ -33,6 +33,7 @@ def _planner_input(
     neighbor_intents=None,
     planar=True,
     goal_dir=(1.0, 0.0, 0.0),
+    t: float = 0.0,
 ) -> PlannerInput:
     return PlannerInput(
         ego=ego,
@@ -41,7 +42,7 @@ def _planner_input(
         obstacles=list(obstacles or []),
         neighbor_intents=list(neighbor_intents or []),
         dt=0.02,
-        t=0.0,
+        t=float(t),
         planar=planar,
     )
 
@@ -77,6 +78,34 @@ def test_ego_swarm_opt_open_space_tracks_goal_and_emits_intent() -> None:
     assert out.debug_info["ego_swarm_opt_control_points"] >= 5
     assert out.debug_info["ego_swarm_opt_solver"] == "projected_gradient"
     assert out.debug_info["ego_swarm_opt_planar"] is True
+
+
+def test_ego_swarm_opt_can_reuse_receding_cached_plan_between_replans() -> None:
+    ego = _agent((0.0, 0.0, 0.0))
+    planner = EgoSwarmOptimizingPlanner(
+        cfg={
+            "horizon_s": 2.4,
+            "rollout_dt_s": 0.4,
+            "control_points": 5,
+            "curve_samples": 5,
+            "max_initializations": 1,
+            "opt_iterations": 1,
+            "replan_period_s": 0.35,
+        }
+    )
+
+    first = planner.compute_cmd(_planner_input(ego=ego, t=0.0))
+    moved_ego = _agent((0.02, 0.0, 0.0), vel=first.v_cmd)
+    reused = planner.compute_cmd(_planner_input(ego=moved_ego, t=0.02))
+
+    assert first.debug_info["ego_swarm_opt_replanned"] is True
+    assert reused.debug_info["ego_swarm_opt_replanned"] is False
+    assert reused.debug_info["ego_swarm_opt_cached_reuse"] is True
+    assert reused.debug_info["ego_swarm_opt_initializations"] == 0
+    assert reused.debug_info["ego_swarm_opt_replan_period_s"] == 0.35
+    assert reused.debug_info["ego_swarm_opt_plan_age_s"] > 0.0
+    assert reused.intent_out is not None
+    assert np.allclose(reused.intent_out.points[0], moved_ego.pos)
 
 
 def test_ego_swarm_opt_close_head_on_optimizes_deconfliction_topology() -> None:

@@ -332,12 +332,20 @@ class RmaderPlanner(ILocalPlanner):
         self.max_initializations = int(cfg.get("max_initializations", 6))
         self.opt_iterations = int(cfg.get("opt_iterations", 8))
         self.hard_projection_iterations = int(cfg.get("hard_projection_iterations", 7))
+        self.cached_reuse_validation = str(cfg.get("cached_reuse_validation", "full")).strip().lower()
+        if self.cached_reuse_validation not in {"full", "kinematic"}:
+            self.cached_reuse_validation = "full"
         self.gradient_step_m = float(cfg.get("gradient_step_m", 0.16))
         self.line_search_shrink = float(cfg.get("line_search_shrink", 0.55))
         self.hard_projection_relaxation = float(cfg.get("hard_projection_relaxation", 0.92))
         self.safety_margin_m = float(cfg.get("safety_margin_m", 0.35))
         self.obstacle_margin_m = float(cfg.get("obstacle_margin_m", 0.3))
         self.obstacle_broadphase_margin_m = float(cfg.get("obstacle_broadphase_margin_m", 5.0))
+        dynamic_broadphase_margin = cfg.get("dynamic_broadphase_margin_m")
+        self.dynamic_broadphase_margin_m = (
+            None if dynamic_broadphase_margin is None else float(dynamic_broadphase_margin)
+        )
+        self.max_dynamic_hulls_per_interval = int(cfg.get("max_dynamic_hulls_per_interval", 0))
         self.dynamic_grace_intervals = max(0, int(cfg.get("dynamic_grace_intervals", 0)))
         self.minvo_epsilon_m = float(cfg.get("minvo_epsilon_m", 0.12))
         self.hard_safety_tolerance_m = float(cfg.get("hard_safety_tolerance_m", 0.05))
@@ -563,6 +571,7 @@ class RmaderPlanner(ILocalPlanner):
             "rmader_cached_reuse": bool(not replanned),
             "rmader_replan_period_s": float(self.replan_period_s),
             "rmader_fallback_replan_period_s": float(self.fallback_replan_period_s),
+            "rmader_cached_reuse_validation": str(self.cached_reuse_validation),
             "rmader_cached_source": str(memory.get("rmader_cached_source", "none")),
             "rmader_best_topology": str(best.label),
             "rmader_used_topology": str(plan_used.label),
@@ -575,6 +584,8 @@ class RmaderPlanner(ILocalPlanner):
             "rmader_hard_constraint_count": int(len(chosen_report.planes)),
             "rmader_hard_hull_count": int(chosen_report.hull_count),
             "rmader_dynamic_grace_intervals": int(self.dynamic_grace_intervals),
+            "rmader_dynamic_broadphase_margin_m": self.dynamic_broadphase_margin_m,
+            "rmader_max_dynamic_hulls_per_interval": int(self.max_dynamic_hulls_per_interval),
             "rmader_max_hyperplane_violation_m": float(chosen_report.max_violation_m),
             "rmader_sum_hyperplane_violation_m": float(chosen_report.sum_violation_m),
             "rmader_min_hyperplane_gap_m": chosen_report.min_gap_m,
@@ -1372,8 +1383,15 @@ class RmaderPlanner(ILocalPlanner):
         *,
         own_minvo: np.ndarray | None = None,
     ) -> list[_IntervalHull]:
-        hulls: list[_IntervalHull] = list(self._dynamic_interval_hulls(planner_input, num_segments, dt_segment))
         own_minvo_arr = None if own_minvo is None else np.asarray(own_minvo, dtype=np.float32)
+        hulls: list[_IntervalHull] = list(
+            self._dynamic_interval_hulls(
+                planner_input,
+                num_segments,
+                dt_segment,
+                own_minvo=own_minvo_arr,
+            )
+        )
         for i in range(num_segments):
             for obs_idx, obs in enumerate(planner_input.obstacles):
                 half = np.asarray(obs.half, dtype=np.float32) + float(planner_input.ego.radius) + self.obstacle_margin_m
@@ -1396,20 +1414,27 @@ class RmaderPlanner(ILocalPlanner):
         planner_input: PlannerInput,
         num_segments: int,
         dt_segment: float,
+        *,
+        own_minvo: np.ndarray | None = None,
     ) -> list[_IntervalHull]:
-        key = (id(planner_input), int(num_segments), round(float(dt_segment), 9))
-        cached = self._dynamic_hull_cache.get(key)
-        if cached is not None:
-            return cached
+        own_minvo_arr = None if own_minvo is None else np.asarray(own_minvo, dtype=np.float32)
+        key = None
+        if own_minvo_arr is None:
+            key = (id(planner_input), int(num_segments), round(float(dt_segment), 9))
+            cached = self._dynamic_hull_cache.get(key)
+            if cached is not None:
+                return cached
         hulls: list[_IntervalHull] = []
         traffic = self._traffic(planner_input)
         intent_by_sender = traffic.intents_by_sender
+        seen_neighbors = {int(n.idx) for n in traffic.neighbors}
         for i in range(num_segments):
             t0 = i * dt_segment
             t1 = (i + 1) * dt_segment
             tm = 0.5 * (t0 + t1)
             if i < self.dynamic_grace_intervals:
                 continue
+            interval_candidates: list[tuple[float, str, int, _IntervalHull]] = []
             for nobs in traffic.neighbors:
                 intent = intent_by_sender.get(int(nobs.idx))
                 points = np.asarray(
@@ -1429,16 +1454,24 @@ class RmaderPlanner(ILocalPlanner):
                 )
                 center = 0.5 * (np.min(points, axis=0) + np.max(points, axis=0))
                 half = 0.5 * (np.max(points, axis=0) - np.min(points, axis=0)) + inflation
-                hulls.append(
-                    _IntervalHull(
-                        interval_idx=i,
-                        source_kind="neighbor_intent" if intent is not None else "neighbor_cv",
-                        source_id=int(nobs.idx),
-                        vertices=_aabb_vertices(center, half),
-                        inflation_m=float(inflation),
+                source_kind = "neighbor_intent" if intent is not None else "neighbor_cv"
+                priority = self._dynamic_hull_priority(own_minvo_arr, i, center, half)
+                if priority is None:
+                    continue
+                interval_candidates.append(
+                    (
+                        float(priority),
+                        source_kind,
+                        int(nobs.idx),
+                        _IntervalHull(
+                            interval_idx=i,
+                            source_kind=source_kind,
+                            source_id=int(nobs.idx),
+                            vertices=_aabb_vertices(center, half),
+                            inflation_m=float(inflation),
+                        ),
                     )
                 )
-            seen_neighbors = {int(n.idx) for n in traffic.neighbors}
             for sender_id, intent in intent_by_sender.items():
                 if sender_id in seen_neighbors:
                     continue
@@ -1454,17 +1487,54 @@ class RmaderPlanner(ILocalPlanner):
                 inflation += self._intent_inflation(intent)
                 center = 0.5 * (np.min(points, axis=0) + np.max(points, axis=0))
                 half = 0.5 * (np.max(points, axis=0) - np.min(points, axis=0)) + inflation
-                hulls.append(
-                    _IntervalHull(
-                        interval_idx=i,
-                        source_kind="intent_only",
-                        source_id=int(sender_id),
-                        vertices=_aabb_vertices(center, half),
-                        inflation_m=float(inflation),
+                priority = self._dynamic_hull_priority(own_minvo_arr, i, center, half)
+                if priority is None:
+                    continue
+                interval_candidates.append(
+                    (
+                        float(priority),
+                        "intent_only",
+                        int(sender_id),
+                        _IntervalHull(
+                            interval_idx=i,
+                            source_kind="intent_only",
+                            source_id=int(sender_id),
+                            vertices=_aabb_vertices(center, half),
+                            inflation_m=float(inflation),
+                        ),
                     )
                 )
-        self._dynamic_hull_cache[key] = hulls
+            if self.max_dynamic_hulls_per_interval > 0 and len(interval_candidates) > self.max_dynamic_hulls_per_interval:
+                interval_candidates = sorted(interval_candidates, key=lambda item: (item[0], item[1], item[2]))[
+                    : self.max_dynamic_hulls_per_interval
+                ]
+            hulls.extend(candidate[3] for candidate in interval_candidates)
+        if key is not None:
+            self._dynamic_hull_cache[key] = hulls
         return hulls
+
+    def _dynamic_hull_priority(
+        self,
+        own_minvo: np.ndarray | None,
+        interval_idx: int,
+        hull_center: np.ndarray,
+        hull_half: np.ndarray,
+    ) -> float | None:
+        if own_minvo is None or int(interval_idx) >= own_minvo.shape[0]:
+            return 0.0
+        own = np.asarray(own_minvo[int(interval_idx)], dtype=np.float32)
+        if own.ndim != 2 or own.shape[0] == 0:
+            return 0.0
+        own_min = np.min(own, axis=0)
+        own_max = np.max(own, axis=0)
+        own_center = 0.5 * (own_min + own_max)
+        own_half = 0.5 * (own_max - own_min)
+        gap_m = _aabb_gap_m(own_center, own_half, hull_center, hull_half)
+        if self.dynamic_broadphase_margin_m is None:
+            return float(gap_m)
+        if gap_m > max(0.0, float(self.dynamic_broadphase_margin_m)):
+            return None
+        return float(gap_m)
 
     def _obstacle_relevant_to_interval(
         self,
@@ -1706,7 +1776,11 @@ class RmaderPlanner(ILocalPlanner):
         if arr.shape != (self._control_point_count(), 3):
             return None
         arr = self._apply_boundary_conditions(planner_input, arr)
-        final = self._objective(planner_input, arr, arr)
+        final = (
+            self._cached_kinematic_objective(planner_input, arr, arr)
+            if self.cached_reuse_validation == "kinematic"
+            else self._objective(planner_input, arr, arr)
+        )
         source = str(memory.get("rmader_cached_source", "committed"))
         label = str(memory.get("rmader_cached_label", memory.get("rmader_committed_label", "cached")))
         status = "cached_committed_minvo_plan" if source == "committed" else "cached_fallback_minvo_plan"
@@ -1718,6 +1792,45 @@ class RmaderPlanner(ILocalPlanner):
             iterations=0,
             status=status,
         )
+
+    def _cached_kinematic_objective(
+        self,
+        planner_input: PlannerInput,
+        cp: np.ndarray,
+        reference_cp: np.ndarray,
+    ) -> dict[str, Any]:
+        samples = self._bspline_samples(planner_input, cp)
+        target = self._local_target(planner_input)
+        terminal = self.terminal_weight * float(np.dot(samples[-1] - target, samples[-1] - target))
+        ref_delta = cp - np.asarray(reference_cp, dtype=np.float32)
+        reference = self.reference_weight * float(np.sum(ref_delta[3:-3] ** 2))
+        warm = 0.0
+        if self._last_control_points is not None and self._last_control_points.shape == cp.shape:
+            warm = self.warm_start_weight * float(np.sum((cp[3:-3] - self._last_control_points[3:-3]) ** 2))
+        smoothness, _ = self._smoothness_cost_and_grad(cp)
+        path_length = self._path_length(samples)
+        kin = self._kinematic_report(planner_input, cp)
+        dyn = self.kinematic_violation_weight * (
+            kin.max_speed_violation_mps * kin.max_speed_violation_mps
+            + kin.max_accel_violation_mps2 * kin.max_accel_violation_mps2
+            + kin.max_jerk_violation_mps3 * kin.max_jerk_violation_mps3
+        )
+        total = terminal + reference + warm + smoothness + self.path_length_weight * path_length + dyn
+        return {
+            "total": float(total),
+            "samples": samples,
+            "smoothness_cost": float(smoothness),
+            "path_length_m": float(path_length),
+            "constraint_report": _ConstraintReport(
+                planes=[],
+                max_violation_m=0.0,
+                sum_violation_m=0.0,
+                min_gap_m=None,
+                hard_ok=True,
+                hull_count=0,
+            ),
+            "kinematic_report": kin,
+        }
 
     def _committed_fallback(self, planner_input: PlannerInput, memory: dict[str, object]) -> _PlanResult | None:
         cp = memory.get("rmader_committed_control_points")

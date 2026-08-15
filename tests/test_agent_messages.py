@@ -195,6 +195,46 @@ class TestAgentMessages(unittest.TestCase):
         self.assertEqual([e["event"] for e in events], ["scheduled", "dropped", "delivered"])
         self.assertEqual(events[1]["reason"], "rate_or_bandwidth_limit")
 
+    def test_v2v_agent_message_bandwidth_window_rolls_forward(self):
+        profile = {
+            "tx_rate_hz": 50,
+            "delay": {"type": "constant_ms", "value_ms": 0.0},
+            "loss": {"type": "iid", "p": 0.0},
+            "noise": {"sigma_pos_m": 0.0, "sigma_vel_mps": 0.0},
+            "agent_messages": {"bandwidth_limit_Bps": 150, "overhead_bytes": 0},
+        }
+        v2v = V2VEmulator(profile=profile, age_cap_s=0.75, rng=np.random.default_rng(0))
+        v2v.reset(2)
+
+        def _publish(now_s: float, message_id: str) -> None:
+            v2v.publish_agent_message(
+                sender=0,
+                msg=AgentMessage(
+                    sender_id=0,
+                    recipient_id=1,
+                    timestamp_send_s=now_s,
+                    kind="CUSTOM_STATUS",
+                    payload={"message_id": message_id},
+                    message_id=message_id,
+                    size_bytes=100,
+                ),
+                now_s=now_s,
+                n_agents=2,
+            )
+
+        _publish(0.0, "m-0")
+        _publish(0.5, "m-1")
+        _publish(1.01, "m-2")
+
+        stats = v2v.agent_message_stats_snapshot()
+        events = v2v.drain_agent_message_events()
+
+        self.assertEqual(stats["agent_msg_attempted"], 3)
+        self.assertEqual(stats["agent_msg_scheduled"], 2)
+        self.assertEqual(stats["agent_msg_dropped"], 1)
+        self.assertEqual(events[1]["reason"], "rate_or_bandwidth_limit")
+        self.assertEqual(v2v.agent_msg_bandwidth_used_bytes[0], 100)
+
     def test_v2v_drops_invalid_standard_message_payload(self):
         profile = {
             "tx_rate_hz": 50,

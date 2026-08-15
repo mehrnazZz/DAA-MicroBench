@@ -111,6 +111,7 @@ class V2VEmulator:
         self.ge_state: dict[tuple[int, int], str] = {}
         self.agent_msg_rate_windows: list[list[float]] = []
         self.agent_msg_bandwidth_windows: list[list[tuple[float, int]]] = []
+        self.agent_msg_bandwidth_used_bytes: list[int] = []
         self.agent_message_events: list[dict] = []
         self.agent_msg_stats: dict[str, int] = {}
         self.agent_msg_seq_by_sender: list[int] = []
@@ -130,6 +131,7 @@ class V2VEmulator:
         self.ge_state = {}
         self.agent_msg_rate_windows = [[] for _ in range(n_agents)]
         self.agent_msg_bandwidth_windows = [[] for _ in range(n_agents)]
+        self.agent_msg_bandwidth_used_bytes = [0 for _ in range(n_agents)]
         self.agent_message_events = []
         self.agent_msg_stats = {
             "agent_msg_attempted": 0,
@@ -444,13 +446,18 @@ class V2VEmulator:
 
         bandwidth_window = self.agent_msg_bandwidth_windows[sender]
         while bandwidth_window and bandwidth_window[0][0] <= cutoff:
-            bandwidth_window.pop(0)
-        used_bytes = sum(int(x[1]) for x in bandwidth_window)
+            _, expired_bytes = bandwidth_window.pop(0)
+            self.agent_msg_bandwidth_used_bytes[sender] = max(
+                0,
+                int(self.agent_msg_bandwidth_used_bytes[sender]) - int(expired_bytes),
+            )
+        used_bytes = int(self.agent_msg_bandwidth_used_bytes[sender])
         if self.agent_msg_bandwidth_limit_Bps > 0.0 and used_bytes + int(size_bytes) > self.agent_msg_bandwidth_limit_Bps:
             return False
 
         rate_window.append(float(now_s))
         bandwidth_window.append((float(now_s), int(size_bytes)))
+        self.agent_msg_bandwidth_used_bytes[sender] = used_bytes + int(size_bytes)
         return True
 
     def _sample_delay_sec(self) -> float:

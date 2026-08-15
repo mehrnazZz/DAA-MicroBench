@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import math
 from typing import Any
 
@@ -156,6 +156,7 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
         self.max_neighbors = int(cfg.get("max_neighbors", 8))
         self.max_intents = int(cfg.get("max_intents", max(self.max_neighbors, 12)))
         self.max_initializations = int(cfg.get("max_initializations", 3))
+        self.replan_period_s = float(cfg.get("replan_period_s", 0.0))
         self.solver = str(cfg.get("solver", "projected_gradient")).strip().lower()
         self.opt_iterations = int(cfg.get("opt_iterations", 3))
         self.scipy_maxiter = int(cfg.get("scipy_maxiter", 35))
@@ -189,6 +190,9 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
 
         self._last_control_points: np.ndarray | None = None
         self._last_label: str | None = None
+        self._cached_result: _OptimizationResult | None = None
+        self._cached_until_s: float = -float("inf")
+        self._last_replan_t: float | None = None
         self._traffic_context: LocalTrafficContext | None = None
         self.seed = 0
 
@@ -196,6 +200,9 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
         self.seed = int(seed)
         self._last_control_points = None
         self._last_label = None
+        self._cached_result = None
+        self._cached_until_s = -float("inf")
+        self._last_replan_t = None
         self._traffic_context = None
 
     def compute_cmd(self, planner_input: PlannerInput) -> PlannerOutput:
@@ -210,14 +217,24 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
         if planner_input.planar:
             current[1] = 0.0
 
-        basis = _clamped_basis_matrix(self._control_point_count(), self._sample_count())
-        seeds = self._initializations(planner_input)
-        results = [self._optimize_seed(planner_input, seed, basis) for seed in seeds]
-        best = min(results, key=lambda result: result.final_cost)
+        cached = self._maybe_reuse_cached_result(planner_input)
+        replanned = cached is None
+        if cached is not None:
+            seeds: list[_Seed] = []
+            best = cached
+        else:
+            basis = _clamped_basis_matrix(self._control_point_count(), self._sample_count())
+            seeds = self._initializations(planner_input)
+            results = [self._optimize_seed(planner_input, seed, basis) for seed in seeds]
+            best = min(results, key=lambda result: result.final_cost)
+            self._cached_result = best
+            self._cached_until_s = float(planner_input.t) + max(0.0, self.replan_period_s)
+            self._last_replan_t = float(planner_input.t)
 
         samples = best.samples
-        next_idx = 1 if samples.shape[0] > 1 else 0
         sample_dt = self.horizon_s / max(1, samples.shape[0] - 1)
+        plan_age_s = 0.0 if replanned or self._last_replan_t is None else max(0.0, float(planner_input.t) - float(self._last_replan_t))
+        next_idx = self._command_sample_index(samples.shape[0], sample_dt, plan_age_s)
         desired_v = (samples[next_idx] - np.asarray(ego.pos, dtype=np.float32)) / max(1e-6, sample_dt)
         v_cmd = _limit_delta(desired_v, current, float(ego.a_max) * float(planner_input.dt))
         v_cmd = _clamp_speed(v_cmd, float(ego.v_max))
@@ -256,6 +273,11 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
                 "ego_swarm_opt_control_points": int(best.control_points.shape[0]),
                 "ego_swarm_opt_curve_samples": int(samples.shape[0]),
                 "ego_swarm_opt_initializations": int(len(seeds)),
+                "ego_swarm_opt_replanned": bool(replanned),
+                "ego_swarm_opt_cached_reuse": bool(not replanned),
+                "ego_swarm_opt_replan_period_s": float(self.replan_period_s),
+                "ego_swarm_opt_plan_age_s": float(plan_age_s),
+                "ego_swarm_opt_command_sample_index": int(next_idx),
                 "ego_swarm_opt_best_topology": str(best.label),
                 "ego_swarm_opt_initial_cost": float(best.initial_cost),
                 "ego_swarm_opt_final_cost": float(best.final_cost),
@@ -292,6 +314,33 @@ class EgoSwarmOptimizingPlanner(ILocalPlanner):
                 max_intents=self.max_intents,
             )
         return self._traffic_context
+
+    def _maybe_reuse_cached_result(self, planner_input: PlannerInput) -> _OptimizationResult | None:
+        if self.replan_period_s <= 0.0:
+            return None
+        cached = self._cached_result
+        if cached is None or float(planner_input.t) >= float(self._cached_until_s):
+            return None
+        if cached.samples.ndim != 2 or cached.samples.shape[0] == 0 or cached.samples.shape[1] != 3:
+            return None
+        current_pos = np.asarray(planner_input.ego.pos, dtype=np.float32)
+        delta = current_pos - np.asarray(cached.samples[0], dtype=np.float32)
+        if planner_input.planar:
+            delta[1] = 0.0
+        shifted_samples = (np.asarray(cached.samples, dtype=np.float32) + delta).astype(np.float32)
+        shifted_control_points = (np.asarray(cached.control_points, dtype=np.float32) + delta).astype(np.float32)
+        shifted_samples[0] = current_pos
+        shifted_control_points[0] = current_pos
+        if planner_input.planar:
+            shifted_samples[:, 1] = float(current_pos[1])
+            shifted_control_points[:, 1] = float(current_pos[1])
+        return replace(cached, control_points=shifted_control_points, samples=shifted_samples)
+
+    def _command_sample_index(self, sample_count: int, sample_dt: float, plan_age_s: float) -> int:
+        if int(sample_count) <= 1:
+            return 0
+        lookahead_idx = int(math.floor(max(0.0, float(plan_age_s)) / max(1e-6, float(sample_dt)))) + 1
+        return min(max(1, lookahead_idx), int(sample_count) - 1)
 
     def _control_point_count(self) -> int:
         return max(5, int(self.control_points))

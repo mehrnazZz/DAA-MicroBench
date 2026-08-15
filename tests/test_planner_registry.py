@@ -151,17 +151,24 @@ def test_scale_planner_preset_overrides_optimizer_budget(monkeypatch) -> None:
     dmpc = make_planner("dmpc_best_response")
     bvc = make_planner("bvc_tube_dmpc")
     ego = make_planner("ego_swarm_opt")
+    rmader = make_planner("rmader")
 
     assert isinstance(mpc, NonlinearMpcPlanner)
     assert isinstance(dmpc, DistributedMpcBestResponsePlanner)
     assert isinstance(bvc, BvcTubeDmpcPlanner)
     assert isinstance(ego, EgoSwarmOptimizingPlanner)
+    assert isinstance(rmader, RmaderPlanner)
     assert mpc.max_neighbors == 6
     assert mpc.max_intents == 8
     assert mpc.horizon_steps == 4
     assert dmpc.max_initializations == 2
     assert bvc.projection_iterations == 2
     assert ego.opt_iterations == 1
+    assert ego.replan_period_s == 0.2
+    assert rmader.max_dynamic_hulls_per_interval == 5
+    assert rmader.dynamic_broadphase_margin_m == 6.0
+    assert rmader.cached_reuse_validation == "kinematic"
+    assert rmader.replan_period_s == 0.45
 
 
 def test_list_methods_cli_can_emit_metadata_json() -> None:
