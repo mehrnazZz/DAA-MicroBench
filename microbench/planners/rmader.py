@@ -939,7 +939,7 @@ class RmaderPlanner(ILocalPlanner):
     def _optimize_seed(self, planner_input: PlannerInput, seed: _Seed) -> _PlanResult:
         cp = self._project_kinematic(planner_input, np.asarray(seed.control_points, dtype=np.float32).copy())
         cp, projection_report = self._project_hard_separation(planner_input, cp)
-        initial = self._objective(planner_input, cp, seed.control_points)
+        initial = self._objective(planner_input, cp, seed.control_points, constraint_report=projection_report)
         previous = initial
         iterations = 0
         status = "projected_minvo_hyperplane_converged"
@@ -969,8 +969,13 @@ class RmaderPlanner(ILocalPlanner):
             for _ls in range(8):
                 candidate = cp - grad * step
                 candidate = self._project_kinematic(planner_input, candidate)
-                candidate, _ = self._project_hard_separation(planner_input, candidate)
-                current = self._objective(planner_input, candidate, seed.control_points)
+                candidate, candidate_report = self._project_hard_separation(planner_input, candidate)
+                current = self._objective(
+                    planner_input,
+                    candidate,
+                    seed.control_points,
+                    constraint_report=candidate_report,
+                )
                 if current["total"] <= previous["total"] + 1e-6:
                     cp = candidate
                     previous = current
@@ -981,7 +986,7 @@ class RmaderPlanner(ILocalPlanner):
                 status = "projected_minvo_hyperplane_line_search_stalled"
                 break
 
-        final = self._objective(planner_input, cp, seed.control_points)
+        final = previous
         return self._plan_result(
             label=seed.label,
             cp=cp,
@@ -991,7 +996,14 @@ class RmaderPlanner(ILocalPlanner):
             status=status,
         )
 
-    def _objective(self, planner_input: PlannerInput, cp: np.ndarray, reference_cp: np.ndarray) -> dict[str, Any]:
+    def _objective(
+        self,
+        planner_input: PlannerInput,
+        cp: np.ndarray,
+        reference_cp: np.ndarray,
+        *,
+        constraint_report: _ConstraintReport | None = None,
+    ) -> dict[str, Any]:
         samples = self._bspline_samples(planner_input, cp)
         target = self._local_target(planner_input)
         terminal = self.terminal_weight * float(np.dot(samples[-1] - target, samples[-1] - target))
@@ -1003,7 +1015,7 @@ class RmaderPlanner(ILocalPlanner):
         smoothness, _ = self._smoothness_cost_and_grad(cp)
         path_length = self._path_length(samples)
         clearance, _ = self._sample_clearance_cost_and_grad(planner_input, samples)
-        constraints = self._constraint_report(planner_input, cp)
+        constraints = constraint_report if constraint_report is not None else self._constraint_report(planner_input, cp)
         kin = self._kinematic_report(planner_input, cp)
         hard = self.hard_violation_weight * (
             constraints.sum_violation_m + 10.0 * constraints.max_violation_m * constraints.max_violation_m
@@ -1253,14 +1265,14 @@ class RmaderPlanner(ILocalPlanner):
         cp = np.asarray(cp, dtype=np.float32).copy()
         matrices = _interval_matrices(cp.shape[0] - 3, kind="m_pos_bs2mv")
         fixed = self._fixed_mask(cp.shape[0])
-        report = self._constraint_report(planner_input, cp)
-        if not report.planes:
+        iterations = max(0, self.hard_projection_iterations)
+        minvo = self._minvo_intervals(cp)
+        report = self._constraint_report(planner_input, cp, minvo=minvo)
+        if not report.planes or iterations <= 0 or report.max_violation_m <= self.hard_safety_tolerance_m:
             return cp, report
 
-        for _ in range(max(0, self.hard_projection_iterations)):
+        for _ in range(iterations):
             adjusted = False
-            minvo = self._minvo_intervals(cp)
-            report = self._constraint_report(planner_input, cp, minvo=minvo)
             if report.max_violation_m <= self.hard_safety_tolerance_m:
                 break
             for plane in report.planes:
@@ -1293,7 +1305,8 @@ class RmaderPlanner(ILocalPlanner):
                 cp[:, 1] = float(planner_input.ego.pos[1])
             if not adjusted:
                 break
-        report = self._constraint_report(planner_input, cp)
+            minvo = self._minvo_intervals(cp)
+            report = self._constraint_report(planner_input, cp, minvo=minvo)
         return cp.astype(np.float32), report
 
     def _constraint_report(

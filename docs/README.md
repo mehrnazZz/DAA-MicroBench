@@ -108,7 +108,7 @@ Run a fleet-size scaling ladder:
 python -m microbench.cli scale-benchmark --out-dir runs_scale_benchmark --scenarios config/scenarios/stacked_swap_3d.yaml,config/scenarios/urban_conflict_3d.yaml --n 4,8,16,30 --seeds 2 --comm realistic_v2v_50hz --duration-s 60 --scale-spawn-profile dense --planner-preset scale --run-timeout-s 360
 ```
 
-The scale report writes `scale_summary.csv` and `scale_benchmark.json`, recording completed rows, hard timeouts, guardrail pressure, collision rates, and planner latency by scenario, method, and N. `--planner-preset scale` bounds optimizer effort for large-fleet studies, including DMPC/BVC/RMADER command-level velocity/yield guarding, RMADER dynamic-hull/cached-validation/seed-budget limits, and EGO-Swarm optimized receding cached-plan reuse plus command-level velocity/yield guarding; omit it for the fuller default planner settings.
+The scale report writes `scale_summary.csv` and `scale_benchmark.json`, recording completed rows, hard timeouts, guardrail pressure, collision rates, and planner latency by scenario, method, and N. `--planner-preset scale` bounds optimizer effort for large-fleet studies, including NMPC/DMPC/BVC/RMADER command-level velocity/yield guarding, RMADER dynamic-hull/cached-validation/seed-budget limits, and EGO-Swarm optimized receding cached-plan reuse plus command-level velocity/yield guarding; omit it for the fuller default planner settings.
 
 Run the all-suite baseline leaderboard:
 

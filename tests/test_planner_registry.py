@@ -161,6 +161,10 @@ def test_scale_planner_preset_overrides_optimizer_budget(monkeypatch) -> None:
     assert mpc.max_neighbors == 6
     assert mpc.max_intents == 8
     assert mpc.horizon_steps == 4
+    assert mpc.safety_margin_m == 0.5
+    assert mpc.velocity_guard_margin_m == 0.65
+    assert mpc.velocity_guard_alpha == 0.7
+    assert mpc.velocity_guard_brake_scale == 0.3
     assert dmpc.max_neighbors == 8
     assert dmpc.max_intents == 10
     assert dmpc.max_initializations == 2

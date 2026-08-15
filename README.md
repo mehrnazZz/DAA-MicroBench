@@ -450,7 +450,7 @@ python -m microbench.cli scale-benchmark \
   --run-timeout-s 360
 ```
 
-This writes raw `results.csv`, standard `summary.csv`, `scale_summary.csv`, and `scale_benchmark.json`. The scale report separates safety from runtime feasibility: a method that times out at high N is recorded as a failed scale row, not silently dropped. `--planner-preset scale` applies documented compute-budget overrides for large-fleet stress tests; for DMPC/BVC/RMADER-style optimizers, this includes bounded local traffic/constraint budgets plus command-level velocity/yield guarding; for RMADER, it also includes nearby dynamic-hull filtering, true seed-budget capping, and kinematic cached-plan validation between replans; for `ego_swarm_opt`, it uses receding cached-plan reuse between 5 Hz trajectory optimizations plus a command-level velocity/yield guard. Omit the preset for the fuller default optimizer settings.
+This writes raw `results.csv`, standard `summary.csv`, `scale_summary.csv`, and `scale_benchmark.json`. The scale report separates safety from runtime feasibility: a method that times out at high N is recorded as a failed scale row, not silently dropped. `--planner-preset scale` applies documented compute-budget overrides for large-fleet stress tests; for NMPC/DMPC/BVC/RMADER-style optimizers, this includes bounded local traffic/constraint budgets plus command-level velocity/yield guarding; for RMADER, it also includes nearby dynamic-hull filtering, true seed-budget capping, and kinematic cached-plan validation between replans; for `ego_swarm_opt`, it uses receding cached-plan reuse between 5 Hz trajectory optimizations plus a command-level velocity/yield guard. Omit the preset for the fuller default optimizer settings.
 
 Run the generated agentic stress suite:
 
@@ -539,7 +539,7 @@ Expected baseline sanity behavior:
 - `orca_with_staleness`: more conservative behavior when observations are stale or degraded.
 - `cbf_qp`: experimental CBF safety-filter baseline with deterministic projection, optional SciPy solver mode, obstacle barriers, and stale-track inflation; not a calibrated leaderboard anchor.
 - `mpc_local`: experimental local predictive sampling baseline with bounded lookahead, smoothness costs, obstacle scoring, candidate-risk diagnostics, and stale-track risk inflation.
-- `mpc_nonlinear`: experimental clean-room nonlinear MPC trajectory-optimization baseline with multistart acceleration-control optimization, dynamic obstacle/intent penalties, and trajectory intent output.
+- `mpc_nonlinear`: experimental clean-room nonlinear MPC trajectory-optimization baseline with multistart acceleration-control optimization, dynamic obstacle/intent penalties, command-level velocity/yield guarding, and trajectory intent output.
 - `dmpc_best_response`: experimental distributed-MPC-style best-response baseline that treats neighbor intent trajectories as coupled constraints, falls back to inflated constant-velocity tracks for stale/missing plans, and republishes its plan for the next coordination round.
 - `bvc_tube_dmpc`: experimental clean-room tube-based DMPC baseline with hard buffered Voronoi-cell halfspace tubes, waypoint projection into non-overlapping cells, obstacle halfspaces, and trajectory intent output.
 - `dynamic_tube_dmpc`: experimental paper-specific dynamic tube-DMPC baseline after Dai/Liao/Chen 2026, with condensed acceleration QP, elastic virtual-tube reconstruction, risk-triggered collision constraints, local tube halfspaces, and trajectory intent output.

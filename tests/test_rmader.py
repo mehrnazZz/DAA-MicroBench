@@ -297,6 +297,37 @@ def test_rmader_initializations_stop_at_seed_budget(monkeypatch) -> None:
     assert calls == 1
 
 
+def test_rmader_optimize_seed_reuses_projection_constraint_report(monkeypatch) -> None:
+    ego = _agent((0.0, 0.0, 0.0))
+    planner = RmaderPlanner(
+        cfg={
+            "horizon_s": 2.4,
+            "control_points": 8,
+            "samples_per_interval": 2,
+            "max_initializations": 1,
+            "opt_iterations": 0,
+            "hard_projection_iterations": 0,
+            "jerk_limit_mps3": 100.0,
+        }
+    )
+    inp = _planner_input(ego=ego, neighbors=[_neighbor(pos=(8.0, 0.0, 0.0))])
+    seed = planner._initializations(inp)[0]
+    calls = 0
+    original = planner._constraint_report
+
+    def _counted_constraint_report(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(planner, "_constraint_report", _counted_constraint_report)
+
+    result = planner._optimize_seed(inp, seed)
+
+    assert result.constraint_report.hull_count > 0
+    assert calls == 1
+
+
 def test_rmader_recovery_fallback_is_explicit_opt_in() -> None:
     ego = _agent((0.0, 0.0, 0.0))
     planner = RmaderPlanner(

@@ -83,6 +83,18 @@ planner_presets:
       opt_iterations: 2
       scipy_maxiter: 12
       replan_period_s: 0.2
+      safety_margin_m: 0.5
+      near_clearance_m: 2.2
+      collision_weight: 9500.0
+      clearance_weight: 240.0
+      intent_collision_weight: 9000.0
+      intent_clearance_weight: 220.0
+      velocity_guard_margin_m: 0.65
+      velocity_guard_activation_margin_m: 4.0
+      velocity_guard_ttc_s: 6.0
+      velocity_guard_alpha: 0.7
+      velocity_guard_brake_clearance_m: 1.4
+      velocity_guard_brake_scale: 0.3
     dmpc_best_response:
       max_neighbors: 8
       max_intents: 10
@@ -262,6 +274,15 @@ mpc_nonlinear:
   stale_age_cap_s: 1.5
   intent_age_inflation_gain: 0.3
   track_uncertainty_speed_gain: 0.1
+  velocity_guard_enabled: true
+  velocity_guard_margin_m: 0.35
+  velocity_guard_activation_margin_m: 1.25
+  velocity_guard_ttc_s: 3.0
+  velocity_guard_alpha: 1.4
+  velocity_guard_iterations: 3
+  velocity_guard_brake_enabled: true
+  velocity_guard_brake_clearance_m: 0.4
+  velocity_guard_brake_scale: 0.6
   tracking_weight: 0.45
   velocity_tracking_weight: 0.9
   terminal_weight: 10.0

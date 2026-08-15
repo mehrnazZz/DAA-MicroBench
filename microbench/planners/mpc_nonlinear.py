@@ -136,6 +136,15 @@ class NonlinearMpcPlanner(ILocalPlanner):
         self.stale_age_cap_s = float(cfg.get("stale_age_cap_s", 1.5))
         self.intent_age_inflation_gain = float(cfg.get("intent_age_inflation_gain", 0.3))
         self.track_uncertainty_speed_gain = float(cfg.get("track_uncertainty_speed_gain", 0.1))
+        self.velocity_guard_enabled = bool(cfg.get("velocity_guard_enabled", True))
+        self.velocity_guard_margin_m = float(cfg.get("velocity_guard_margin_m", 0.35))
+        self.velocity_guard_activation_margin_m = float(cfg.get("velocity_guard_activation_margin_m", 1.25))
+        self.velocity_guard_ttc_s = float(cfg.get("velocity_guard_ttc_s", 3.0))
+        self.velocity_guard_alpha = float(cfg.get("velocity_guard_alpha", 1.4))
+        self.velocity_guard_iterations = int(cfg.get("velocity_guard_iterations", 3))
+        self.velocity_guard_brake_enabled = bool(cfg.get("velocity_guard_brake_enabled", True))
+        self.velocity_guard_brake_clearance_m = float(cfg.get("velocity_guard_brake_clearance_m", 0.4))
+        self.velocity_guard_brake_scale = float(cfg.get("velocity_guard_brake_scale", 0.6))
 
         self.tracking_weight = float(cfg.get("tracking_weight", 0.35))
         self.velocity_tracking_weight = float(cfg.get("velocity_tracking_weight", 0.45))
@@ -200,8 +209,20 @@ class NonlinearMpcPlanner(ILocalPlanner):
         v_cmd = _clamp_speed(v_cmd, float(ego.v_max))
         if planner_input.planar:
             v_cmd[1] = 0.0
+        guard_info = self._empty_velocity_guard_info()
+        compute_guard_enabled = self.__class__ is NonlinearMpcPlanner
+        if compute_guard_enabled:
+            v_cmd, guard_info = self._apply_velocity_guard(planner_input, v_cmd, current)
 
-        intent_points = self._intent_points(planner_input, best.positions)
+        intent_points = self._intent_points(
+            planner_input,
+            best.positions,
+            immediate_v_cmd=v_cmd,
+            override_immediate=bool(
+                guard_info["mpc_nonlinear_velocity_guard_adjusted"]
+                or guard_info["mpc_nonlinear_velocity_guard_brake_applied"]
+            ),
+        )
         intent = IntentMsg(
             sender_id=int(ego.idx),
             timestamp_send_s=float(planner_input.t),
@@ -260,9 +281,11 @@ class NonlinearMpcPlanner(ILocalPlanner):
                 "mpc_nonlinear_obstacle_count_considered": int(len(planner_input.obstacles)),
                 "mpc_nonlinear_planar": bool(planner_input.planar),
                 "mpc_nonlinear_intent_points": int(intent_points.shape[0]),
+                "mpc_nonlinear_velocity_guard_enabled": bool(compute_guard_enabled and self.velocity_guard_enabled),
                 "mpc_nonlinear_accel_delta_norm": float(_norm(v_cmd - current)),
                 "mpc_nonlinear_accel_delta_limit": float(float(ego.a_max) * float(planner_input.dt)),
                 "mpc_nonlinear_prior_seed": prior_label,
+                **guard_info,
             },
         )
         self._traffic_context = None
@@ -276,6 +299,99 @@ class NonlinearMpcPlanner(ILocalPlanner):
                 max_intents=self.max_intents,
             )
         return self._traffic_context
+
+    def _empty_velocity_guard_info(self) -> dict[str, Any]:
+        return {
+            "mpc_nonlinear_velocity_guard_adjusted": False,
+            "mpc_nonlinear_velocity_guard_constraint_count": 0,
+            "mpc_nonlinear_velocity_guard_min_clearance_m": None,
+            "mpc_nonlinear_velocity_guard_min_ttc_s": None,
+            "mpc_nonlinear_velocity_guard_delta_norm": 0.0,
+            "mpc_nonlinear_velocity_guard_brake_applied": False,
+        }
+
+    def _apply_velocity_guard(
+        self,
+        planner_input: PlannerInput,
+        v_cmd: np.ndarray,
+        current: np.ndarray,
+    ) -> tuple[np.ndarray, dict[str, Any]]:
+        if not self.velocity_guard_enabled:
+            return np.asarray(v_cmd, dtype=np.float32), self._empty_velocity_guard_info()
+
+        ego = planner_input.ego
+        guarded = np.asarray(v_cmd, dtype=np.float32).copy()
+        start = guarded.copy()
+        max_delta = float(ego.a_max) * float(planner_input.dt)
+        active: list[tuple[np.ndarray, float]] = []
+        min_clearance: float | None = None
+        min_ttc: float | None = None
+        brake_applied = False
+
+        for nobs in self._traffic(planner_input).neighbors:
+            if not bool(nobs.valid):
+                continue
+            rel = np.asarray(ego.pos, dtype=np.float32) - np.asarray(nobs.pos, dtype=np.float32)
+            other_v = np.asarray(nobs.vel, dtype=np.float32)
+            if planner_input.planar:
+                rel[1] = 0.0
+                other_v[1] = 0.0
+            dist = _norm(rel)
+            if dist < 1.0e-6:
+                rel = np.asarray([1.0, 0.0, 0.0], dtype=np.float32)
+                dist = 1.0
+            unit = rel / dist
+            safe = float(ego.radius) + float(nobs.radius) + self.safety_margin_m + self._neighbor_inflation(nobs)
+            safe += max(0.0, float(self.velocity_guard_margin_m))
+            clearance = dist - safe
+            min_clearance = clearance if min_clearance is None else min(min_clearance, clearance)
+            rel_v_current = np.asarray(current, dtype=np.float32) - other_v
+            vv = float(np.dot(rel_v_current, rel_v_current))
+            ttc: float | None = None
+            if vv > 1.0e-9:
+                tau = -float(np.dot(rel, rel_v_current)) / vv
+                if tau >= 0.0:
+                    ttc = tau
+                    min_ttc = tau if min_ttc is None else min(min_ttc, tau)
+            within_range = dist <= safe + max(0.0, float(self.velocity_guard_activation_margin_m))
+            closing_soon = ttc is not None and ttc <= max(0.0, float(self.velocity_guard_ttc_s))
+            if not within_range and not closing_soon:
+                continue
+            rhs = float(np.dot(unit, other_v) - float(self.velocity_guard_alpha) * clearance)
+            active.append((unit.astype(np.float32), rhs))
+
+        for _ in range(max(1, self.velocity_guard_iterations)):
+            for unit, rhs in active:
+                lhs = float(np.dot(unit, guarded))
+                if lhs < rhs:
+                    guarded = guarded + unit * (rhs - lhs)
+            guarded = _limit_delta(guarded, current, max_delta)
+            guarded = _clamp_speed(guarded, float(ego.v_max))
+            if planner_input.planar:
+                guarded[1] = 0.0
+
+        if (
+            self.velocity_guard_brake_enabled
+            and active
+            and min_clearance is not None
+            and float(min_clearance) <= max(0.0, float(self.velocity_guard_brake_clearance_m))
+        ):
+            brake_scale = max(0.0, min(1.0, float(self.velocity_guard_brake_scale)))
+            guarded = _limit_delta(guarded * brake_scale, current, max_delta)
+            guarded = _clamp_speed(guarded, float(ego.v_max))
+            if planner_input.planar:
+                guarded[1] = 0.0
+            brake_applied = True
+
+        delta = _norm(guarded - start)
+        return guarded.astype(np.float32), {
+            "mpc_nonlinear_velocity_guard_adjusted": bool(delta > 1.0e-7),
+            "mpc_nonlinear_velocity_guard_constraint_count": int(len(active)),
+            "mpc_nonlinear_velocity_guard_min_clearance_m": min_clearance,
+            "mpc_nonlinear_velocity_guard_min_ttc_s": min_ttc,
+            "mpc_nonlinear_velocity_guard_delta_norm": float(delta),
+            "mpc_nonlinear_velocity_guard_brake_applied": bool(brake_applied),
+        }
 
     def _command_from_plan(
         self,
@@ -933,9 +1049,20 @@ class NonlinearMpcPlanner(ILocalPlanner):
             predicted_obstacle_conflict=bool(final["predicted_obstacle_conflict"]),
         )
 
-    def _intent_points(self, planner_input: PlannerInput, positions: np.ndarray) -> np.ndarray:
+    def _intent_points(
+        self,
+        planner_input: PlannerInput,
+        positions: np.ndarray,
+        *,
+        immediate_v_cmd: np.ndarray | None = None,
+        override_immediate: bool = False,
+    ) -> np.ndarray:
         ego_pos = np.asarray(planner_input.ego.pos, dtype=np.float32)
         out = np.vstack([ego_pos, positions]) if positions.size else ego_pos.reshape(1, 3)
+        if override_immediate and immediate_v_cmd is not None and out.shape[0] >= 2:
+            out[1] = ego_pos + np.asarray(immediate_v_cmd, dtype=np.float32) * self._dt()
+            if planner_input.planar:
+                out[1, 1] = float(ego_pos[1])
         if self.max_intent_points > 0 and out.shape[0] > self.max_intent_points:
             idx = np.linspace(0, out.shape[0] - 1, self.max_intent_points).round().astype(int)
             out = out[idx]

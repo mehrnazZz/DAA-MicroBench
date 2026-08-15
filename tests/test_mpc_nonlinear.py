@@ -97,6 +97,46 @@ def test_mpc_nonlinear_close_head_on_optimizes_avoidance_seed() -> None:
     assert abs(float(out.v_cmd[2])) > 1e-6 or out.v_cmd[0] < ego.vel[0]
 
 
+def test_mpc_nonlinear_velocity_guard_updates_published_first_intent_step() -> None:
+    planner = NonlinearMpcPlanner(
+        cfg={
+            "horizon_s": 2.4,
+            "horizon_steps": 5,
+            "max_initializations": 1,
+            "opt_iterations": 0,
+            "velocity_guard_margin_m": 0.35,
+            "velocity_guard_activation_margin_m": 2.0,
+            "velocity_guard_ttc_s": 4.0,
+            "velocity_guard_alpha": 1.4,
+            "velocity_guard_brake_clearance_m": 1.0,
+            "velocity_guard_brake_scale": 0.25,
+        }
+    )
+    ego = _agent((0.0, 0.0, 0.0), vel=(1.0, 0.0, 0.0), v_max=4.0, a_max=2.0)
+    neighbor = NeighborObs(
+        idx=1,
+        pos=np.asarray([0.8, 0.0, 0.0], dtype=np.float32),
+        vel=np.asarray([0.0, 0.0, 0.0], dtype=np.float32),
+        radius=0.5,
+        msg_age_sec=0.0,
+        valid=True,
+    )
+
+    out = planner.compute_cmd(_planner_input(ego=ego, neighbors=[neighbor]))
+
+    assert out.debug_info["mpc_nonlinear_velocity_guard_enabled"] is True
+    assert out.debug_info["mpc_nonlinear_velocity_guard_constraint_count"] == 1
+    assert out.debug_info["mpc_nonlinear_velocity_guard_adjusted"] is True
+    assert out.debug_info["mpc_nonlinear_velocity_guard_brake_applied"] is True
+    assert out.debug_info["mpc_nonlinear_velocity_guard_min_clearance_m"] < 0.0
+    assert float(out.v_cmd[0]) < float(ego.vel[0])
+    assert out.intent_out is not None
+    expected_first = np.asarray(ego.pos, dtype=np.float32) + np.asarray(out.v_cmd, dtype=np.float32) * float(
+        out.intent_out.dt_plan_s
+    )
+    np.testing.assert_allclose(out.intent_out.points[1], expected_first, atol=1e-6)
+
+
 def test_mpc_nonlinear_obstacle_in_path_optimizes_around_or_slows() -> None:
     ego = _agent((0.0, 0.0, 0.0), vel=(1.0, 0.0, 0.0))
     obstacle = AABBObs(
