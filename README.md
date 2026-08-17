@@ -474,6 +474,16 @@ This writes raw `results.csv`, standard `summary.csv`, `scale_summary.csv`, and 
 
 For `urban_throughput_3d`, use `--duration-s 30` for a practical high-N diagnostic and `--duration-s 60` or longer for deliberate scale-evidence runs. Dense urban-throughput rows are intentionally heavier than smoke checks because they measure both safe deconfliction and mission progress under merge pressure.
 
+Run the default high-volume evidence package when you want one reproducible folder with the scale run, scale summary, leaderboard JSON/CSV, and manifest:
+
+```bash
+python -m microbench.cli high-volume-evidence \
+  --out-dir runs_high_volume_evidence \
+  --require-pass
+```
+
+The default evidence matrix is N=30 on `stacked_swap_3d`, `urban_conflict_3d`, and `urban_throughput_3d` with the advanced optimizer baseline set, dense spawning, realistic V2V, 30-second episodes, and the scale planner preset. Use `--plan-only` first to inspect the prepared matrix without launching runs, and use `--resume` to continue a partial evidence folder.
+
 Build a multi-axis high-volume leaderboard from one or more scale summaries:
 
 ```bash

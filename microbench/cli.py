@@ -39,6 +39,14 @@ from microbench.tools import (
     DEFAULT_ADVANCED_COMPARISON_N_AGENTS,
     DEFAULT_ADVANCED_COMPARISON_SCENARIO,
     DEFAULT_ADVANCED_COMPARISON_SEED,
+    DEFAULT_HIGH_VOLUME_COMM_PROFILES,
+    DEFAULT_HIGH_VOLUME_DURATION_S,
+    DEFAULT_HIGH_VOLUME_N_AGENTS,
+    DEFAULT_HIGH_VOLUME_PLANNER_PRESET,
+    DEFAULT_HIGH_VOLUME_RUN_TIMEOUT_S,
+    DEFAULT_HIGH_VOLUME_SCALE_SPAWN_PROFILE,
+    DEFAULT_HIGH_VOLUME_SCENARIOS,
+    DEFAULT_HIGH_VOLUME_SEEDS,
     DEFAULT_OPTIMIZER_REVIEW_SUITES,
     DEFAULT_SCALE_BENCHMARK_METHODS,
     DEFAULT_LATENCY_BUDGET_MS,
@@ -55,6 +63,7 @@ from microbench.tools import (
     run_baseline_reference_evidence,
     run_baseline_promotion_calibration,
     run_baseline_stable_review,
+    run_high_volume_evidence,
     run_optimizer_suite_review,
     run_scale_benchmark,
     write_high_volume_leaderboard,
@@ -958,6 +967,59 @@ def _high_volume_leaderboard(args) -> None:
             print(f"  {axis}: {leader.get('method')} score={leader.get('score')}")
 
 
+def _high_volume_evidence(args) -> None:
+    report = run_high_volume_evidence(
+        out_dir=args.out_dir,
+        scenarios=_expand_scenarios(args.scenarios) if args.scenarios else None,
+        methods=_parse_str_list(args.methods) if args.methods else None,
+        n_agents=_parse_int_list(args.n) if args.n else None,
+        seeds=_parse_int_list(args.seeds) if args.seeds else None,
+        comm_profiles=_parse_str_list(args.comm) if args.comm else None,
+        max_runs=args.max_runs,
+        max_runs_strategy=str(args.max_runs_strategy),
+        resume=bool(args.resume),
+        max_wall_time_s=args.max_wall_time_s,
+        run_timeout_s=args.run_timeout_s,
+        duration_s=args.duration_s,
+        save_traces=bool(args.save_traces),
+        scale_spawn_profile=str(args.scale_spawn_profile),
+        planner_preset=str(args.planner_preset),
+        latency_budget_ms=float(args.latency_budget_ms),
+        plan_only=bool(args.plan_only),
+    )
+
+    if args.json:
+        print(json.dumps(report, allow_nan=False, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "REVIEW"
+        top = report["overall_ranking"][0] if report["overall_ranking"] else {}
+        print(
+            "high-volume-evidence: "
+            f"{status} runs={report['selected_completed_count']}/{report['selected_run_count']} "
+            f"planned={report['planned_run_count']} timeouts={report['timeout_run_count']} "
+            f"top={top.get('method')} report={report['report_path']}"
+        )
+        if report["high_volume_leaderboard_path"]:
+            print(
+                f"  leaderboard={report['high_volume_leaderboard_path']} "
+                f"csv={report['high_volume_leaderboard_csv']}"
+            )
+            for axis, rows in report["axis_rankings"].items():
+                leader = rows[0] if rows else {}
+                print(f"  {axis}: {leader.get('method')} score={leader.get('score')}")
+        else:
+            print("  leaderboard=skipped plan_only=True")
+
+    if args.require_complete and not report["complete"]:
+        raise SystemExit("high-volume evidence incomplete for publication-scale claims")
+    if args.require_pass and not report["ok"]:
+        raise SystemExit(
+            "high-volume evidence failed: "
+            f"selected_complete={report['selected_complete']} "
+            f"timeouts={report['timeout_run_count']} stopped={report['stopped_by_wall_time']}"
+        )
+
+
 def _baseline_review(args) -> None:
     duration_s = None if args.full_duration else float(args.duration_s)
     report = run_baseline_stable_review(
@@ -1788,6 +1850,89 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_hvl.add_argument("--json", action="store_true", help="Emit the full leaderboard report as JSON")
 
+    p_hve = sub.add_parser(
+        "high-volume-evidence",
+        help="Run the default high-volume scale suite and package the leaderboard evidence artifacts",
+    )
+    p_hve.add_argument("--out-dir", required=True, help="Output directory for evidence, scale runs, and leaderboard files")
+    p_hve.add_argument(
+        "--scenarios",
+        default=None,
+        help="Comma-separated scenario paths/ids/globs; defaults to " + ",".join(DEFAULT_HIGH_VOLUME_SCENARIOS),
+    )
+    p_hve.add_argument(
+        "--methods",
+        default=None,
+        help="Comma-separated methods; defaults to " + ",".join(DEFAULT_SCALE_BENCHMARK_METHODS),
+    )
+    p_hve.add_argument(
+        "--n",
+        default=",".join(str(v) for v in DEFAULT_HIGH_VOLUME_N_AGENTS),
+        help="Agent-count list/range; default is the high-volume N=30 evidence cell",
+    )
+    p_hve.add_argument(
+        "--seeds",
+        default=",".join(str(v) for v in DEFAULT_HIGH_VOLUME_SEEDS),
+        help="Seed list/range for evidence rows",
+    )
+    p_hve.add_argument(
+        "--comm",
+        default=",".join(DEFAULT_HIGH_VOLUME_COMM_PROFILES),
+        help="Communication profile list for evidence rows",
+    )
+    p_hve.add_argument("--max-runs", type=int, default=None, help="Optional run cap for development checkpoints")
+    p_hve.add_argument(
+        "--max-runs-strategy",
+        choices=MAX_RUNS_STRATEGIES,
+        default="balanced",
+        help="How to choose runs when --max-runs truncates the scenario/method/N matrix",
+    )
+    p_hve.add_argument("--resume", action="store_true", help="Resume from an existing evidence output directory")
+    p_hve.add_argument(
+        "--max-wall-time-s",
+        type=float,
+        default=None,
+        help="Optional global wall-clock budget; writes partial progress when exceeded",
+    )
+    p_hve.add_argument(
+        "--run-timeout-s",
+        type=float,
+        default=DEFAULT_HIGH_VOLUME_RUN_TIMEOUT_S,
+        help="Hard per-episode wall-clock timeout for evidence jobs",
+    )
+    p_hve.add_argument(
+        "--duration-s",
+        type=float,
+        default=DEFAULT_HIGH_VOLUME_DURATION_S,
+        help="Duration override applied to copied evidence scenario files",
+    )
+    p_hve.add_argument("--save-traces", action="store_true", help="Save full traces for evidence runs")
+    p_hve.add_argument(
+        "--scale-spawn-profile",
+        choices=SCALE_SPAWN_PROFILES,
+        default=DEFAULT_HIGH_VOLUME_SCALE_SPAWN_PROFILE,
+        help="Spawn adaptation for copied evidence scenario files",
+    )
+    p_hve.add_argument(
+        "--planner-preset",
+        default=DEFAULT_HIGH_VOLUME_PLANNER_PRESET,
+        help="Planner config preset for evidence rows",
+    )
+    p_hve.add_argument(
+        "--latency-budget-ms",
+        type=float,
+        default=DEFAULT_LATENCY_BUDGET_MS,
+        help="Planner p95 latency budget used for the runtime/scale leaderboard axis",
+    )
+    p_hve.add_argument("--plan-only", action="store_true", help="Prepare the evidence matrix without running episodes")
+    p_hve.add_argument("--json", action="store_true", help="Emit machine-readable evidence report")
+    p_hve.add_argument("--require-pass", action="store_true", help="Fail if selected evidence runs are incomplete or timed out")
+    p_hve.add_argument(
+        "--require-complete",
+        action="store_true",
+        help="Fail unless the full requested evidence matrix completed without hard timeouts",
+    )
+
     p_brv = sub.add_parser("baseline-review", help="Run optional longer stable-metadata review lanes for baseline candidates")
     p_brv.add_argument("--out-dir", required=True, help="Fresh output directory for review artifacts")
     p_brv.add_argument("--root", default=".", help="Repository root used for docs/tests coverage checks")
@@ -2068,6 +2213,9 @@ def main() -> None:
         return
     if args.cmd == "high-volume-leaderboard":
         _high_volume_leaderboard(args)
+        return
+    if args.cmd == "high-volume-evidence":
+        _high_volume_evidence(args)
         return
     if args.cmd == "baseline-review":
         _baseline_review(args)

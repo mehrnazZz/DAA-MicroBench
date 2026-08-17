@@ -186,6 +186,16 @@ This writes raw `results.csv`, standard `summary.csv`, `scale_summary.csv`, `sca
 
 For `urban_throughput_3d`, use `--duration-s 30` for quick high-N diagnostics and `--duration-s 60` or longer for deliberate evidence runs. This scenario is intentionally throughput-focused: a safe row with low progress is still useful evidence, but it should not be described as strong mission performance.
 
+Package the default N=30 evidence run and leaderboard in a single folder:
+
+```bash
+python -m microbench.cli high-volume-evidence \
+  --out-dir runs_high_volume_evidence \
+  --require-pass
+```
+
+This command runs the default three-scenario high-volume matrix through `scale-benchmark`, writes the raw scale artifacts under `runs_high_volume_evidence/scale/`, and writes `high_volume_leaderboard.json`, `high_volume_leaderboard.csv`, and `high_volume_evidence.json` at the evidence root. Use `--plan-only` before long jobs and `--resume` for checkpointed continuation.
+
 Build a high-volume leaderboard from completed scale summaries:
 
 ```bash

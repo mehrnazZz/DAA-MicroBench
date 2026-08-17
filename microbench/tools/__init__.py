@@ -56,6 +56,18 @@ from microbench.tools.high_volume_leaderboard import (
     build_high_volume_leaderboard,
     write_high_volume_leaderboard,
 )
+from microbench.tools.high_volume_evidence import (
+    DEFAULT_HIGH_VOLUME_COMM_PROFILES,
+    DEFAULT_HIGH_VOLUME_DURATION_S,
+    DEFAULT_HIGH_VOLUME_N_AGENTS,
+    DEFAULT_HIGH_VOLUME_PLANNER_PRESET,
+    DEFAULT_HIGH_VOLUME_RUN_TIMEOUT_S,
+    DEFAULT_HIGH_VOLUME_SCALE_SPAWN_PROFILE,
+    DEFAULT_HIGH_VOLUME_SCENARIOS,
+    DEFAULT_HIGH_VOLUME_SEEDS,
+    HIGH_VOLUME_EVIDENCE_SCHEMA_VERSION,
+    run_high_volume_evidence,
+)
 
 __all__ = [
     "build_baseline_report",
@@ -71,6 +83,15 @@ __all__ = [
     "DEFAULT_ADVANCED_COMPARISON_SEED",
     "mine_worst_cases",
     "DEFAULT_LATENCY_BUDGET_MS",
+    "DEFAULT_HIGH_VOLUME_COMM_PROFILES",
+    "DEFAULT_HIGH_VOLUME_DURATION_S",
+    "DEFAULT_HIGH_VOLUME_N_AGENTS",
+    "DEFAULT_HIGH_VOLUME_PLANNER_PRESET",
+    "DEFAULT_HIGH_VOLUME_RUN_TIMEOUT_S",
+    "DEFAULT_HIGH_VOLUME_SCALE_SPAWN_PROFILE",
+    "DEFAULT_HIGH_VOLUME_SCENARIOS",
+    "DEFAULT_HIGH_VOLUME_SEEDS",
+    "HIGH_VOLUME_EVIDENCE_SCHEMA_VERSION",
     "HIGH_VOLUME_LEADERBOARD_SCHEMA_VERSION",
     "MAX_RUNS_STRATEGIES",
     "DEFAULT_OPTIMIZER_REVIEW_SUITES",
@@ -86,6 +107,7 @@ __all__ = [
     "run_baseline_reference_evidence",
     "run_baseline_promotion_calibration",
     "run_baseline_stable_review",
+    "run_high_volume_evidence",
     "write_baseline_report",
     "write_optimizer_suite_review",
     "write_scale_benchmark",

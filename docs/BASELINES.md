@@ -308,6 +308,16 @@ This writes the standard raw result files plus `scale_summary.csv` and `scale_be
 
 For `urban_throughput_3d`, `--duration-s 30` is a practical high-N diagnostic. Use `--duration-s 60` or longer as a deliberate scale-evidence run when runtime is acceptable; those rows are meant to measure mission progress under dense merge pressure, not just whether the planners avoid collision.
 
+Package the default high-volume evidence matrix in one reproducible output folder:
+
+```bash
+python -m microbench.cli high-volume-evidence \
+  --out-dir runs_high_volume_evidence \
+  --require-pass
+```
+
+This wraps `scale-benchmark`, then builds `high_volume_leaderboard.json` and a sibling CSV from the generated `scale_summary.csv`. The default matrix is N=30 on the three core 3D scale scenarios with dense spawning, realistic V2V, 30-second episodes, and the scale planner preset. Use `--plan-only` for a dry run and `--resume` to continue partial evidence.
+
 After one or more scale runs, build the high-volume leaderboard artifact:
 
 ```bash
