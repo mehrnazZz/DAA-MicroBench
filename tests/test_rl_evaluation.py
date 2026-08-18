@@ -13,6 +13,7 @@ from microbench.rl import (
     RL_CALIBRATION_SCHEMA_VERSION,
     RL_INTERFACE_VERSION,
     RL_POLICY_SPEC_SCHEMA_VERSION,
+    RL_VALIDATION_MATRIX_SCHEMA_VERSION,
     GoalDirectionPolicy,
     RandomPolicy,
     interface_contract,
@@ -21,6 +22,7 @@ from microbench.rl import (
     rollout_parallel_env,
     run_parallel_policy_rollouts,
     run_rl_policy_smoke,
+    run_rl_validation_matrix,
 )
 from microbench.learned import tiny_learned_model_path
 from microbench.scenarios import materialize_official_suite
@@ -218,6 +220,63 @@ def test_rl_calibration_policy_spec_helper(tmp_path: Path) -> None:
     assert report["ok"] is True
     assert report["policy"] == "external_tiny_fixture"
     assert report["policy_spec"]["policy_name"] == "external_tiny_fixture"
+
+
+def test_rl_validation_matrix_runs_canonical_lane_with_policy_spec(tmp_path: Path) -> None:
+    spec_path = _tiny_policy_spec(tmp_path)
+    report = run_rl_validation_matrix(
+        out_dir=tmp_path / "rl_validation_matrix",
+        policy_spec=spec_path,
+        lanes=["head_on"],
+        duration_s=1.0,
+        max_steps=3,
+    )
+
+    assert report["schema_version"] == RL_VALIDATION_MATRIX_SCHEMA_VERSION
+    assert report["ok"] is True
+    assert report["policy"] == "external_tiny_fixture"
+    assert report["policy_spec"]["adapter"] == "tiny_linear_json"
+    assert report["run_count"] == 1
+    assert report["lanes"][0]["lane_id"] == "head_on"
+    assert report["episodes"][0]["lane_id"] == "head_on"
+    assert report["episodes"][0]["steps"] == 3
+    assert Path(report["episode_csv"]).exists()
+    assert any(check["name"] == "validation_lane_coverage" and check["ok"] for check in report["checks"])
+
+
+def test_rl_validation_matrix_cli_plan_only(tmp_path: Path) -> None:
+    out_dir = tmp_path / "cli_rl_validation_matrix_plan"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "microbench.cli",
+            "rl-validation-matrix",
+            "--out-dir",
+            str(out_dir),
+            "--policy",
+            "tiny_learned",
+            "--plan-only",
+            "--json",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    report = json.loads(proc.stdout)
+    assert report["plan_only"] is True
+    assert report["policy"] == "tiny_learned"
+    assert report["planned_run_count"] == 5
+    assert {lane["lane_id"] for lane in report["lanes"]} == {
+        "head_on",
+        "crossing",
+        "urban_obstacle",
+        "communication_delay",
+        "high_n_dense_merge",
+    }
+    assert (out_dir / "rl_validation_matrix.json").exists()
 
 
 def test_rl_contract_cli_json_and_schema_helper(tmp_path: Path) -> None:

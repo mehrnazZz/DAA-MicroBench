@@ -14,6 +14,7 @@ Use this checklist before tagging a public alpha, announcing a leaderboard run, 
 - [ ] `python -m microbench.cli baseline-audit --require-public-alpha-ready` passes.
 - [ ] `python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass` passes from a fresh output directory.
 - [ ] `python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated` passes, while `--require-stable-v1-ready` remains blocked until promotion work is complete.
+- [ ] `python -m microbench.cli baseline-validation-matrix --out-dir runs_baseline_validation_matrix --require-pass` passes for per-family baseline validation gates.
 - [ ] `python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass` passes for targeted CBF/MPC/NMPC/BVC tube-DMPC/dynamic tube-DMPC/RMADER/EGO-Swarm/VO/RVO reference-evidence checks.
 - [ ] `python -m microbench.cli baseline-evidence --out-dir runs_optimizer_evidence --save-optimizer-traces --require-pass` writes compact Foxglove-ready optimizer trace JSONL artifacts for qualitative review.
 - [ ] `python -m microbench.cli advanced-baseline-comparison --out-dir runs_advanced_baseline_comparison --require-pass` passes for the compact shared 3D advanced-baseline lane.
@@ -24,6 +25,7 @@ Use this checklist before tagging a public alpha, announcing a leaderboard run, 
 - [ ] `python -m microbench.cli run --scenario config/scenarios/stacked_swap_3d.yaml --method learned_policy_spec --policy-spec examples/external_policy_spec.json --n 4 --seed 0 --comm ideal_50hz --out-dir runs_external_policy_planner` passes for external policy-spec planner CSV generation.
 - [ ] `python -m microbench.cli rl-smoke --out-dir runs_rl_tiny_learned --policy tiny_learned --require-pass` passes for the frozen learned-policy fixture.
 - [ ] `python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass` passes for compact 3D/degraded RL wrapper exposure.
+- [ ] `python -m microbench.cli rl-validation-matrix --out-dir runs_rl_validation_matrix --policy tiny_learned --require-pass` passes for learned-policy exposure on the canonical validation matrix.
 - [ ] `python -m microbench.cli rl-contract --json` prints the current RL interface contract.
 - [ ] `python -m microbench.cli rl-freeze-check --require-pass --json` passes and writes a stable-v1 readiness artifact when preparing learned-policy submissions or v1 candidates.
 - [ ] `python -m microbench.cli validate-learned-manifest --manifest examples/learned_submission_manifest_template.json --require-pass` passes for the learned manifest template.

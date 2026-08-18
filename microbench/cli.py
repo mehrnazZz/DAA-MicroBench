@@ -31,6 +31,7 @@ from microbench.rl.submission_bundle import (
     validate_learned_submission_manifest,
 )
 from microbench.rl.submission_schema_check import run_learned_submission_schema_check
+from microbench.rl.validation_matrix import run_rl_validation_matrix
 from microbench.tools import (
     DEFAULT_ADVANCED_COMPARISON_COMM_PROFILE,
     DEFAULT_ADVANCED_COMPARISON_DURATION_S,
@@ -1236,6 +1237,44 @@ def _rl_calibration(args) -> None:
         raise SystemExit(f"RL calibration failed: {','.join(failed)}")
 
 
+def _rl_validation_matrix(args) -> None:
+    report = run_rl_validation_matrix(
+        out_dir=args.out_dir,
+        policy=str(args.policy),
+        policy_spec=args.policy_spec,
+        lanes=_parse_str_list(args.lanes) if args.lanes else None,
+        seeds=_parse_int_list(args.seeds) if args.seeds else None,
+        duration_s=args.duration_s,
+        n_agents=args.n,
+        max_steps=args.max_steps,
+        plan_only=bool(args.plan_only),
+    )
+    report_path = Path(args.out_dir) / "rl_validation_matrix.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PLAN" if report["plan_only"] else ("PASS" if report["ok"] else "FAIL")
+        print(
+            f"rl-validation-matrix: {status} policy={report['policy']} "
+            f"runs={report['run_count']}/{report['planned_run_count']} "
+            f"lanes={len(report['lanes'])} behavior_pass={report['behavior_pass']}"
+        )
+        for check in report["checks"]:
+            check_status = "ok" if check["ok"] else "FAIL"
+            print(f"  {check_status}: {check['name']} [{check['severity']}]")
+        print(f"  report: {report_path}")
+
+    if args.require_pass and not report["plan_only"] and not report["ok"]:
+        failed = [check["name"] for check in report["checks"] if check["severity"] == "gate" and not check["ok"]]
+        raise SystemExit(f"RL validation matrix failed: {','.join(failed)}")
+    if args.require_behavior_pass and not report["plan_only"] and not report["behavior_pass"]:
+        failed = [check["name"] for check in report["checks"] if check["severity"] == "behavior" and not check["ok"]]
+        raise SystemExit(f"RL validation matrix behavior checks failed: {','.join(failed)}")
+
+
 def _rl_contract(args) -> None:
     report = interface_contract(top_k=int(args.top_k))
     payload = json.dumps(report, indent=2, sort_keys=True)
@@ -2202,6 +2241,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_rlcal.add_argument("--json", action="store_true", help="Emit machine-readable RL calibration report")
     p_rlcal.add_argument("--require-pass", action="store_true", help="Fail if any RL calibration check fails")
 
+    p_rlvm = sub.add_parser(
+        "rl-validation-matrix",
+        help="Run a learned policy or policy spec on the canonical validation-matrix lanes",
+    )
+    p_rlvm.add_argument("--out-dir", required=True, help="Fresh output directory for RL validation artifacts")
+    p_rlvm.add_argument("--policy", choices=POLICY_NAMES, default="goal_direction", help="Built-in learned-policy wrapper policy")
+    p_rlvm.add_argument("--policy-spec", default=None, help="Optional JSON/YAML external policy spec; overrides --policy")
+    p_rlvm.add_argument(
+        "--lanes",
+        default=None,
+        help="Comma-separated lane ids; defaults to head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge",
+    )
+    p_rlvm.add_argument("--seeds", default=None, help="Optional seed list/range override; defaults to each lane's canonical seed")
+    p_rlvm.add_argument("--duration-s", type=float, default=None, help="Override all lane durations")
+    p_rlvm.add_argument("--n", type=int, default=None, help="Override agent count for every lane")
+    p_rlvm.add_argument("--max-steps", type=int, default=None, help="Optional cap for each episode")
+    p_rlvm.add_argument("--plan-only", action="store_true", help="Write/print the validation plan without running episodes")
+    p_rlvm.add_argument("--json", action="store_true", help="Emit machine-readable RL validation report")
+    p_rlvm.add_argument("--require-pass", action="store_true", help="Fail if hard interface/rollout gates fail")
+    p_rlvm.add_argument(
+        "--require-behavior-pass",
+        action="store_true",
+        help="Fail if behavior-evidence checks fail; useful for policy promotion, not wrapper health",
+    )
+
     p_rlc = sub.add_parser("rl-contract", help="Print the versioned RL action/observation/reward contract")
     p_rlc.add_argument("--top-k", type=int, default=8, help="Neighbor slots used to compute observation shape")
     p_rlc.add_argument("--out", default=None, help="Optional JSON output path")
@@ -2452,6 +2516,9 @@ def main() -> None:
         return
     if args.cmd == "rl-calibration":
         _rl_calibration(args)
+        return
+    if args.cmd == "rl-validation-matrix":
+        _rl_validation_matrix(args)
         return
     if args.cmd == "rl-contract":
         _rl_contract(args)

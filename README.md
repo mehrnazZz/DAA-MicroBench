@@ -119,6 +119,7 @@ python -m microbench.cli rl-smoke --out-dir runs_external_model_predict_smoke --
 python -m microbench.cli run --scenario config/scenarios/stacked_swap_3d.yaml --method learned_policy_spec --policy-spec examples/external_policy_spec.json --n 4 --seed 0 --comm ideal_50hz --out-dir runs_external_policy_planner
 python -m microbench.cli rl-smoke --out-dir runs_rl_tiny_learned --policy tiny_learned --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
+python -m microbench.cli rl-validation-matrix --out-dir runs_rl_validation_matrix --policy tiny_learned --require-pass
 python -m microbench.cli rl-contract --json
 python -m microbench.cli rl-freeze-check --require-pass --json
 python -m microbench.cli validate-learned-manifest --manifest examples/learned_submission_manifest_template.json --require-pass
@@ -1144,6 +1145,7 @@ RL wrapper smoke:
 ```bash
 python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
+python -m microbench.cli rl-validation-matrix --out-dir runs_rl_validation_matrix --policy tiny_learned --require-pass
 python -m microbench.cli rl-contract --json
 ```
 

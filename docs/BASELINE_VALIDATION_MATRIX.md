@@ -40,3 +40,14 @@ The report writes `baseline_validation_matrix.json`, `results.csv`, and `summary
 `ok` is a hard gate: finite metrics, no planner exceptions, no soft timeouts, and no fallback commands. `behavior_pass` is separate evidence for collision-free behavior, nonnegative clearance, mission progress, and degraded-observation exposure. Keep that separation: lower-bound/template rows may legitimately fail behavior checks while still proving their plumbing is healthy.
 
 Learned-policy rows are included in the same matrix so the PettingZoo/Gymnasium interface, observation contract, action conversion, and submission bundles can be validated against the same encounter families as classical planners.
+
+For direct learned-policy or external policy-spec checks through the PettingZoo-style wrapper, use:
+
+```bash
+python -m microbench.cli rl-validation-matrix \
+  --out-dir runs_rl_validation_matrix \
+  --policy-spec examples/external_policy_spec.json \
+  --require-pass
+```
+
+That command reuses these same lanes but reports RL rollout/interface health rather than planner `results.csv` leaderboard metrics.

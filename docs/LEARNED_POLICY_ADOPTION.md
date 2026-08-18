@@ -65,6 +65,18 @@ python -m microbench.cli rl-calibration \
   --require-pass
 ```
 
+Run the learned-policy validation matrix on the same canonical encounter families used for baseline validation:
+
+```bash
+python -m microbench.cli rl-validation-matrix \
+  --out-dir runs_external_model_predict_validation_matrix \
+  --policy-spec examples/external_policy_model_predict_spec.json \
+  --max-steps 3 \
+  --require-pass
+```
+
+The matrix covers head-on, crossing, 3D urban obstacle, communication-delay, and high-N dense-merge lanes. It is an interface/rollout health artifact first; use benchmark planner CSVs and leaderboard reports for final policy quality claims.
+
 ## Planner CSVs
 
 Evaluate the same spec through the standard planner path:
@@ -168,6 +180,7 @@ For review, include:
 - inference dependency versions and whether inference is deterministic
 - training scenarios/suites, seeds, number of environment steps, reward configuration, and observation normalization
 - `rl_contract.json`, `rl_freeze_check.json`, `rl_smoke.json`, `rl_calibration.json`
+- `rl_validation_matrix.json` once promotion review moves beyond wrapper smoke/calibration
 - planner `results.csv`, `summary.csv`, `result_schema.json`, generated `suite_manifest.yaml`, and `acceptance.json`
 - reviewer output from `review-learned-bundle`
 

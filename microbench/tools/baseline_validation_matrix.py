@@ -144,6 +144,12 @@ def _selected_lanes(lanes: tuple[str, ...] | list[str] | None) -> list[Validatio
     return [by_id[lane_id] for lane_id in lane_ids]
 
 
+def selected_validation_lanes(lanes: tuple[str, ...] | list[str] | None = None) -> list[ValidationLane]:
+    """Return validation lanes by id, preserving the canonical matrix order."""
+
+    return _selected_lanes(lanes)
+
+
 def _metadata_by_method() -> dict[str, dict[str, Any]]:
     return {entry["method"]: entry for entry in planner_metadata(include_aliases=False)}
 
@@ -256,6 +262,12 @@ def _prepare_lane_scenarios(*, out_dir: Path, lanes: list[ValidationLane]) -> di
         _write_duration_override(scenario_path, lane.duration_s)
         by_lane[lane.lane_id] = scenario_path
     return by_lane
+
+
+def prepare_validation_lane_scenarios(*, out_dir: str | Path, lanes: list[ValidationLane]) -> dict[str, Path]:
+    """Materialize generated/config validation-lane scenarios under an output directory."""
+
+    return _prepare_lane_scenarios(out_dir=Path(out_dir), lanes=lanes)
 
 
 def _project_row(row: dict[str, Any], lane: ValidationLane) -> dict[str, Any]:

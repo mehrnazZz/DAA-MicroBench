@@ -46,6 +46,7 @@ from microbench.rl.schema import (
     observation_schema,
     reward_schema,
 )
+from microbench.rl.validation_matrix import RL_VALIDATION_MATRIX_SCHEMA_VERSION, run_rl_validation_matrix
 from microbench.rl.submission_bundle import (
     LEARNED_SUBMISSION_BUNDLE_REVIEW_SCHEMA_VERSION,
     LEARNED_SUBMISSION_BUNDLE_SCHEMA_VERSION,
@@ -94,6 +95,7 @@ __all__ = [
     "RL_POLICY_SPEC_SCHEMA_VERSION",
     "RL_ROLLOUT_SCHEMA_VERSION",
     "RL_REWARD_SCHEMA_VERSION",
+    "RL_VALIDATION_MATRIX_SCHEMA_VERSION",
     "RandomPolicy",
     "LoadedPolicySpec",
     "NamedRlPolicy",
@@ -131,6 +133,7 @@ __all__ = [
     "run_rl_freeze_check",
     "run_rl_policy_calibration",
     "run_rl_policy_smoke",
+    "run_rl_validation_matrix",
     "validate_learned_policy_submission_bundle",
     "validate_learned_submission_manifest",
     "validate_with_schema_subset",

@@ -149,6 +149,17 @@ python -m microbench.cli rl-calibration \
 
 The calibration command materializes `official_promotion_calibration`, runs a compact 3D volumetric lane and a degraded V2V/fused-sensing lane, writes `rl_calibration.json`, and writes per-episode rows to `rl_calibration_episodes.csv`. Passing it means the wrapper, policy interface, and finite rollout metrics survived stronger 3D/degraded exposure; it is not a leaderboard score.
 
+Run the canonical validation matrix when a learned policy should be judged on the same encounter families as classical baselines:
+
+```bash
+python -m microbench.cli rl-validation-matrix \
+  --out-dir runs_rl_validation_matrix \
+  --policy goal_direction \
+  --require-pass
+```
+
+This runs head-on, crossing, urban-obstacle, communication-delay, and high-N dense-merge lanes through `DaaParallelEnv` and writes `rl_validation_matrix.json` plus `rl_validation_matrix_episodes.csv`. `ok` is the hard interface/rollout gate; `behavior_pass` is separate collision/clearance/completion evidence and is not required for wrapper health.
+
 The same runner is available from Python:
 
 ```python
@@ -231,6 +242,11 @@ python -m microbench.cli rl-smoke \
 
 python -m microbench.cli rl-calibration \
   --out-dir runs_external_rl_calibration \
+  --policy-spec examples/external_policy_spec.json \
+  --require-pass
+
+python -m microbench.cli rl-validation-matrix \
+  --out-dir runs_external_rl_validation_matrix \
   --policy-spec examples/external_policy_spec.json \
   --require-pass
 

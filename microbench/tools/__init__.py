@@ -27,7 +27,9 @@ from microbench.tools.baseline_leaderboard import (
 from microbench.tools.baseline_validation_matrix import (
     BASELINE_VALIDATION_MATRIX_SCHEMA_VERSION,
     VALIDATION_LANES,
+    prepare_validation_lane_scenarios,
     run_baseline_validation_matrix,
+    selected_validation_lanes,
     write_baseline_validation_matrix,
 )
 from microbench.tools.optimizer_suite_review import (
@@ -115,6 +117,8 @@ __all__ = [
     "EXTERNAL_REFERENCE_BUNDLE_SCHEMA_VERSION",
     "BASELINE_VALIDATION_MATRIX_SCHEMA_VERSION",
     "VALIDATION_LANES",
+    "prepare_validation_lane_scenarios",
+    "selected_validation_lanes",
     "DEFAULT_EXTERNAL_REFERENCE_COMM_PROFILES",
     "DEFAULT_EXTERNAL_REFERENCE_N_AGENTS",
     "DEFAULT_EXTERNAL_REFERENCE_SCENARIOS",
