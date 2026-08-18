@@ -92,7 +92,7 @@ python -m microbench.cli run \
   --out-dir runs_external_model_predict_planner
 ```
 
-For official generated suites, use the bundle command. It writes planner CSVs, RL reports, acceptance output, a portable `policy_spec.json`, and copied `policy_artifacts/` when the spec declares a file artifact:
+For official generated suites, use the bundle command. It writes planner CSVs, RL smoke/calibration/validation-matrix reports, acceptance output, a portable `policy_spec.json`, and copied `policy_artifacts/` when the spec declares a file artifact:
 
 ```bash
 python -m microbench.cli learned-submission-bundle \
@@ -179,8 +179,8 @@ For review, include:
 - `policy_spec.json` and any `policy_artifacts/`
 - inference dependency versions and whether inference is deterministic
 - training scenarios/suites, seeds, number of environment steps, reward configuration, and observation normalization
-- `rl_contract.json`, `rl_freeze_check.json`, `rl_smoke.json`, `rl_calibration.json`
-- `rl_validation_matrix.json` once promotion review moves beyond wrapper smoke/calibration
+- `rl_contract.json`, `rl_freeze_check.json`, `rl_smoke.json`, `rl_calibration.json`, `rl_validation_matrix.json`
+- `rl_validation_matrix/rl_validation_matrix_episodes.csv`
 - planner `results.csv`, `summary.csv`, `result_schema.json`, generated `suite_manifest.yaml`, and `acceptance.json`
 - reviewer output from `review-learned-bundle`
 

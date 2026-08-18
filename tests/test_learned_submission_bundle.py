@@ -69,8 +69,13 @@ def test_learned_policy_submission_bundle_helper_writes_expected_artifacts(tmp_p
     assert report["planner_sweep"]["run_count"] == 1
     assert report["acceptance"]["ok"] is True
     assert report["artifacts"]["learned_submission_manifest"] == "learned_submission_manifest.json"
+    assert report["artifacts"]["rl_validation_matrix"] == "rl_validation_matrix.json"
+    assert report["artifacts"]["rl_validation_matrix_episodes"] == "rl_validation_matrix/rl_validation_matrix_episodes.csv"
+    assert report["rl_validation_matrix"]["ok"] is True
+    assert report["rl_validation_matrix"]["run_count"] == 5
     assert report["submission_manifest"]["schema_version"] == "0.1"
     assert _check(report, "method_marked_learned")["ok"] is True
+    assert _check(report, "rl_validation_matrix_ok")["ok"] is True
     assert _check(report, "expected_artifacts_present")["ok"] is True
     assert _check(report, "learned_submission_manifest_written")["ok"] is True
 
@@ -84,6 +89,8 @@ def test_learned_policy_submission_bundle_helper_writes_expected_artifacts(tmp_p
     assert validation["ok"] is True
     assert _check(validation, "required_artifacts_present")["ok"] is True
     assert _check(validation, "csv_artifacts_nonempty")["ok"] is True
+    assert "rl_validation_matrix" in validation["artifacts"]
+    assert "rl_validation_matrix_episodes" in validation["artifacts"]
     assert _check(validation, "bundle_json_schema_valid")["ok"] is True
     assert _check(validation, "learned_submission_manifest_schema_supported")["ok"] is True
     assert _check(validation, "learned_submission_manifest_hashes_match")["ok"] is True
@@ -104,6 +111,9 @@ def test_learned_policy_submission_bundle_helper_writes_expected_artifacts(tmp_p
     assert _check(review, "learned_bundle_review_schema_valid")["ok"] is True
     assert review["score_v0"]["mean"] is not None
     assert review["dimensions"]["safety"]["collision_episode_count"] == 0
+    assert review["dimensions"]["rl_validation_matrix"]["ok"] is True
+    assert review["dimensions"]["rl_validation_matrix"]["run_count"] == 5
+    assert review["dimensions"]["rl_validation_matrix"]["episode_row_count"] == 5
 
 
 def test_learned_submission_bundle_cli_json_and_gate(tmp_path: Path) -> None:
@@ -141,6 +151,8 @@ def test_learned_submission_bundle_cli_json_and_gate(tmp_path: Path) -> None:
     assert (out_dir / "rl_freeze_check.json").exists()
     assert (out_dir / "rl_smoke.json").exists()
     assert (out_dir / "rl_calibration.json").exists()
+    assert (out_dir / "rl_validation_matrix.json").exists()
+    assert (out_dir / "rl_validation_matrix" / "rl_validation_matrix_episodes.csv").exists()
     assert (out_dir / "learned_submission_manifest.json").exists()
     assert (out_dir / "planner_sweep" / "results.csv").exists()
     assert (out_dir / "planner_sweep" / "summary.csv").exists()
@@ -164,7 +176,7 @@ def test_learned_submission_bundle_cli_json_and_gate(tmp_path: Path) -> None:
     validation = json.loads(validation_proc.stdout)
     assert validation["ok"] is True
     assert validation["method"] == "learned_tiny"
-    assert validation["submission_manifest"]["artifact_count"] >= 10
+    assert validation["submission_manifest"]["artifact_count"] >= 12
 
     review_proc = subprocess.run(
         [
@@ -187,6 +199,7 @@ def test_learned_submission_bundle_cli_json_and_gate(tmp_path: Path) -> None:
     assert review["method"] == "learned_tiny"
     assert review["recommendation"] == "manual_review_limited_sweep"
     assert review["dimensions"]["compute"]["planner_error_count"] == 0
+    assert review["dimensions"]["rl_validation_matrix"]["lane_count"] == 5
     assert review["submission_manifest"]["policy"]["name"] == "tiny_learned"
 
 

@@ -53,6 +53,7 @@ For schema `0.1`:
 - New optional fields may be added.
 - Validators should tolerate unknown fields for forward-compatible review metadata.
 - Legacy bundles that predate `learned_submission_manifest.json` remain structurally valid, but reviewer output flags `legacy_bundle_without_submission_manifest`.
+- Current bundles include `rl_validation_matrix.json` and `rl_validation_matrix/rl_validation_matrix_episodes.csv` as required learned-policy validation artifacts.
 - Reviewer-ready manifests should not leave material training, inference, dependency, external-service, or privileged-information fields as `undisclosed`.
 
 ## Schema Changelog

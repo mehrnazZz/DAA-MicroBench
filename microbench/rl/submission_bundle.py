@@ -24,6 +24,7 @@ from microbench.rl.submission_schemas import (
     load_submission_schema,
     validate_with_schema_subset,
 )
+from microbench.rl.validation_matrix import run_rl_validation_matrix
 from microbench.runner import run_episode
 from microbench.scenarios import materialize_official_suite, suite_defaults
 from microbench.types import RunSpec
@@ -44,6 +45,8 @@ EXPECTED_BUNDLE_ARTIFACTS = {
     "rl_smoke_episodes": "rl_smoke/rl_smoke_episodes.csv",
     "rl_calibration": "rl_calibration.json",
     "rl_calibration_episodes": "rl_calibration/rl_calibration_episodes.csv",
+    "rl_validation_matrix": "rl_validation_matrix.json",
+    "rl_validation_matrix_episodes": "rl_validation_matrix/rl_validation_matrix_episodes.csv",
     "planner_results": "planner_sweep/results.csv",
     "planner_summary": "planner_sweep/summary.csv",
     "planner_result_schema": "planner_sweep/result_schema.json",
@@ -682,6 +685,13 @@ def run_learned_policy_submission_bundle(
         seeds=seed_list,
         max_steps=max_steps,
     )
+    validation_matrix = run_rl_validation_matrix(
+        out_dir=out / "rl_validation_matrix",
+        policy=str(policy),
+        policy_spec=policy_spec,
+        seeds=seed_list,
+        max_steps=max_steps,
+    )
     planner_sweep = _run_planner_sweep(
         out_dir=out / "planner_sweep",
         suite=str(suite),
@@ -695,6 +705,7 @@ def run_learned_policy_submission_bundle(
     _write_json(out / "rl_freeze_check.json", freeze)
     _write_json(out / "rl_smoke.json", smoke)
     _write_json(out / "rl_calibration.json", calibration)
+    _write_json(out / "rl_validation_matrix.json", validation_matrix)
     _write_json(Path(planner_sweep["acceptance_json"]), planner_sweep["acceptance"])
 
     meta = _method_metadata(str(method))
@@ -721,6 +732,11 @@ def run_learned_policy_submission_bundle(
         "rl_smoke_episodes": _rel(out / "rl_smoke" / "rl_smoke_episodes.csv", out),
         "rl_calibration": _rel(out / "rl_calibration.json", out),
         "rl_calibration_episodes": _rel(out / "rl_calibration" / "rl_calibration_episodes.csv", out),
+        "rl_validation_matrix": _rel(out / "rl_validation_matrix.json", out),
+        "rl_validation_matrix_episodes": _rel(
+            out / "rl_validation_matrix" / "rl_validation_matrix_episodes.csv",
+            out,
+        ),
         "planner_results": _rel(planner_sweep["results_csv"], out),
         "planner_summary": _rel(planner_sweep["summary_csv"], out),
         "planner_result_schema": _rel(planner_sweep["result_schema_json"], out),
@@ -760,6 +776,19 @@ def run_learned_policy_submission_bundle(
             "rl_calibration_ok",
             bool(calibration.get("ok")),
             {"failed": [c["name"] for c in calibration.get("checks", []) if not c.get("ok")]},
+        ),
+        _check(
+            "rl_validation_matrix_ok",
+            bool(validation_matrix.get("ok")),
+            {
+                "failed": [
+                    c["name"]
+                    for c in validation_matrix.get("checks", [])
+                    if c.get("severity") == "gate" and not c.get("ok")
+                ],
+                "behavior_pass": bool(validation_matrix.get("behavior_pass")),
+                "run_count": int(validation_matrix.get("run_count", 0) or 0),
+            },
         ),
         _check(
             "planner_sweep_ran",
@@ -812,6 +841,13 @@ def run_learned_policy_submission_bundle(
         "max_runs": None if max_runs is None else int(max_runs),
         "method_metadata": meta,
         "artifacts": artifact_paths,
+        "rl_validation_matrix": {
+            "ok": bool(validation_matrix.get("ok")),
+            "behavior_pass": bool(validation_matrix.get("behavior_pass")),
+            "run_count": int(validation_matrix.get("run_count", 0) or 0),
+            "planned_run_count": int(validation_matrix.get("planned_run_count", 0) or 0),
+            "episode_csv": validation_matrix.get("episode_csv"),
+        },
         "checks": checks,
         "planner_sweep": {
             key: value
@@ -911,6 +947,7 @@ def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str
         "rl_freeze_check",
         "rl_smoke",
         "rl_calibration",
+        "rl_validation_matrix",
         "planner_acceptance",
     ]
     if "learned_submission_manifest" in all_resolved:
@@ -928,7 +965,13 @@ def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str
 
     csv_errors: list[dict[str, str]] = []
     csv_counts: dict[str, int] = {}
-    for name in ("rl_smoke_episodes", "rl_calibration_episodes", "planner_results", "planner_summary"):
+    for name in (
+        "rl_smoke_episodes",
+        "rl_calibration_episodes",
+        "rl_validation_matrix_episodes",
+        "planner_results",
+        "planner_summary",
+    ):
         path = resolved[name]
         if not path.exists():
             continue
@@ -1056,7 +1099,8 @@ def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str
             "rl_reports_ok",
             bool(json_payloads.get("rl_freeze_check", {}).get("ok"))
             and bool(json_payloads.get("rl_smoke", {}).get("ok"))
-            and bool(json_payloads.get("rl_calibration", {}).get("ok")),
+            and bool(json_payloads.get("rl_calibration", {}).get("ok"))
+            and bool(json_payloads.get("rl_validation_matrix", {}).get("ok")),
         ),
         _check(
             "planner_acceptance_ok",
@@ -1071,6 +1115,7 @@ def validate_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str
             not csv_errors
             and csv_counts.get("rl_smoke_episodes", 0) > 0
             and csv_counts.get("rl_calibration_episodes", 0) > 0
+            and csv_counts.get("rl_validation_matrix_episodes", 0) > 0
             and csv_counts.get("planner_results", 0) > 0
             and csv_counts.get("planner_summary", 0) > 0,
             {"counts": csv_counts, "errors": csv_errors},
@@ -1166,6 +1211,64 @@ def _score_rows(summary_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return scored
 
 
+def _summarize_rl_validation_matrix(payload: dict[str, Any], rows: list[dict[str, str]]) -> dict[str, Any]:
+    failed_gate = [
+        {
+            "lane_id": check.get("lane_id"),
+            "name": check.get("name"),
+            "details": check.get("details"),
+        }
+        for check in payload.get("checks", [])
+        if isinstance(check, dict) and check.get("severity") == "gate" and not check.get("ok")
+    ]
+    failed_behavior = [
+        {
+            "lane_id": check.get("lane_id"),
+            "name": check.get("name"),
+            "details": check.get("details"),
+        }
+        for check in payload.get("checks", [])
+        if isinstance(check, dict) and check.get("severity") == "behavior" and not check.get("ok")
+    ]
+    collision_ticks = int(_sum_values(_values(rows, "collision_ticks")) or 0)
+    near_miss_ticks = int(_sum_values(_values(rows, "near_miss_ticks")) or 0)
+    completion_rates = _values(rows, "completion_rate")
+    final_clearances = _values(rows, "final_min_sep_m")
+    lane_rows = [
+        {
+            "lane_id": row.get("lane_id"),
+            "category": row.get("category"),
+            "scenario": row.get("scenario"),
+            "dimension": row.get("dimension"),
+            "n_agents": row.get("n_agents"),
+            "steps": row.get("steps"),
+            "completion_rate": _round_or_none(_to_float(row.get("completion_rate"))),
+            "collision_ticks": int(_to_float(row.get("collision_ticks")) or 0),
+            "near_miss_ticks": int(_to_float(row.get("near_miss_ticks")) or 0),
+            "final_min_sep_m": _round_or_none(_to_float(row.get("final_min_sep_m"))),
+            "api_error": row.get("api_error"),
+        }
+        for row in rows
+    ]
+    return {
+        "present": bool(payload),
+        "ok": bool(payload.get("ok")),
+        "behavior_pass": bool(payload.get("behavior_pass")),
+        "run_count": int(payload.get("run_count", 0) or 0),
+        "planned_run_count": int(payload.get("planned_run_count", 0) or 0),
+        "lane_count": len(payload.get("lanes", []) if isinstance(payload.get("lanes"), list) else []),
+        "episode_row_count": len(rows),
+        "collision_ticks": collision_ticks,
+        "near_miss_ticks": near_miss_ticks,
+        "completion_rate_mean": _round_or_none(_mean(completion_rates)),
+        "completion_rate_min": _round_or_none(min(completion_rates) if completion_rates else None),
+        "final_min_sep_min_m": _round_or_none(min(final_clearances) if final_clearances else None),
+        "failed_gate_checks": failed_gate[:20],
+        "failed_behavior_checks": failed_behavior[:20],
+        "lanes": lane_rows,
+    }
+
+
 def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, Any]:
     """Build a concise reviewer summary for a learned-policy submission bundle."""
 
@@ -1189,8 +1292,13 @@ def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, 
             manifest_payload = {}
     summary_rows: list[dict[str, str]] = []
     results_rows: list[dict[str, str]] = []
+    rl_validation_rows: list[dict[str, str]] = []
     csv_errors: list[dict[str, str]] = []
-    for name, target in (("planner_summary", summary_rows), ("planner_results", results_rows)):
+    for name, target in (
+        ("planner_summary", summary_rows),
+        ("planner_results", results_rows),
+        ("rl_validation_matrix_episodes", rl_validation_rows),
+    ):
         path = Path(str(artifacts.get(name, "")))
         if not path.exists():
             continue
@@ -1198,6 +1306,13 @@ def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, 
             target.extend(_read_csv_rows(path))
         except Exception as exc:
             csv_errors.append({"artifact": name, "path": str(path), "error": f"{type(exc).__name__}: {exc}"})
+    rl_validation_payload: dict[str, Any] = {}
+    rl_validation_path = Path(str(artifacts.get("rl_validation_matrix", "")))
+    if rl_validation_path.exists():
+        try:
+            rl_validation_payload = _read_json(rl_validation_path)
+        except Exception as exc:
+            csv_errors.append({"artifact": "rl_validation_matrix", "path": str(rl_validation_path), "error": f"{type(exc).__name__}: {exc}"})
 
     scored_rows = _score_rows(summary_rows)
     scores = [float(row["score_v0"]) for row in scored_rows if row.get("score_v0") is not None]
@@ -1209,6 +1324,7 @@ def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, 
     run_count = int(bundle_report.get("planner_sweep", {}).get("run_count", 0) or 0)
     planned_run_count = int(bundle_report.get("planner_sweep", {}).get("planned_run_count", 0) or 0)
     max_runs = bundle_report.get("max_runs")
+    max_steps = bundle_report.get("max_steps")
     limited_sweep = max_runs is not None and planned_run_count > run_count
 
     limitations: list[str] = []
@@ -1222,6 +1338,13 @@ def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, 
         limitations.append("collision_episodes_present")
     if total_timeouts or total_errors or total_fallbacks:
         limitations.append("planner_guardrails_present")
+    rl_validation_summary = _summarize_rl_validation_matrix(rl_validation_payload, rl_validation_rows)
+    if not rl_validation_summary["present"]:
+        limitations.append("rl_validation_matrix_missing")
+    elif not rl_validation_summary["ok"]:
+        limitations.append("rl_validation_matrix_failed")
+    elif not rl_validation_summary["behavior_pass"] and max_steps is None:
+        limitations.append("rl_validation_matrix_behavior_gaps")
     if not scores:
         limitations.append("score_v0_unavailable")
     unknown_manifest_fields = _manifest_unknown_fields(manifest_payload) if manifest_payload else []
@@ -1235,6 +1358,9 @@ def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, 
         _check("bundle_report_loads", bundle_load_error is None, {"error": bundle_load_error}),
         _check("planner_summary_rows_present", len(summary_rows) > 0, {"rows": len(summary_rows)}),
         _check("planner_results_rows_present", len(results_rows) > 0, {"rows": len(results_rows)}),
+        _check("rl_validation_matrix_present", bool(rl_validation_payload), {"path": str(rl_validation_path)}),
+        _check("rl_validation_matrix_ok", bool(rl_validation_payload.get("ok")), {"summary": rl_validation_summary}),
+        _check("rl_validation_matrix_rows_present", len(rl_validation_rows) > 0, {"rows": len(rl_validation_rows)}),
         _check("score_v0_computable", bool(scores), {"summary_rows": len(summary_rows), "scored_rows": len(scores)}),
         _check(
             "submission_manifest_present",
@@ -1328,6 +1454,7 @@ def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, 
             "compute": compute,
             "communication": communication,
             "observation": observation,
+            "rl_validation_matrix": rl_validation_summary,
         },
         "validation": validation,
         "checks": checks,
