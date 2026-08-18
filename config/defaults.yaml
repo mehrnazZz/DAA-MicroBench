@@ -75,6 +75,7 @@ planner_guardrails:
     bvc_tube_dmpc: 300.0  # hard spatial-partition optimizer; leaderboard still reports compute latency
     dynamic_tube_dmpc: 250.0  # paper-grade tube QP; preserve rare dense-conflict spikes for scoring
     ego_swarm_opt: 200.0  # optimizer-grade control-point trajectory solve; preserve rare dense-conflict spikes for scoring
+    centralized_oracle: 300.0  # privileged all-agent upper-bound controller; latency is still scored
 
 planner_presets:
   scale:
@@ -471,6 +472,18 @@ dynamic_tube_dmpc:
   intent_tube_margin_m: 0.35
   max_intent_points: 16
   coordination_message_ttl_s: 0.75
+
+centralized_oracle:
+  horizon_s: 4.0
+  trajectory_samples: 6
+  pair_trigger_margin_m: 2.0
+  pair_hard_margin_m: 0.25
+  obstacle_trigger_margin_m: 1.5
+  goal_weight: 1.0
+  pair_weight: 1.1
+  lateral_weight: 0.85
+  obstacle_weight: 1.0
+  max_pair_corrections: 256
 
 rmader:
   horizon_s: 2.4

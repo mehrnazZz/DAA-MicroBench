@@ -57,6 +57,7 @@ def test_baseline_behavior_smoke_output_contracts(tmp_path: Path) -> None:
             "dmpc_best_response",
             "bvc_tube_dmpc",
             "dynamic_tube_dmpc",
+            "centralized_oracle",
             "rmader",
             "ego_swarm",
             "ego_swarm_opt",
@@ -68,7 +69,7 @@ def test_baseline_behavior_smoke_output_contracts(tmp_path: Path) -> None:
     )
 
     assert report["ok"] is True
-    assert report["run_count"] == 20
+    assert report["run_count"] == 22
     assert report["contract_only_methods"] == ["bvc_tube_dmpc", "dynamic_tube_dmpc", "rmader"]
     assert _check(report, "cbf_qp_debug_contract")["ok"] is True
     assert _check(report, "mpc_local_debug_contract")["ok"] is True
@@ -76,6 +77,7 @@ def test_baseline_behavior_smoke_output_contracts(tmp_path: Path) -> None:
     assert _check(report, "dmpc_best_response_debug_contract")["ok"] is True
     assert _check(report, "bvc_tube_dmpc_debug_contract")["ok"] is True
     assert _check(report, "dynamic_tube_dmpc_debug_contract")["ok"] is True
+    assert _check(report, "centralized_oracle_local_fallback_contract")["ok"] is True
     assert _check(report, "rmader_debug_contract")["ok"] is True
     assert _check(report, "ego_swarm_debug_contract")["ok"] is True
     assert _check(report, "ego_swarm_opt_debug_contract")["ok"] is True

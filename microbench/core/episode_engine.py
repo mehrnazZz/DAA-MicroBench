@@ -287,6 +287,11 @@ class EpisodeEngine:
         if resolved_agent_methods is None and any(p.method for p in self.agent_profiles):
             resolved_agent_methods = profile_methods
         self.agent_methods, self.method_label = resolve_agent_methods(method, self.n_agents, resolved_agent_methods)
+        self.canonical_agent_methods = [canonical_method(agent_method) for agent_method in self.agent_methods]
+        oracle_agents = [m == "centralized_oracle" for m in self.canonical_agent_methods]
+        self.centralized_oracle_enabled = bool(oracle_agents) and all(oracle_agents)
+        if any(oracle_agents) and not self.centralized_oracle_enabled:
+            raise ValueError("centralized_oracle must control all agents in an episode; mixed oracle/local runs are invalid")
         make_planner = planner_factory or default_make_planner
         self.planners = [self._make_planner(make_planner, agent_method) for agent_method in self.agent_methods]
         self.agent_contexts: list[AgentContext] = []
@@ -763,6 +768,224 @@ class EpisodeEngine:
         planner_debug[agent_id] = debug
         return self._planner_fallback_cmd(planner_input)
 
+    def _centralized_oracle_fallback_input(self, agent_id: int, t: float) -> PlannerInput:
+        s = self.states[agent_id]
+        neighbors = [
+            NeighborObs(
+                idx=j,
+                pos=other.pos.copy(),
+                vel=other.vel.copy(),
+                radius=float(other.radius),
+                msg_age_sec=0.0,
+                valid=True,
+                source="global_truth_oracle_fallback",
+                priority=int(self.agent_profiles[j].priority),
+                role=self.agent_profiles[j].role,
+            )
+            for j, other in enumerate(self.states)
+            if j != agent_id
+        ]
+        return PlannerInput(
+            ego=s,
+            goal_dir=_normalize(s.goal - s.pos),
+            neighbors=neighbors,
+            dt=self.dt,
+            t=t,
+            obstacles=self.planner_obstacles,
+            agent_context=self.agent_contexts[agent_id],
+            planar=self.planar,
+        )
+
+    def _apply_centralized_oracle_commands(
+        self,
+        *,
+        v_cmds: list[np.ndarray],
+        planner_debug: list[dict],
+        active_for_sampling: np.ndarray,
+        t: float,
+    ) -> None:
+        active_agent_ids = [i for i, s in enumerate(self.states) if not s.done]
+        if not active_agent_ids:
+            return
+
+        controller = self.planners[0]
+        compute_joint_cmds = getattr(controller, "compute_joint_cmds", None)
+        if compute_joint_cmds is None:
+            elapsed_ms = 0.0
+            for i in active_agent_ids:
+                p_input = self._centralized_oracle_fallback_input(i, t)
+                v_cmds[i] = self._record_planner_fallback(
+                    agent_id=i,
+                    planner_input=p_input,
+                    planner_debug=planner_debug,
+                    reason="error",
+                    elapsed_ms=elapsed_ms,
+                    error=TypeError("centralized_oracle planner does not implement compute_joint_cmds"),
+                )
+                planner_debug[i].update(
+                    {
+                        "centralized_oracle": True,
+                        "non_deployable": True,
+                        "privileged_global_state": True,
+                        "oracle_guardrail": "missing_joint_api",
+                    }
+                )
+            return
+
+        wall_c0 = time.perf_counter()
+        cpu_c0 = time.process_time()
+        try:
+            joint_out = compute_joint_cmds(
+                states=[_copy_state(s) for s in self.states],
+                obstacles=self.planner_obstacles,
+                planar=self.planar,
+                t=t,
+                dt=self.dt,
+            )
+        except Exception as exc:
+            elapsed_ms = (time.perf_counter() - wall_c0) * 1000.0
+            cpu_elapsed_ms = (time.process_time() - cpu_c0) * 1000.0
+            sample_ms = elapsed_ms / max(1, len(active_agent_ids))
+            self.planner_ms_samples.extend([sample_ms for _ in active_agent_ids])
+            for i in active_agent_ids:
+                p_input = self._centralized_oracle_fallback_input(i, t)
+                v_cmds[i] = self._record_planner_fallback(
+                    agent_id=i,
+                    planner_input=p_input,
+                    planner_debug=planner_debug,
+                    reason="error",
+                    elapsed_ms=elapsed_ms,
+                    cpu_elapsed_ms=cpu_elapsed_ms,
+                    error=exc,
+                )
+                planner_debug[i].update(
+                    {
+                        "centralized_oracle": True,
+                        "non_deployable": True,
+                        "privileged_global_state": True,
+                        "oracle_guardrail": "joint_exception",
+                    }
+                )
+            return
+
+        elapsed_ms = (time.perf_counter() - wall_c0) * 1000.0
+        cpu_elapsed_ms = (time.process_time() - cpu_c0) * 1000.0
+        sample_count = max(1, int(np.count_nonzero(active_for_sampling)))
+        sample_ms = elapsed_ms / sample_count
+        self.planner_ms_samples.extend([sample_ms for _ in active_agent_ids])
+
+        output_cmds = list(getattr(joint_out, "v_cmds", []))
+        output_debug = list(getattr(joint_out, "debug", []))
+        if len(output_cmds) != self.n_agents:
+            exc = ValueError(f"centralized_oracle returned {len(output_cmds)} commands for N={self.n_agents}")
+            for i in active_agent_ids:
+                p_input = self._centralized_oracle_fallback_input(i, t)
+                v_cmds[i] = self._record_planner_fallback(
+                    agent_id=i,
+                    planner_input=p_input,
+                    planner_debug=planner_debug,
+                    reason="invalid_output",
+                    elapsed_ms=elapsed_ms,
+                    cpu_elapsed_ms=cpu_elapsed_ms,
+                    error=exc,
+                )
+                planner_debug[i].update(
+                    {
+                        "centralized_oracle": True,
+                        "non_deployable": True,
+                        "privileged_global_state": True,
+                        "oracle_guardrail": "joint_invalid_output",
+                    }
+                )
+            return
+
+        timeout_elapsed_ms = self._planner_timeout_elapsed_ms(
+            wall_elapsed_ms=elapsed_ms,
+            cpu_elapsed_ms=cpu_elapsed_ms,
+        )
+        timeout_ms = max(self._planner_timeout_ms_for_agent(i) for i in active_agent_ids)
+        if timeout_ms >= 0.0 and (timeout_ms == 0.0 or timeout_elapsed_ms > timeout_ms):
+            for i in active_agent_ids:
+                p_input = self._centralized_oracle_fallback_input(i, t)
+                v_cmds[i] = self._record_planner_fallback(
+                    agent_id=i,
+                    planner_input=p_input,
+                    planner_debug=planner_debug,
+                    reason="timeout",
+                    elapsed_ms=elapsed_ms,
+                    cpu_elapsed_ms=cpu_elapsed_ms,
+                    timeout_elapsed_ms=timeout_elapsed_ms,
+                    timeout_ms=timeout_ms,
+                )
+                planner_debug[i].update(
+                    {
+                        "centralized_oracle": True,
+                        "non_deployable": True,
+                        "privileged_global_state": True,
+                        "oracle_guardrail": "joint_timeout",
+                    }
+                )
+            return
+
+        for i, s in enumerate(self.states):
+            if s.done:
+                v_cmds[i] = np.zeros(3, dtype=float)
+                planner_debug[i] = _json_safe(output_debug[i]) if i < len(output_debug) else {}
+                planner_debug[i].update(
+                    {
+                        "centralized_oracle": True,
+                        "non_deployable": True,
+                        "privileged_global_state": True,
+                    }
+                )
+                continue
+
+            try:
+                cmd = self._coerce_planner_cmd(output_cmds[i])
+            except (TypeError, ValueError) as exc:
+                p_input = self._centralized_oracle_fallback_input(i, t)
+                v_cmds[i] = self._record_planner_fallback(
+                    agent_id=i,
+                    planner_input=p_input,
+                    planner_debug=planner_debug,
+                    reason="invalid_output",
+                    elapsed_ms=elapsed_ms,
+                    cpu_elapsed_ms=cpu_elapsed_ms,
+                    error=exc,
+                )
+                planner_debug[i].update(
+                    {
+                        "centralized_oracle": True,
+                        "non_deployable": True,
+                        "privileged_global_state": True,
+                        "oracle_guardrail": "agent_invalid_output",
+                    }
+                )
+                continue
+
+            if self.planar:
+                cmd[1] = 0.0
+            v_cmds[i] = cmd
+            info = _json_safe(output_debug[i]) if i < len(output_debug) else {}
+            if not isinstance(info, dict):
+                info = {"oracle_debug": info}
+            info.update(
+                {
+                    "centralized_oracle": True,
+                    "non_deployable": True,
+                    "privileged_global_state": True,
+                    "planner_elapsed_ms": float(sample_ms),
+                    "planner_wall_elapsed_ms": float(sample_ms),
+                    "planner_cpu_elapsed_ms": float(cpu_elapsed_ms / sample_count),
+                    "planner_timeout_elapsed_ms": float(timeout_elapsed_ms),
+                    "planner_timeout_clock": str(self.planner_timeout_clock),
+                    "planner_timeout_ms": float(timeout_ms),
+                    "centralized_joint_wall_elapsed_ms": float(elapsed_ms),
+                    "centralized_joint_cpu_elapsed_ms": float(cpu_elapsed_ms),
+                }
+            )
+            planner_debug[i] = info
+
     def close(self) -> None:
         if self._closed:
             return
@@ -959,6 +1182,15 @@ class EpisodeEngine:
                 for m in agent_messages
             ]
 
+            if self.centralized_oracle_enabled:
+                planner_debug[i] = {
+                    "centralized_oracle": True,
+                    "centralized_oracle_pending_joint_command": True,
+                    "non_deployable": True,
+                    "privileged_global_state": True,
+                }
+                continue
+
             if self._has_failure(active_failures, "frozen", "frozen_planner"):
                 planner_debug[i] = {"engine_failure": "frozen_planner"}
                 continue
@@ -1044,6 +1276,13 @@ class EpisodeEngine:
             pending_messages_out[i] = messages_out
             planner_debug[i] = debug_info
 
+        if self.centralized_oracle_enabled:
+            self._apply_centralized_oracle_commands(
+                v_cmds=v_cmds,
+                planner_debug=planner_debug,
+                active_for_sampling=active_for_sampling,
+                t=t,
+            )
         self._publish_intents(t, pending_intent_out, agent_failures)
         self._publish_messages(t, pending_messages_out, agent_failures)
         message_events = self.v2v.drain_agent_message_events()
