@@ -14,7 +14,9 @@ python -m microbench.cli advanced-baseline-comparison --out-dir runs_advanced_ba
 python -m microbench.cli baseline-review --out-dir runs_baseline_review --duration-s 20
 python -m microbench.cli baseline-leaderboard --out-dir runs_baseline_leaderboard --suites all --require-pass --require-complete
 python -m microbench.cli external-reference-bundle --method-family rmader --out-dir runs_external_references/rmader_official_bundle --scenarios urban_conflict_3d,urban_throughput_3d,stacked_swap_3d --n 4,8 --seeds 2 --comm realistic_v2v_50hz --runner-type ros
+python -m microbench.cli external-reference-bundle --method-family ego_swarm --out-dir runs_external_references/ego_swarm_official_bundle --scenarios urban_conflict_3d,urban_throughput_3d,stacked_swap_3d --n 4,8 --seeds 2 --comm realistic_v2v_50hz --runner-type ros
 python -m microbench.cli validate-external-reference --manifest examples/external_reference_rmader_manifest.yaml --json
+python -m microbench.cli validate-external-reference --manifest examples/external_reference_ego_swarm_manifest.yaml --json
 ```
 
 The public-alpha baseline gate is intentionally stricter than "the code imports":
@@ -648,6 +650,7 @@ Useful debug fields include:
 Requirements before promoting it to a reference baseline:
 
 - official 3D stress evidence against ORCA, CBF, MPC, VO, and RVO
+- official ZJU FAST-Lab EGO-Swarm comparison through `examples/external_reference_ego_swarm_manifest.yaml` or a filled copy of it
 - degraded intent/V2V calibration with delayed and stale trajectory sharing
 - obstacle-rich scenario evidence beyond AABB proximity penalties
 - compute p95 bands on dense 3D scenes
@@ -684,6 +687,7 @@ Use `ego_swarm_opt` when comparing against `mpc_local`: `mpc_local` is a sampled
 Additional promotion requirements for `ego_swarm_opt`:
 
 - compare against `mpc_local` on the same 3D conflict lane and full generated suites
+- validate any official ZJU FAST-Lab EGO-Swarm comparison through the EGO-Swarm external-reference manifest or bundle workflow
 - calibrate compute p95 bands separately for projected-gradient and SciPy solver modes
 - verify degraded/stale intent behavior under packet loss and delayed V2V
 - add denser obstacle-field evidence once richer maps or obstacle sets are available

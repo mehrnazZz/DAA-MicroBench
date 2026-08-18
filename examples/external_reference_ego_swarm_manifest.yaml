@@ -1,0 +1,67 @@
+schema_version: "0.1"
+reference_id: ego_swarm_official_ros
+method_family: EGO-Swarm
+related_microbench_method: ego_swarm_opt
+fidelity: official_implementation
+
+implementation:
+  name: "ZJU FAST-Lab EGO-Planner-Swarm"
+  source_url: "https://github.com/ZJU-FAST-Lab/ego-planner-swarm"
+  license: "GPL-3.0"
+  commit: "<external-repo-commit>"
+  publication_urls:
+    - "https://github.com/ZJU-FAST-Lab/ego-planner-swarm"
+    - "https://github.com/ZJU-FAST-Lab/ego-planner"
+    - "https://github.com/ZJU-FAST-Lab/EGO-Planner-v2"
+  dependency_notes: "ROS/catkin, Armadillo, optional CUDA local_sensing, and optional SO3 simulator dependencies; kept outside the core Python package."
+
+method_claims:
+  decentralized_swarm_planning: true
+  asynchronous_planning: true
+  onboard_sensing_and_compute: true
+  unknown_cluttered_environment_navigation: true
+  trajectory_sharing: true
+  b_spline_trajectory_representation: true
+  gradient_based_optimization: true
+  esdf_free_local_planning: true
+  static_obstacle_avoidance: true
+  inter_agent_collision_avoidance: true
+  simulator_mode_disclosed: true
+  local_sensing_mode_disclosed: true
+  license_gpl3_disclosed: true
+  simulator_mode: "<fake_drone | quadrotor_simulator_so3 | hardware-log-replay | other>"
+  local_sensing_backend: "<CPU local_sensing | CUDA local_sensing | external map source>"
+
+runner:
+  type: ros
+  command: "<external command that consumes materialized DAA Microbench scenarios and writes CSV artifacts>"
+  working_dir: "<external-ego-swarm-workspace>"
+
+contract:
+  input_format: daa_microbench_scenario_yaml
+  output_format: daa_microbench_results_csv
+  uses_microbench_scenarios: true
+  privileged_information: false
+  decentralized_authority: true
+  notes: "External process must only use each agent's allowed local observations, map/sensing inputs, and delayed trajectory messages for the declared scenario."
+
+adapter:
+  scenario_mapping: "Materialize DAA Microbench scenario YAML into EGO-Swarm starts, goals, world bounds, static obstacles, dynamic intruder tracks, and timing parameters."
+  agent_authority_mapping: "Run one EGO-Swarm planner authority per drone; no centralized optimizer may choose multi-agent actions."
+  observation_mapping: "Each EGO-Swarm agent receives only its own state plus locally allowed tracks/intents after the declared Microbench sensing and V2V impairment filters."
+  communication_mapping: "Map the declared Microbench communication profile to upstream trajectory broadcast delay, jitter, loss, rate, and stale trajectory handling."
+  obstacle_mapping: "Map Microbench AABB/static/dynamic obstacle declarations into the upstream map/local_sensing representation without adding hidden obstacle knowledge."
+  output_mapping: "Convert external trajectories/events into DAA Microbench results.csv rows with the required result fields and optional trace/MCAP artifacts."
+  map_sensing_mapping: "Document whether the upstream run used CPU local_sensing, CUDA local_sensing, preloaded map, or adapter-generated point cloud/depth input."
+  trajectory_message_mapping: "Map upstream broadcast B-spline/trajectory topics to Microbench intent records, preserving timestamps, stale records, dropped messages, and missing peers."
+  dynamics_simulator_mapping: "Document whether upstream fake_drone, quadrotor_simulator_so3, hardware logs, or another simulator produced the trajectory; map limits back to Microbench timing."
+  license_boundary: "Keep GPL-licensed upstream code outside the core package; publish only manifests, adapters, logs, and benchmark result artifacts unless the downstream distribution is GPL-compatible."
+  known_differences:
+    - "The built-in ego_swarm and ego_swarm_opt baselines are clean-room Python comparators, not ports of the GPL ROS/C++ upstream stack."
+    - "External EGO-Swarm evidence must disclose simulator mode, sensing backend, local map assumptions, and any onboard-compute differences."
+
+artifacts:
+  results_csv: ../runs_external_references/ego_swarm_official/results.csv
+  summary_csv: ../runs_external_references/ego_swarm_official/summary.csv
+  mcap: ../runs_external_references/ego_swarm_official/baseline_comparison.mcap
+  notes: ../runs_external_references/ego_swarm_official/RUN_NOTES.md

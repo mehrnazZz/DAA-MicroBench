@@ -96,6 +96,70 @@ def _manifest(results_csv: str = "artifacts/results.csv") -> dict:
     }
 
 
+def _ego_swarm_manifest(results_csv: str = "artifacts/results.csv") -> dict:
+    return {
+        "schema_version": "0.1",
+        "reference_id": "ego_swarm_official_ros",
+        "method_family": "EGO-Swarm",
+        "related_microbench_method": "ego_swarm_opt",
+        "fidelity": "official_implementation",
+        "implementation": {
+            "name": "ZJU FAST-Lab EGO-Planner-Swarm",
+            "source_url": "https://github.com/ZJU-FAST-Lab/ego-planner-swarm",
+            "license": "GPL-3.0",
+            "commit": "abc123",
+            "publication_urls": [
+                "https://github.com/ZJU-FAST-Lab/ego-planner-swarm",
+                "https://github.com/ZJU-FAST-Lab/ego-planner",
+            ],
+        },
+        "method_claims": {
+            "decentralized_swarm_planning": True,
+            "asynchronous_planning": True,
+            "onboard_sensing_and_compute": True,
+            "unknown_cluttered_environment_navigation": True,
+            "trajectory_sharing": True,
+            "b_spline_trajectory_representation": True,
+            "gradient_based_optimization": True,
+            "esdf_free_local_planning": True,
+            "static_obstacle_avoidance": True,
+            "inter_agent_collision_avoidance": True,
+            "simulator_mode_disclosed": True,
+            "local_sensing_mode_disclosed": True,
+            "license_gpl3_disclosed": True,
+            "simulator_mode": "fake_drone",
+            "local_sensing_backend": "CPU local_sensing",
+        },
+        "runner": {
+            "type": "ros",
+            "command": "roslaunch ego_planner swarm_external_microbench_adapter.launch",
+        },
+        "contract": {
+            "input_format": "daa_microbench_scenario_yaml",
+            "output_format": "daa_microbench_results_csv",
+            "uses_microbench_scenarios": True,
+            "privileged_information": False,
+            "decentralized_authority": True,
+        },
+        "adapter": {
+            "scenario_mapping": "scenario yaml to ROS starts/goals/obstacles",
+            "agent_authority_mapping": "one EGO-Swarm planner per drone",
+            "observation_mapping": "only Microbench-allowed local tracks/intents",
+            "communication_mapping": "Microbench comm profile to trajectory broadcast impairment",
+            "obstacle_mapping": "AABB/static/dynamic obstacle conversion",
+            "output_mapping": "external results to Microbench results.csv",
+            "map_sensing_mapping": "Microbench obstacles to local_sensing point cloud",
+            "trajectory_message_mapping": "upstream B-spline broadcasts to Microbench intents",
+            "dynamics_simulator_mapping": "fake_drone timing and limits to Microbench fields",
+            "license_boundary": "GPL code stays outside the core package",
+        },
+        "artifacts": {
+            "results_csv": results_csv,
+            "summary_csv": "artifacts/summary.csv",
+        },
+    }
+
+
 def test_external_reference_manifest_validates_with_required_artifacts(tmp_path: Path) -> None:
     manifest_path = tmp_path / "manifest.yaml"
     data = _manifest()
@@ -142,6 +206,24 @@ def test_external_reference_manifest_requires_rmader_claim_contract(tmp_path: Pa
     assert "rmader_adapter_field_missing:communication_mapping" in report["errors"]
 
 
+def test_external_reference_manifest_requires_ego_swarm_claim_contract(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "manifest.yaml"
+    data = _ego_swarm_manifest()
+    del data["method_claims"]["trajectory_sharing"]
+    data["method_claims"]["gradient_based_optimization"] = False
+    data["implementation"]["license"] = "proprietary"
+    del data["adapter"]["map_sensing_mapping"]
+    manifest_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    report = validate_external_reference_manifest(manifest=manifest_path)
+
+    assert report["ok"] is False
+    assert "ego_swarm_required_claim_missing_or_false:trajectory_sharing" in report["errors"]
+    assert "ego_swarm_required_claim_missing_or_false:gradient_based_optimization" in report["errors"]
+    assert "ego_swarm_adapter_field_missing:map_sensing_mapping" in report["errors"]
+    assert "ego_swarm_official_license_must_disclose_gpl3" in report["errors"]
+
+
 def test_external_reference_example_manifest_is_structurally_valid() -> None:
     report = validate_external_reference_manifest(
         manifest=ROOT / "examples" / "external_reference_rmader_manifest.yaml",
@@ -151,6 +233,21 @@ def test_external_reference_example_manifest_is_structurally_valid() -> None:
     assert report["ok"] is True
     assert report["method_claim_status"]["delay_check"] is True
     assert report["method_claim_status"]["solver_backend"] == "gurobi"
+    assert report["warnings"]
+    assert any(warning.startswith("artifact_not_found") for warning in report["warnings"])
+
+
+def test_external_reference_ego_swarm_example_manifest_is_structurally_valid() -> None:
+    report = validate_external_reference_manifest(
+        manifest=ROOT / "examples" / "external_reference_ego_swarm_manifest.yaml",
+        require_artifacts=False,
+    )
+
+    assert report["ok"] is True
+    assert report["related_microbench_method"] == "ego_swarm_opt"
+    assert report["method_claim_status"]["trajectory_sharing"] is True
+    assert report["method_claim_status"]["gradient_based_optimization"] is True
+    assert report["method_claim_status"]["adapter_fields"]["map_sensing_mapping"] is True
     assert report["warnings"]
     assert any(warning.startswith("artifact_not_found") for warning in report["warnings"])
 
@@ -230,6 +327,42 @@ def test_external_reference_bundle_writes_rmader_capture_template(tmp_path: Path
     validation = validate_external_reference_manifest(manifest=out_dir / "manifest.yaml")
     assert validation["ok"] is True
     assert validation["method_claim_status"]["hard_separating_hyperplanes"] is True
+
+
+def test_external_reference_bundle_writes_ego_swarm_capture_template(tmp_path: Path) -> None:
+    out_dir = tmp_path / "ego_swarm_bundle"
+
+    report = build_external_reference_bundle(
+        method_family="ego_swarm",
+        out_dir=out_dir,
+        scenarios=["urban_conflict_3d"],
+        n_agents=[4],
+        seeds=[2],
+        comm_profiles=["ideal_50hz"],
+        runner_type="ros",
+    )
+
+    assert report["ok"] is True
+    assert report["run_count"] == 1
+    assert report["scenario_count"] == 1
+    assert report["reference_id"] == "ego_swarm_official_ros"
+    assert report["method_family"] == "EGO-Swarm"
+    assert report["related_microbench_method"] == "ego_swarm_opt"
+    assert (out_dir / "manifest.yaml").exists()
+    assert (out_dir / "run_matrix.csv").exists()
+    assert (out_dir / "scenarios" / "urban_conflict_3d.yaml").exists()
+
+    manifest = yaml.safe_load((out_dir / "manifest.yaml").read_text(encoding="utf-8"))
+    assert manifest["implementation"]["license"] == "GPL-3.0"
+    assert manifest["method_claims"]["trajectory_sharing"] is True
+    assert manifest["method_claims"]["b_spline_trajectory_representation"] is True
+    assert manifest["adapter"]["map_sensing_mapping"]
+    assert manifest["adapter"]["license_boundary"]
+
+    validation = validate_external_reference_manifest(manifest=out_dir / "manifest.yaml")
+    assert validation["ok"] is True
+    assert validation["method_claim_status"]["trajectory_sharing"] is True
+    assert validation["method_claim_status"]["adapter_fields"]["trajectory_message_mapping"] is True
 
 
 def test_external_reference_bundle_cli_json(tmp_path: Path) -> None:

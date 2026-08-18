@@ -54,6 +54,9 @@ Validate a manifest without executing external code:
 python -m microbench.cli validate-external-reference \
   --manifest examples/external_reference_rmader_manifest.yaml \
   --json
+python -m microbench.cli validate-external-reference \
+  --manifest examples/external_reference_ego_swarm_manifest.yaml \
+  --json
 ```
 
 Prepare a portable bundle for running an official external implementation against Microbench scenarios:
@@ -62,6 +65,14 @@ Prepare a portable bundle for running an official external implementation agains
 python -m microbench.cli external-reference-bundle \
   --method-family rmader \
   --out-dir runs_external_references/rmader_official_bundle \
+  --scenarios urban_conflict_3d,urban_throughput_3d,stacked_swap_3d \
+  --n 4,8 \
+  --seeds 2 \
+  --comm realistic_v2v_50hz \
+  --runner-type ros
+python -m microbench.cli external-reference-bundle \
+  --method-family ego_swarm \
+  --out-dir runs_external_references/ego_swarm_official_bundle \
   --scenarios urban_conflict_3d,urban_throughput_3d,stacked_swap_3d \
   --n 4,8 \
   --seeds 2 \
@@ -118,6 +129,39 @@ It must also explain the Microbench adapter boundary:
 - conversion back to `results.csv`, optional traces, and optional MCAP
 
 The built-in `rmader` planner remains a clean-room Python reimplementation adapted to the Microbench velocity-command contract. The external-reference manifest is how we compare against the official ROS/Gurobi implementation when that dependency-heavy stack is run outside the package.
+
+### EGO-Swarm External Reference Contract
+
+`ego_swarm` and `ego_swarm_opt` are clean-room Python comparators for trajectory-sharing experiments. They are not ports of ZJU FAST-Lab's EGO-Planner-Swarm ROS/C++ stack. The example manifest at `examples/external_reference_ego_swarm_manifest.yaml` is a capture template for an official upstream run, with `ego_swarm_opt` as the closest built-in comparator.
+
+For an official EGO-Swarm comparison, the manifest must explicitly declare these upstream method claims:
+
+- decentralized swarm planning
+- asynchronous planning
+- onboard sensing and compute
+- unknown cluttered environment navigation
+- trajectory sharing
+- B-spline trajectory representation
+- gradient-based optimization
+- ESDF-free local planning
+- static obstacle avoidance
+- inter-agent collision avoidance
+- simulator mode disclosure
+- local sensing mode disclosure
+- GPL-3.0 license disclosure
+
+It must also explain the Microbench adapter boundary:
+
+- scenario YAML to upstream starts, goals, world bounds, obstacles, dynamic tracks, and timing
+- one EGO-Swarm authority per drone
+- local observation and intent filtering with no privileged global/future state
+- mapping of Microbench V2V delay, jitter, loss, rate, and stale trajectories to upstream trajectory broadcasts
+- obstacle and map/local_sensing conversion
+- simulator mode, such as fake_drone, quadrotor_simulator_so3, hardware logs, or another disclosed simulator
+- GPL boundary for any upstream code, adapters, and redistributed artifacts
+- conversion back to `results.csv`, optional traces, and optional MCAP
+
+The built-in EGO-Swarm-style planners remain clean-room Python baselines adapted to the Microbench velocity-command contract. The external-reference manifest is how we compare against the official GPL ROS/C++ implementation when that dependency-heavy stack is run outside the package.
 
 ## Promotion Rule
 

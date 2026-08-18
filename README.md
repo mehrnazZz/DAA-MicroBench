@@ -103,7 +103,9 @@ python -m microbench.cli list-methods
 python -m microbench.cli list-methods --json --include-aliases
 python -m microbench.cli baseline-audit
 python -m microbench.cli validate-external-reference --manifest examples/external_reference_rmader_manifest.yaml --json
+python -m microbench.cli validate-external-reference --manifest examples/external_reference_ego_swarm_manifest.yaml --json
 python -m microbench.cli external-reference-bundle --method-family rmader --out-dir runs_external_references/rmader_official_bundle --scenarios urban_conflict_3d,urban_throughput_3d,stacked_swap_3d --n 4,8 --seeds 2 --comm realistic_v2v_50hz --runner-type ros
+python -m microbench.cli external-reference-bundle --method-family ego_swarm --out-dir runs_external_references/ego_swarm_official_bundle --scenarios urban_conflict_3d,urban_throughput_3d,stacked_swap_3d --n 4,8 --seeds 2 --comm realistic_v2v_50hz --runner-type ros
 python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
 python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass

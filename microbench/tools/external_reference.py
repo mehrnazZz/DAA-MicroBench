@@ -30,6 +30,28 @@ RMADER_REQUIRED_METHOD_CLAIMS = (
     "dynamic_obstacles",
     "static_obstacles",
 )
+EGO_SWARM_METHOD_FAMILY = "ego_swarm"
+EGO_SWARM_METHOD_FAMILY_KEYS = (
+    "ego_swarm",
+    "ego_planner_swarm",
+    "ego_swarm_opt",
+)
+EGO_SWARM_RELATED_METHODS = ("ego_swarm", "ego_swarm_opt")
+EGO_SWARM_REQUIRED_METHOD_CLAIMS = (
+    "decentralized_swarm_planning",
+    "asynchronous_planning",
+    "onboard_sensing_and_compute",
+    "unknown_cluttered_environment_navigation",
+    "trajectory_sharing",
+    "b_spline_trajectory_representation",
+    "gradient_based_optimization",
+    "esdf_free_local_planning",
+    "static_obstacle_avoidance",
+    "inter_agent_collision_avoidance",
+    "simulator_mode_disclosed",
+    "local_sensing_mode_disclosed",
+    "license_gpl3_disclosed",
+)
 RMADER_REQUIRED_ADAPTER_FIELDS = (
     "scenario_mapping",
     "agent_authority_mapping",
@@ -37,6 +59,12 @@ RMADER_REQUIRED_ADAPTER_FIELDS = (
     "communication_mapping",
     "obstacle_mapping",
     "output_mapping",
+)
+EGO_SWARM_REQUIRED_ADAPTER_FIELDS = RMADER_REQUIRED_ADAPTER_FIELDS + (
+    "map_sensing_mapping",
+    "trajectory_message_mapping",
+    "dynamics_simulator_mapping",
+    "license_boundary",
 )
 REQUIRED_TOP_LEVEL_FIELDS = (
     "schema_version",
@@ -101,8 +129,22 @@ def _nonempty(value: Any) -> bool:
     return True
 
 
+def _method_family_key(value: Any) -> str:
+    clean = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+    while "__" in clean:
+        clean = clean.replace("__", "_")
+    return clean
+
+
 def _is_rmader_reference(data: dict[str, Any], related_method: str) -> bool:
-    return str(data.get("method_family", "")).strip().lower() == RMADER_METHOD_FAMILY or related_method == RMADER_METHOD_FAMILY
+    return _method_family_key(data.get("method_family", "")) == RMADER_METHOD_FAMILY or related_method == RMADER_METHOD_FAMILY
+
+
+def _is_ego_swarm_reference(data: dict[str, Any], related_method: str) -> bool:
+    return (
+        _method_family_key(data.get("method_family", "")) in EGO_SWARM_METHOD_FAMILY_KEYS
+        or related_method in EGO_SWARM_RELATED_METHODS
+    )
 
 
 def _csv_fields(path: Path) -> list[str]:
@@ -158,15 +200,20 @@ def _scenario_source(identifier: str) -> Path:
 
 def _method_family_label(method_family: str) -> str:
     clean = str(method_family).strip()
-    if clean.lower() == RMADER_METHOD_FAMILY:
+    key = _method_family_key(clean)
+    if key == RMADER_METHOD_FAMILY:
         return "RMADER"
+    if key in EGO_SWARM_METHOD_FAMILY_KEYS:
+        return "EGO-Swarm"
     return clean
 
 
 def _related_method(method_family: str, related_microbench_method: str | None) -> str:
     if related_microbench_method:
         return canonical_method(str(related_microbench_method))
-    clean = str(method_family).strip().lower()
+    clean = _method_family_key(method_family)
+    if clean in EGO_SWARM_METHOD_FAMILY_KEYS:
+        return "ego_swarm_opt"
     try:
         return canonical_method(clean)
     except Exception:
@@ -174,35 +221,43 @@ def _related_method(method_family: str, related_microbench_method: str | None) -
 
 
 def _default_source_url(method_family: str) -> str:
-    clean = str(method_family).strip().lower()
+    clean = _method_family_key(method_family)
     if clean == RMADER_METHOD_FAMILY:
         return "https://github.com/mit-acl/rmader"
+    if clean in EGO_SWARM_METHOD_FAMILY_KEYS:
+        return "https://github.com/ZJU-FAST-Lab/ego-planner-swarm"
     return "<external-source-url>"
 
 
 def _default_license(method_family: str) -> str:
-    clean = str(method_family).strip().lower()
+    clean = _method_family_key(method_family)
     if clean == RMADER_METHOD_FAMILY:
         return "BSD-3-Clause"
+    if clean in EGO_SWARM_METHOD_FAMILY_KEYS:
+        return "GPL-3.0"
     return "<external-license>"
 
 
 def _default_implementation_name(method_family: str) -> str:
-    clean = str(method_family).strip().lower()
+    clean = _method_family_key(method_family)
     if clean == RMADER_METHOD_FAMILY:
         return "MIT ACL RMADER"
+    if clean in EGO_SWARM_METHOD_FAMILY_KEYS:
+        return "ZJU FAST-Lab EGO-Planner-Swarm"
     return f"{_method_family_label(method_family)} external reference"
 
 
 def _default_reference_id(method_family: str) -> str:
-    clean = str(method_family).strip().lower().replace("-", "_")
+    clean = _method_family_key(method_family)
     if clean == RMADER_METHOD_FAMILY:
         return "rmader_official_ros_noetic"
+    if clean in EGO_SWARM_METHOD_FAMILY_KEYS:
+        return "ego_swarm_official_ros"
     return f"{clean}_external_reference"
 
 
 def _rmader_method_claims(method_family: str) -> dict[str, Any] | None:
-    if str(method_family).strip().lower() != RMADER_METHOD_FAMILY:
+    if _method_family_key(method_family) != RMADER_METHOD_FAMILY:
         return None
     return {
         "decentralized_asynchronous_planning": True,
@@ -218,13 +273,49 @@ def _rmader_method_claims(method_family: str) -> dict[str, Any] | None:
     }
 
 
-def _rmader_publication_urls(method_family: str) -> list[str]:
-    if str(method_family).strip().lower() != RMADER_METHOD_FAMILY:
+def _ego_swarm_method_claims(method_family: str) -> dict[str, Any] | None:
+    if _method_family_key(method_family) not in EGO_SWARM_METHOD_FAMILY_KEYS:
+        return None
+    return {
+        "decentralized_swarm_planning": True,
+        "asynchronous_planning": True,
+        "onboard_sensing_and_compute": True,
+        "unknown_cluttered_environment_navigation": True,
+        "trajectory_sharing": True,
+        "b_spline_trajectory_representation": True,
+        "gradient_based_optimization": True,
+        "esdf_free_local_planning": True,
+        "static_obstacle_avoidance": True,
+        "inter_agent_collision_avoidance": True,
+        "simulator_mode_disclosed": True,
+        "local_sensing_mode_disclosed": True,
+        "license_gpl3_disclosed": True,
+        "simulator_mode": "fake_drone or quadrotor_simulator_so3; disclose exact mode before running",
+        "local_sensing_backend": "CPU or CUDA local_sensing; disclose exact mode before running",
+    }
+
+
+def _method_claims_template(method_family: str) -> dict[str, Any] | None:
+    claims = _rmader_method_claims(method_family)
+    if claims is not None:
+        return claims
+    return _ego_swarm_method_claims(method_family)
+
+
+def _publication_urls(method_family: str) -> list[str]:
+    clean = _method_family_key(method_family)
+    if clean == RMADER_METHOD_FAMILY:
+        return [
+            "https://arxiv.org/abs/2303.06222",
+            "https://doi.org/10.1109/ICRA48891.2023.10161244",
+            "https://acl.mit.edu/projects/real-world-multi-agent-trajectory-planning",
+        ]
+    if clean not in EGO_SWARM_METHOD_FAMILY_KEYS:
         return []
     return [
-        "https://arxiv.org/abs/2303.06222",
-        "https://doi.org/10.1109/ICRA48891.2023.10161244",
-        "https://acl.mit.edu/projects/real-world-multi-agent-trajectory-planning",
+        "https://github.com/ZJU-FAST-Lab/ego-planner-swarm",
+        "https://github.com/ZJU-FAST-Lab/ego-planner",
+        "https://github.com/ZJU-FAST-Lab/EGO-Planner-v2",
     ]
 
 
@@ -247,11 +338,37 @@ def _adapter_template(method_family: str) -> dict[str, Any]:
         "obstacle_mapping": "Map Microbench AABB/static/dynamic obstacle declarations to the external planner's obstacle representation.",
         "output_mapping": "Convert external trajectories/events into DAA Microbench results.csv rows and optional trace/MCAP artifacts.",
     }
-    if str(method_family).strip().lower() == RMADER_METHOD_FAMILY:
+    family_key = _method_family_key(method_family)
+    if family_key == RMADER_METHOD_FAMILY:
         out["known_differences"] = [
             "External RMADER may use its original trajectory-command stack, while the built-in rmader baseline returns the first velocity command under the Microbench local-planner contract.",
             "Any perception, map, or communication assumption not present in the Microbench scenario must be disclosed in RUN_NOTES.md.",
         ]
+    if family_key in EGO_SWARM_METHOD_FAMILY_KEYS:
+        out.update(
+            {
+                "map_sensing_mapping": (
+                    "Map each Microbench scenario's allowed local sensing, static obstacles, dynamic intruders, "
+                    "and map assumptions to the upstream local_sensing/map inputs without adding privileged global state."
+                ),
+                "trajectory_message_mapping": (
+                    "Map upstream swarm trajectory broadcast topics to Microbench intent/agent-message records, including "
+                    "delay, loss, rate limits, stale trajectories, and missing peers."
+                ),
+                "dynamics_simulator_mapping": (
+                    "Declare whether the run used upstream fake_drone, quadrotor_simulator_so3, hardware logs, or another "
+                    "simulator; map commanded trajectories back to Microbench timing and kinematic limits."
+                ),
+                "license_boundary": (
+                    "Keep GPL-licensed upstream code outside the core package; publish only manifests, adapters, logs, "
+                    "and benchmark result artifacts unless the downstream distribution is GPL-compatible."
+                ),
+                "known_differences": [
+                    "The built-in ego_swarm and ego_swarm_opt baselines are clean-room Python comparators, not ports of the GPL ROS/C++ upstream stack.",
+                    "External EGO-Swarm evidence must disclose the sensing backend, simulator mode, local map assumptions, and any onboard-compute differences.",
+                ],
+            }
+        )
     return out
 
 
@@ -275,7 +392,7 @@ def _manifest_template(
         "commit": upstream_commit,
         "dependency_notes": "External dependencies are kept outside the core Python package.",
     }
-    publication_urls = _rmader_publication_urls(method_family)
+    publication_urls = _publication_urls(method_family)
     if publication_urls:
         implementation["publication_urls"] = publication_urls
 
@@ -307,7 +424,7 @@ def _manifest_template(
             "notes": "RUN_NOTES.md",
         },
     }
-    claims = _rmader_method_claims(method_family)
+    claims = _method_claims_template(method_family)
     if claims is not None:
         manifest["method_claims"] = claims
     return manifest
@@ -628,7 +745,7 @@ def validate_external_reference_manifest(
         if not str(contract.get("output_format", "")).strip():
             warnings.append("contract_output_format_missing")
 
-    rmader_claim_status: dict[str, Any] = {}
+    method_claim_status: dict[str, Any] = {}
     if fidelity == "official_implementation" and _is_rmader_reference(data, related_method):
         method_claims = data.get("method_claims", {})
         if not isinstance(method_claims, dict):
@@ -636,11 +753,11 @@ def validate_external_reference_manifest(
             method_claims = {}
         for claim in RMADER_REQUIRED_METHOD_CLAIMS:
             value = _bool_field(method_claims, claim)
-            rmader_claim_status[claim] = value
+            method_claim_status[claim] = value
             if value is not True:
                 errors.append(f"rmader_required_claim_missing_or_false:{claim}")
         solver_backend = str(method_claims.get("solver_backend", "")).strip().lower()
-        rmader_claim_status["solver_backend"] = solver_backend or None
+        method_claim_status["solver_backend"] = solver_backend or None
         if not solver_backend:
             warnings.append("rmader_solver_backend_not_declared")
         elif "gurobi" not in solver_backend:
@@ -656,7 +773,48 @@ def validate_external_reference_manifest(
             adapter_status[field] = present
             if not present:
                 errors.append(f"rmader_adapter_field_missing:{field}")
-        rmader_claim_status["adapter_fields"] = adapter_status
+        method_claim_status["adapter_fields"] = adapter_status
+
+    if fidelity == "official_implementation" and _is_ego_swarm_reference(data, related_method):
+        method_claims = data.get("method_claims", {})
+        if not isinstance(method_claims, dict):
+            errors.append("ego_swarm_method_claims_not_mapping")
+            method_claims = {}
+        for claim in EGO_SWARM_REQUIRED_METHOD_CLAIMS:
+            value = _bool_field(method_claims, claim)
+            method_claim_status[claim] = value
+            if value is not True:
+                errors.append(f"ego_swarm_required_claim_missing_or_false:{claim}")
+
+        simulator_mode = str(method_claims.get("simulator_mode", "")).strip().lower()
+        local_sensing_backend = str(method_claims.get("local_sensing_backend", "")).strip().lower()
+        method_claim_status["simulator_mode"] = simulator_mode or None
+        method_claim_status["local_sensing_backend"] = local_sensing_backend or None
+        if not simulator_mode:
+            warnings.append("ego_swarm_simulator_mode_not_declared")
+        if not local_sensing_backend:
+            warnings.append("ego_swarm_local_sensing_backend_not_declared")
+
+        implementation = data.get("implementation", {})
+        license_text = ""
+        if isinstance(implementation, dict):
+            license_text = str(implementation.get("license", "")).strip().lower()
+        if "gpl" not in license_text:
+            errors.append("ego_swarm_official_license_must_disclose_gpl3")
+
+        adapter = data.get("adapter", {})
+        if not isinstance(adapter, dict):
+            errors.append("ego_swarm_adapter_not_mapping")
+            adapter = {}
+        adapter_status = method_claim_status.get("adapter_fields")
+        if not isinstance(adapter_status, dict):
+            adapter_status = {}
+        for field in EGO_SWARM_REQUIRED_ADAPTER_FIELDS:
+            present = _nonempty(adapter.get(field))
+            adapter_status[field] = present
+            if not present:
+                errors.append(f"ego_swarm_adapter_field_missing:{field}")
+        method_claim_status["adapter_fields"] = adapter_status
 
     artifacts = data.get("artifacts", {})
     artifact_status: dict[str, Any] = {}
@@ -696,7 +854,7 @@ def validate_external_reference_manifest(
         "runner_type": runner.get("type") if isinstance(runner, dict) else None,
         "require_artifacts": bool(require_artifacts),
         "artifact_status": artifact_status,
-        "method_claim_status": rmader_claim_status,
+        "method_claim_status": method_claim_status,
         "errors": errors,
         "warnings": warnings,
         "note": (
