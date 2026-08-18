@@ -217,8 +217,11 @@ python -m microbench.cli advanced-baseline-comparison \
   --seed 2 \
   --comm realistic_v2v_50hz \
   --duration-s 20 \
+  --planner-preset scale \
   --export-foxglove-mcap
 ```
+
+The comparison run writes `comparison_manifest.json` next to `advanced_baseline_comparison.json`, recording the planner preset, git commit, guardrail summary, and MCAP path. Keep `--planner-preset scale` for qualitative visuals intended to match the scale-tuned high-volume optimizer settings.
 
 Optionally publish the same run to W&B as dashboard tables:
 

@@ -37,6 +37,7 @@ from microbench.tools import (
     DEFAULT_ADVANCED_COMPARISON_METHODS,
     DEFAULT_ADVANCED_COMPARISON_MCAP,
     DEFAULT_ADVANCED_COMPARISON_N_AGENTS,
+    DEFAULT_ADVANCED_COMPARISON_PLANNER_PRESET,
     DEFAULT_ADVANCED_COMPARISON_SCENARIO,
     DEFAULT_ADVANCED_COMPARISON_SEED,
     DEFAULT_HIGH_VOLUME_COMM_PROFILES,
@@ -824,6 +825,7 @@ def _advanced_baseline_comparison(args) -> None:
         mcap_trail_frames=int(args.mcap_trail_frames),
         mcap_max_sensing_links=int(args.mcap_max_sensing_links),
         mcap_compression=str(args.mcap_compression),
+        planner_preset=str(args.planner_preset),
     )
 
     if args.json:
@@ -833,7 +835,8 @@ def _advanced_baseline_comparison(args) -> None:
         print(
             "advanced-baseline-comparison: "
             f"{status} runs={report['run_count']}/{report['planned_run_count']} "
-            f"scenario={report['scenario']} report={report['report_path']}"
+            f"scenario={report['scenario']} preset={report['planner_preset']} "
+            f"report={report['report_path']}"
         )
         for row in report["ranking"]:
             print(
@@ -1727,6 +1730,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("none", "lz4", "zstd"),
         default="zstd",
         help="MCAP chunk compression for the comparison export",
+    )
+    p_abc.add_argument(
+        "--planner-preset",
+        default=DEFAULT_ADVANCED_COMPARISON_PLANNER_PRESET,
+        help="Planner config preset for comparison rows; use 'scale' for scale-tuned optimizer visualizations",
     )
     p_abc.add_argument("--json", action="store_true", help="Emit machine-readable comparison report")
     p_abc.add_argument(

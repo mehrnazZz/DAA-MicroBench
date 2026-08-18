@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 import json
 import math
+import os
 from pathlib import Path
+import subprocess
 from typing import Any
 
 import yaml
@@ -39,6 +42,40 @@ DEFAULT_ADVANCED_COMPARISON_SEED = 2
 DEFAULT_ADVANCED_COMPARISON_COMM_PROFILE = "realistic_v2v_50hz"
 DEFAULT_ADVANCED_COMPARISON_DURATION_S = 18.0
 DEFAULT_ADVANCED_COMPARISON_MCAP = "baseline_comparison.mcap"
+DEFAULT_ADVANCED_COMPARISON_PLANNER_PRESET = "default"
+PLANNER_PRESET_ENV = "DAA_MICROBENCH_PLANNER_PRESET"
+
+
+@contextmanager
+def _planner_preset_env(preset: str):
+    previous = os.environ.get(PLANNER_PRESET_ENV)
+    clean = _clean_planner_preset(preset)
+    if clean == DEFAULT_ADVANCED_COMPARISON_PLANNER_PRESET:
+        os.environ.pop(PLANNER_PRESET_ENV, None)
+    else:
+        os.environ[PLANNER_PRESET_ENV] = clean
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(PLANNER_PRESET_ENV, None)
+        else:
+            os.environ[PLANNER_PRESET_ENV] = previous
+
+
+def _git_commit() -> str | None:
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=Path(__file__).resolve().parents[2],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+    except Exception:
+        return None
+    commit = proc.stdout.strip()
+    return commit or None
 
 
 def _as_list(values: tuple[str, ...] | list[str] | None, default: tuple[str, ...]) -> list[str]:
@@ -61,6 +98,10 @@ def _json_safe(value: Any) -> Any:
     if isinstance(value, list):
         return [_json_safe(v) for v in value]
     return value
+
+
+def _clean_planner_preset(preset: str | None) -> str:
+    return str(preset or DEFAULT_ADVANCED_COMPARISON_PLANNER_PRESET).strip() or DEFAULT_ADVANCED_COMPARISON_PLANNER_PRESET
 
 
 def _guardrail_total(row: dict[str, Any]) -> int:
@@ -209,6 +250,41 @@ def _export_comparison_mcap(
     }
 
 
+def _comparison_manifest(report: dict[str, Any], *, report_path: Path) -> dict[str, Any]:
+    foxglove_mcap = report.get("foxglove_mcap") if isinstance(report.get("foxglove_mcap"), dict) else None
+    return _json_safe({
+        "schema_version": ADVANCED_BASELINE_COMPARISON_SCHEMA_VERSION,
+        "generated_by": "python -m microbench.cli advanced-baseline-comparison",
+        "git_commit": report.get("git_commit"),
+        "ok": bool(report.get("ok")),
+        "complete": bool(report.get("complete")),
+        "comparison_type": report.get("comparison_type"),
+        "scenario": report.get("scenario"),
+        "scenario_source": report.get("scenario_source"),
+        "scenario_path": report.get("scenario_path"),
+        "methods": report.get("methods", []),
+        "n_agents": report.get("n_agents"),
+        "seed": report.get("seed"),
+        "duration_s": report.get("duration_s"),
+        "comm_profile": report.get("comm_profile"),
+        "planner_preset": report.get("planner_preset"),
+        "save_traces": bool(report.get("save_traces")),
+        "foxglove_mcap_path": foxglove_mcap.get("path") if foxglove_mcap else None,
+        "checks": report.get("checks", {}),
+        "guardrail_failures": report.get("guardrail_failures", {}),
+        "nonfinite_methods": report.get("nonfinite_methods", []),
+        "results_csv": report.get("results_csv"),
+        "summary_csv": report.get("summary_csv"),
+        "result_schema": report.get("result_schema"),
+        "baseline_report_path": report.get("baseline_report_path"),
+        "advanced_baseline_comparison_path": str(report_path),
+        "note": (
+            "Self-contained manifest for visual/qualitative baseline comparison runs. "
+            "Use planner_preset='scale' when the MCAP should match scale-tuned optimizer settings."
+        ),
+    })
+
+
 def run_advanced_baseline_comparison(
     *,
     out_dir: str | Path,
@@ -224,6 +300,7 @@ def run_advanced_baseline_comparison(
     mcap_trail_frames: int = 200,
     mcap_max_sensing_links: int = 200,
     mcap_compression: str = "zstd",
+    planner_preset: str = DEFAULT_ADVANCED_COMPARISON_PLANNER_PRESET,
 ) -> dict[str, Any]:
     out = Path(out_dir)
     if (out / "results.csv").exists():
@@ -231,6 +308,7 @@ def run_advanced_baseline_comparison(
     out.mkdir(parents=True, exist_ok=True)
 
     effective_save_traces = bool(save_traces or export_foxglove_mcap)
+    clean_planner_preset = _clean_planner_preset(planner_preset)
     method_values = _as_list(methods, DEFAULT_ADVANCED_COMPARISON_METHODS)
     source_scenario, scenario_path, effective_duration_s = _prepare_scenario(
         scenario=scenario,
@@ -240,19 +318,20 @@ def run_advanced_baseline_comparison(
     )
 
     rows: list[dict[str, Any]] = []
-    for method in method_values:
-        spec = RunSpec(
-            scenario_path=str(scenario_path),
-            method=str(method),
-            n_agents=int(n_agents),
-            seed=int(seed),
-            comm_profile=str(comm_profile),
-            out_dir=str(out),
-            save_trace=effective_save_traces,
-        )
-        row = run_episode(spec)
-        append_result(out, row)
-        rows.append(row)
+    with _planner_preset_env(clean_planner_preset):
+        for method in method_values:
+            spec = RunSpec(
+                scenario_path=str(scenario_path),
+                method=str(method),
+                n_agents=int(n_agents),
+                seed=int(seed),
+                comm_profile=str(comm_profile),
+                out_dir=str(out),
+                save_trace=effective_save_traces,
+            )
+            row = run_episode(spec)
+            append_result(out, row)
+            rows.append(row)
 
     summary_csv = write_summary(out)
     baseline_report = build_baseline_report(
@@ -287,11 +366,14 @@ def run_advanced_baseline_comparison(
             max_sensing_links=mcap_max_sensing_links,
             compression=mcap_compression,
         )
+    report_path = out / "advanced_baseline_comparison.json"
+    manifest_path = out / "comparison_manifest.json"
     report = _json_safe({
         "schema_version": ADVANCED_BASELINE_COMPARISON_SCHEMA_VERSION,
         "comparison_type": _comparison_type(scenario_stem),
         "ok": bool(complete and not guardrail_failures and not nonfinite_methods),
         "complete": bool(complete),
+        "git_commit": _git_commit(),
         "methods": method_values,
         "scenario_source": str(source_scenario),
         "scenario_path": str(scenario_path),
@@ -300,6 +382,7 @@ def run_advanced_baseline_comparison(
         "n_agents": int(n_agents),
         "seed": int(seed),
         "comm_profile": str(comm_profile),
+        "planner_preset": clean_planner_preset,
         "save_traces": effective_save_traces,
         "foxglove_mcap": foxglove_mcap,
         "planned_run_count": len(method_values),
@@ -318,12 +401,22 @@ def run_advanced_baseline_comparison(
         },
         "guardrail_failures": guardrail_failures,
         "nonfinite_methods": nonfinite_methods,
+        "comparison_manifest_path": str(manifest_path),
         "score_note": "score_v0 follows docs/LEADERBOARD.md; use component metrics, not only rank.",
     })
-    report_path = out / "advanced_baseline_comparison.json"
     report["report_path"] = str(report_path)
     report_path.write_text(
         json.dumps(report, allow_nan=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    manifest_path.write_text(
+        json.dumps(
+            _comparison_manifest(report, report_path=report_path),
+            allow_nan=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
         encoding="utf-8",
     )
     return report

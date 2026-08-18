@@ -40,12 +40,13 @@ python -m microbench.cli advanced-baseline-comparison \
   --seed 2 \
   --comm realistic_v2v_50hz \
   --duration-s 20 \
+  --planner-preset scale \
   --export-foxglove-mcap \
   --mcap-trail-frames 1000 \
   --mcap-max-sensing-links 80
 ```
 
-Open `runs_urban_throughput_comparison/baseline_comparison.mcap` in Foxglove and assign one panel to each `/daa/comparison/<method>/...` topic group.
+Open `runs_urban_throughput_comparison/baseline_comparison.mcap` in Foxglove and assign one panel to each `/daa/comparison/<method>/...` topic group. The command also writes `comparison_manifest.json`, which records the scenario, methods, N, seed, duration, communication profile, planner preset, git commit, guardrail summary, and MCAP path.
 
 ## 1) What This Is (and Is Not)
 
@@ -455,7 +456,7 @@ python -m microbench.cli advanced-baseline-comparison \
 
 This runs ORCA, stale-aware ORCA, CBF-QP, MPC-local, nonlinear MPC, distributed MPC, BVC tube-DMPC, dynamic tube-DMPC, RMADER, sampled EGO-Swarm-inspired trajectory sharing, optimized EGO-Swarm-style control-point planning, VO, and RVO on the same `urban_conflict_3d` lane and writes `advanced_baseline_comparison.json`, `baseline_report.json`, `results.csv`, and `summary.csv`. Use it as a quick apples-to-apples advanced-baseline artifact; the all-suite leaderboard remains the publication-grade benchmark evidence.
 
-Add `--export-foxglove-mcap` to save per-method traces and write a single panelized `baseline_comparison.mcap` alongside the CSV/JSON artifacts. For an environment-rich throughput demo, pass `--scenario config/scenarios/urban_throughput_3d.yaml` and the optimizer methods shown in the featured demo command.
+Add `--export-foxglove-mcap` to save per-method traces and write a single panelized `baseline_comparison.mcap` alongside the CSV/JSON artifacts. For an environment-rich throughput demo, pass `--scenario config/scenarios/urban_throughput_3d.yaml`, the optimizer methods shown in the featured demo command, and `--planner-preset scale` when the visual run should match scale-tuned optimizer settings. Omit the preset when inspecting fuller default optimizer behavior.
 
 Run a fleet-size scaling ladder:
 
@@ -765,8 +766,11 @@ python -m microbench.cli advanced-baseline-comparison \
   --methods dmpc_best_response,bvc_tube_dmpc,dynamic_tube_dmpc,mpc_nonlinear,ego_swarm_opt,rmader \
   --n 8 \
   --duration-s 20 \
+  --planner-preset scale \
   --export-foxglove-mcap
 ```
+
+The command writes `advanced_baseline_comparison.json` and `comparison_manifest.json`; the manifest is the durable record for reproducing or interpreting a copied MCAP.
 
 Episode analysis report:
 

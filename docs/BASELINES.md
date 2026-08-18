@@ -237,12 +237,13 @@ python -m microbench.cli advanced-baseline-comparison \
   --seed 2 \
   --comm realistic_v2v_50hz \
   --duration-s 20 \
+  --planner-preset scale \
   --export-foxglove-mcap \
   --mcap-trail-frames 1000 \
   --mcap-max-sensing-links 80
 ```
 
-This writes one `baseline_comparison.mcap` with per-method topics under `/daa/comparison/<method>/...`, suitable for a 2x3 Foxglove dashboard.
+This writes one `baseline_comparison.mcap` with per-method topics under `/daa/comparison/<method>/...`, suitable for a 2x3 Foxglove dashboard. It also writes `comparison_manifest.json` with the scenario, methods, N, seed, duration, communication profile, planner preset, git commit, guardrail summary, and MCAP path. Use `--planner-preset scale` for visual demos meant to match scale-tuned optimizer behavior; omit it when auditing the fuller default planner settings.
 
 Build an all-official-suite baseline leaderboard:
 
