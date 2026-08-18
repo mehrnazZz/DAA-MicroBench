@@ -8,7 +8,7 @@ import sys
 
 import yaml
 
-from microbench.tools.external_reference import validate_external_reference_manifest
+from microbench.tools.external_reference import build_external_reference_bundle, validate_external_reference_manifest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -179,3 +179,94 @@ def test_external_reference_cli_json(tmp_path: Path) -> None:
     report = json.loads(proc.stdout)
     assert report["ok"] is True
     assert report["reference_id"] == "rmader_official_ros_noetic"
+
+
+def test_external_reference_bundle_writes_rmader_capture_template(tmp_path: Path) -> None:
+    out_dir = tmp_path / "rmader_bundle"
+
+    report = build_external_reference_bundle(
+        method_family="rmader",
+        out_dir=out_dir,
+        scenarios=["urban_conflict_3d", "stacked_swap_3d"],
+        n_agents=[4, 8],
+        seeds=[2],
+        comm_profiles=["ideal_50hz"],
+        runner_type="ros",
+    )
+
+    assert report["ok"] is True
+    assert report["run_count"] == 4
+    assert report["scenario_count"] == 2
+    assert (out_dir / "manifest.yaml").exists()
+    assert (out_dir / "run_matrix.csv").exists()
+    assert (out_dir / "run_matrix.json").exists()
+    assert (out_dir / "results_template.csv").exists()
+    assert (out_dir / "summary_template.csv").exists()
+    assert (out_dir / "result_schema.json").exists()
+    assert (out_dir / "RUN_NOTES.md").exists()
+    assert (out_dir / "checksums.json").exists()
+    assert (out_dir / "scenarios" / "urban_conflict_3d.yaml").exists()
+    assert (out_dir / "scenarios" / "stacked_swap_3d.yaml").exists()
+
+    with (out_dir / "run_matrix.csv").open("r", newline="", encoding="utf-8") as f:
+        matrix_rows = list(csv.DictReader(f))
+    assert len(matrix_rows) == 4
+    assert {row["scenario"] for row in matrix_rows} == {"urban_conflict_3d", "stacked_swap_3d"}
+    assert {row["N"] for row in matrix_rows} == {"4", "8"}
+    assert {row["expected_results_method"] for row in matrix_rows} == {"rmader_official_ros_noetic"}
+
+    with (out_dir / "results_template.csv").open("r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        template_rows = list(reader)
+        fields = list(reader.fieldnames or [])
+    assert len(template_rows) == 4
+    assert "collision_episode" in fields
+    assert {row["method"] for row in template_rows} == {"rmader_official_ros_noetic"}
+
+    manifest = yaml.safe_load((out_dir / "manifest.yaml").read_text(encoding="utf-8"))
+    assert manifest["method_claims"]["delay_check"] is True
+    assert manifest["adapter"]["communication_mapping"]
+
+    validation = validate_external_reference_manifest(manifest=out_dir / "manifest.yaml")
+    assert validation["ok"] is True
+    assert validation["method_claim_status"]["hard_separating_hyperplanes"] is True
+
+
+def test_external_reference_bundle_cli_json(tmp_path: Path) -> None:
+    out_dir = tmp_path / "cli_bundle"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "microbench.cli",
+            "external-reference-bundle",
+            "--method-family",
+            "rmader",
+            "--out-dir",
+            str(out_dir),
+            "--scenarios",
+            "urban_conflict_3d",
+            "--n",
+            "4",
+            "--seeds",
+            "2",
+            "--comm",
+            "ideal_50hz",
+            "--runner-type",
+            "ros",
+            "--require-pass",
+            "--json",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    report = json.loads(proc.stdout)
+    assert report["ok"] is True
+    assert report["run_count"] == 1
+    assert report["reference_id"] == "rmader_official_ros_noetic"
+    assert (out_dir / "external_reference_bundle.json").exists()
+    assert (out_dir / "manifest.yaml").exists()
+    assert (out_dir / "run_matrix.csv").exists()

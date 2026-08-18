@@ -13,6 +13,7 @@ python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --re
 python -m microbench.cli advanced-baseline-comparison --out-dir runs_advanced_baseline_comparison --require-pass
 python -m microbench.cli baseline-review --out-dir runs_baseline_review --duration-s 20
 python -m microbench.cli baseline-leaderboard --out-dir runs_baseline_leaderboard --suites all --require-pass --require-complete
+python -m microbench.cli external-reference-bundle --method-family rmader --out-dir runs_external_references/rmader_official_bundle --scenarios urban_conflict_3d,urban_throughput_3d,stacked_swap_3d --n 4,8 --seeds 2 --comm realistic_v2v_50hz --runner-type ros
 python -m microbench.cli validate-external-reference --manifest examples/external_reference_rmader_manifest.yaml --json
 ```
 

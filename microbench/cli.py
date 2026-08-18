@@ -40,6 +40,10 @@ from microbench.tools import (
     DEFAULT_ADVANCED_COMPARISON_PLANNER_PRESET,
     DEFAULT_ADVANCED_COMPARISON_SCENARIO,
     DEFAULT_ADVANCED_COMPARISON_SEED,
+    DEFAULT_EXTERNAL_REFERENCE_COMM_PROFILES,
+    DEFAULT_EXTERNAL_REFERENCE_N_AGENTS,
+    DEFAULT_EXTERNAL_REFERENCE_SCENARIOS,
+    DEFAULT_EXTERNAL_REFERENCE_SEEDS,
     DEFAULT_HIGH_VOLUME_COMM_PROFILES,
     DEFAULT_HIGH_VOLUME_DURATION_S,
     DEFAULT_HIGH_VOLUME_N_AGENTS,
@@ -54,6 +58,7 @@ from microbench.tools import (
     OPTIMIZER_REVIEW_METHODS,
     MAX_RUNS_STRATEGIES,
     SCALE_SPAWN_PROFILES,
+    build_external_reference_bundle,
     build_baseline_audit,
     build_current_schema_candidate,
     compare_current_schema_golden,
@@ -807,6 +812,46 @@ def _validate_external_reference(args) -> None:
 
     if args.require_pass and not report["ok"]:
         raise SystemExit(f"external reference manifest failed validation: {report['errors']}")
+
+
+def _external_reference_bundle(args) -> None:
+    report = build_external_reference_bundle(
+        method_family=str(args.method_family),
+        out_dir=args.out_dir,
+        scenarios=_parse_str_list(args.scenarios) if args.scenarios else None,
+        suites=_parse_str_list(args.suites) if args.suites else None,
+        n_agents=_parse_int_list(args.n) if args.n else None,
+        seeds=_parse_int_list(args.seeds) if args.seeds else None,
+        comm_profiles=_parse_str_list(args.comm) if args.comm else None,
+        reference_id=args.reference_id,
+        related_microbench_method=args.related_microbench_method,
+        implementation_name=args.implementation_name,
+        source_url=args.source_url,
+        license_text=args.license,
+        upstream_commit=str(args.upstream_commit),
+        runner_type=str(args.runner_type),
+        runner_command=str(args.runner_command),
+        runner_working_dir=str(args.runner_working_dir),
+        overwrite=bool(args.overwrite),
+    )
+
+    if args.json:
+        print(json.dumps(report, allow_nan=False, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        print(
+            "external-reference-bundle: "
+            f"{status} reference={report['reference_id']} "
+            f"rows={report['run_count']} scenarios={report['scenario_count']} "
+            f"bundle={report['out_dir']}"
+        )
+        print(f"  manifest: {report['manifest']}")
+        print(f"  run_matrix: {report['run_matrix_csv']}")
+        print(f"  results_template: {report['results_template']}")
+        print(f"  post_run_validation: {report['post_run_validation_command']}")
+
+    if args.require_pass and not report["ok"]:
+        raise SystemExit(f"external reference bundle failed validation: {report['validation']['errors']}")
 
 
 def _advanced_baseline_comparison(args) -> None:
@@ -1684,6 +1729,71 @@ def build_parser() -> argparse.ArgumentParser:
     p_ext.add_argument("--json", action="store_true", help="Emit machine-readable validation report")
     p_ext.add_argument("--require-pass", action="store_true", help="Fail if the manifest has validation errors")
 
+    p_ext_bundle = sub.add_parser(
+        "external-reference-bundle",
+        help="Create a portable scenario/run-matrix bundle for an official external implementation",
+    )
+    p_ext_bundle.add_argument("--method-family", required=True, help="External method family, e.g. rmader")
+    p_ext_bundle.add_argument("--out-dir", required=True, help="Fresh output directory for the bundle")
+    p_ext_bundle.add_argument(
+        "--scenarios",
+        default=",".join(DEFAULT_EXTERNAL_REFERENCE_SCENARIOS),
+        help="Comma-separated scenario ids/paths to copy into the bundle",
+    )
+    p_ext_bundle.add_argument(
+        "--suites",
+        default=None,
+        help="Optional comma-separated generated suite ids to materialize into the bundle",
+    )
+    p_ext_bundle.add_argument(
+        "--n",
+        default=",".join(str(x) for x in DEFAULT_EXTERNAL_REFERENCE_N_AGENTS),
+        help="Comma-separated agent counts or ranges, e.g. 4,8 or 4:8",
+    )
+    p_ext_bundle.add_argument(
+        "--seeds",
+        default=",".join(str(x) for x in DEFAULT_EXTERNAL_REFERENCE_SEEDS),
+        help="Comma-separated seeds or ranges",
+    )
+    p_ext_bundle.add_argument(
+        "--comm",
+        default=",".join(DEFAULT_EXTERNAL_REFERENCE_COMM_PROFILES),
+        help="Comma-separated communication profiles",
+    )
+    p_ext_bundle.add_argument("--reference-id", default=None, help="External reference id for the manifest")
+    p_ext_bundle.add_argument(
+        "--related-microbench-method",
+        default=None,
+        help="Canonical built-in method this official reference should be compared against",
+    )
+    p_ext_bundle.add_argument("--implementation-name", default=None, help="External implementation display name")
+    p_ext_bundle.add_argument("--source-url", default=None, help="External implementation source URL")
+    p_ext_bundle.add_argument("--license", default=None, help="External implementation license")
+    p_ext_bundle.add_argument(
+        "--upstream-commit",
+        default="<external-repo-commit>",
+        help="External implementation commit/tag to record in the manifest",
+    )
+    p_ext_bundle.add_argument(
+        "--runner-type",
+        choices=("external_process", "docker", "ros", "manual_import"),
+        default="external_process",
+        help="How the external reference is expected to run",
+    )
+    p_ext_bundle.add_argument(
+        "--runner-command",
+        default="<external command that consumes run_matrix.csv and scenarios/*.yaml>",
+        help="Command note for the external runner",
+    )
+    p_ext_bundle.add_argument(
+        "--runner-working-dir",
+        default="<external-workspace>",
+        help="External runner working directory note",
+    )
+    p_ext_bundle.add_argument("--overwrite", action="store_true", help="Replace existing bundle files")
+    p_ext_bundle.add_argument("--json", action="store_true", help="Emit machine-readable bundle report")
+    p_ext_bundle.add_argument("--require-pass", action="store_true", help="Fail if the generated manifest is invalid")
+
     p_abc = sub.add_parser(
         "advanced-baseline-comparison",
         help="Run a compact shared 3D comparison lane for advanced baselines",
@@ -2251,6 +2361,9 @@ def main() -> None:
         return
     if args.cmd == "validate-external-reference":
         _validate_external_reference(args)
+        return
+    if args.cmd == "external-reference-bundle":
+        _external_reference_bundle(args)
         return
     if args.cmd == "advanced-baseline-comparison":
         _advanced_baseline_comparison(args)

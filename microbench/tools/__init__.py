@@ -51,7 +51,13 @@ from microbench.tools.current_schema_golden import (
     write_current_schema_golden,
 )
 from microbench.tools.external_reference import (
+    DEFAULT_EXTERNAL_REFERENCE_COMM_PROFILES,
+    DEFAULT_EXTERNAL_REFERENCE_N_AGENTS,
+    DEFAULT_EXTERNAL_REFERENCE_SCENARIOS,
+    DEFAULT_EXTERNAL_REFERENCE_SEEDS,
+    EXTERNAL_REFERENCE_BUNDLE_SCHEMA_VERSION,
     EXTERNAL_REFERENCE_SCHEMA_VERSION,
+    build_external_reference_bundle,
     validate_external_reference_manifest,
 )
 from microbench.tools.hard_case_mining import mine_worst_cases
@@ -100,6 +106,11 @@ __all__ = [
     "HIGH_VOLUME_EVIDENCE_SCHEMA_VERSION",
     "HIGH_VOLUME_LEADERBOARD_SCHEMA_VERSION",
     "EXTERNAL_REFERENCE_SCHEMA_VERSION",
+    "EXTERNAL_REFERENCE_BUNDLE_SCHEMA_VERSION",
+    "DEFAULT_EXTERNAL_REFERENCE_COMM_PROFILES",
+    "DEFAULT_EXTERNAL_REFERENCE_N_AGENTS",
+    "DEFAULT_EXTERNAL_REFERENCE_SCENARIOS",
+    "DEFAULT_EXTERNAL_REFERENCE_SEEDS",
     "MAX_RUNS_STRATEGIES",
     "DEFAULT_OPTIMIZER_REVIEW_SUITES",
     "OPTIMIZER_REVIEW_METHODS",
@@ -127,5 +138,6 @@ __all__ = [
     "write_baseline_stable_review",
     "write_current_schema_golden",
     "write_high_volume_leaderboard",
+    "build_external_reference_bundle",
     "validate_external_reference_manifest",
 ]

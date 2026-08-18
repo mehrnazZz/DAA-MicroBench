@@ -56,6 +56,21 @@ python -m microbench.cli validate-external-reference \
   --json
 ```
 
+Prepare a portable bundle for running an official external implementation against Microbench scenarios:
+
+```bash
+python -m microbench.cli external-reference-bundle \
+  --method-family rmader \
+  --out-dir runs_external_references/rmader_official_bundle \
+  --scenarios urban_conflict_3d,urban_throughput_3d,stacked_swap_3d \
+  --n 4,8 \
+  --seeds 2 \
+  --comm realistic_v2v_50hz \
+  --runner-type ros
+```
+
+The bundle writes copied `scenarios/*.yaml`, `run_matrix.csv`, `run_matrix.json`, `manifest.yaml`, `result_schema.json`, `results_template.csv`, `summary_template.csv`, `RUN_NOTES.md`, `checksums.json`, and `external_reference_bundle.json`. The external stack should consume the scenario files and run matrix, then write the declared `results.csv` / `summary.csv` artifacts before final validation.
+
 After an external run writes artifacts, require declared artifacts to exist and expose the core result fields:
 
 ```bash
