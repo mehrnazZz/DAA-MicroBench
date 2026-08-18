@@ -101,6 +101,7 @@ Available planners / how to list methods:
 python -m microbench.cli list-methods
 python -m microbench.cli list-methods --json --include-aliases
 python -m microbench.cli baseline-audit
+python -m microbench.cli validate-external-reference --manifest examples/external_reference_rmader_manifest.yaml --json
 python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
 python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass
@@ -125,6 +126,7 @@ python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --re
 You can also inspect `microbench/planners/` (each planner module maps to a method name in the planner registry).
 `orca_heuristic` is the canonical ORCA-like geometric baseline; `orca_expert` remains accepted as a compatibility alias for older scripts and result folders.
 See [docs/BASELINES.md](docs/BASELINES.md) for baseline roles, limitations, and recommended comparison sets.
+See [docs/BASELINE_FIDELITY.md](docs/BASELINE_FIDELITY.md) for implementation-fidelity tiers, provenance, and external official-reference manifests.
 See [docs/DESIGN_V1.md](docs/DESIGN_V1.md) for the benchmark contract and [docs/PLANNER_API.md](docs/PLANNER_API.md) for a planner implementation tutorial.
 See [docs/RL_INTERFACE.md](docs/RL_INTERFACE.md) for PettingZoo/Gymnasium-style wrappers and smoke checks, [docs/LEARNED_POLICY_ADOPTION.md](docs/LEARNED_POLICY_ADOPTION.md) for exported learned-policy specs and bundle review, and [docs/RL_STABLE_V1_FREEZE.md](docs/RL_STABLE_V1_FREEZE.md) for RL stable-v1 freeze criteria.
 See [docs/README.md](docs/README.md) for the full documentation map.

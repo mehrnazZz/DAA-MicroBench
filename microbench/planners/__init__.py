@@ -26,6 +26,15 @@ from microbench.planners.template_planner import TemplatePlanner
 from microbench.planners.velocity_obstacle import ReciprocalVelocityObstaclePlanner, VelocityObstaclePlanner
 
 
+BASELINE_FIDELITY_TIERS = (
+    "official_implementation",
+    "faithful_reimplementation",
+    "inspired_clean_room",
+    "benchmark_utility",
+    "submission_bridge",
+)
+
+
 @dataclass(frozen=True)
 class PlannerMetadata:
     method: str
@@ -43,12 +52,19 @@ class PlannerMetadata:
     uses_obstacles: bool = False
     learned: bool = False
     deterministic: bool = True
+    fidelity: str = "benchmark_utility"
+    provenance: str = "Built-in DAA Microbench implementation."
+    reference_urls: tuple[str, ...] = ()
+    external_reference_candidate: bool = False
     description: str = ""
     limitations: tuple[str, ...] = ()
     canonical_method: str | None = None
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        data = asdict(self)
+        if data["fidelity"] not in BASELINE_FIDELITY_TIERS:
+            raise ValueError(f"unknown baseline fidelity tier: {data['fidelity']!r}")
+        return data
 
 
 def _orca_cfg(defaults: dict, key: str) -> dict:
@@ -194,6 +210,8 @@ _METADATA: dict[str, PlannerMetadata] = {
         status="stable",
         dimensions=("2d", "3d"),
         observation_sources=("ego_state", "goal"),
+        fidelity="benchmark_utility",
+        provenance="Built-in lower-bound behavior for scenario sanity checks.",
         description="Accelerates each drone toward its goal and ignores all traffic.",
         limitations=("Does not use neighbor, obstacle, intent, or message information.",),
     ),
@@ -209,6 +227,12 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_v2v=True,
         uses_local_sensing=True,
         uses_obstacles=True,
+        fidelity="inspired_clean_room",
+        provenance="Clean-room ORCA/RVO-family geometric heuristic adapted to the DAA Microbench local planner contract.",
+        reference_urls=(
+            "https://gamma-web.iacs.umd.edu/ORCA/",
+            "https://gamma-web.iacs.umd.edu/RVO2/downloads/",
+        ),
         description=(
             "Obstacle-aware ORCA-like candidate-velocity planner with stale-track inflation "
             "and 2D/3D support."
@@ -230,6 +254,12 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_v2v=True,
         uses_local_sensing=True,
         uses_obstacles=True,
+        fidelity="inspired_clean_room",
+        provenance="Clean-room ORCA/RVO-family stale-track variant adapted to the DAA Microbench observation model.",
+        reference_urls=(
+            "https://gamma-web.iacs.umd.edu/ORCA/",
+            "https://gamma-web.iacs.umd.edu/RVO2/downloads/",
+        ),
         description=(
             "ORCA-like candidate-velocity planner preset with stronger stale-track inflation "
             "and age-based responsibility for degraded communication or sensor-track runs."
@@ -251,6 +281,8 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_v2v=True,
         uses_local_sensing=True,
         uses_obstacles=True,
+        fidelity="inspired_clean_room",
+        provenance="Clean-room CBF-style safety-filter baseline with dependency-free projection and optional SciPy solve.",
         description=(
             "Control-barrier-function safety-filter baseline with deterministic projection, "
             "optional SciPy SLSQP solve, obstacle barriers, and stale-track inflation."
@@ -272,6 +304,8 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_v2v=True,
         uses_local_sensing=True,
         uses_obstacles=True,
+        fidelity="benchmark_utility",
+        provenance="Built-in deterministic predictive sampling baseline for local-planner API and metric comparisons.",
         description=(
             "Deterministic local predictive baseline that samples one-step-reachable velocity "
             "commands and scores short-horizon rollouts against neighbors, stale tracks, and obstacles."
@@ -294,6 +328,8 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_local_sensing=True,
         uses_intent=True,
         uses_obstacles=True,
+        fidelity="inspired_clean_room",
+        provenance="Clean-room nonlinear MPC-style trajectory optimizer adapted to DAA Microbench's velocity-command contract.",
         description=(
             "Clean-room nonlinear MPC baseline that optimizes finite-horizon acceleration "
             "controls with double-integrator dynamics, warm starts, multistart avoidance seeds, "
@@ -318,6 +354,8 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_intent=True,
         uses_agent_messages=True,
         uses_obstacles=True,
+        fidelity="inspired_clean_room",
+        provenance="Clean-room distributed-MPC-style best-response coordinator for decentralized intent-sharing experiments.",
         description=(
             "Clean-room distributed-MPC-style best-response baseline. Each agent optimizes its own "
             "finite-horizon trajectory, treats received neighbor intents as coupled trajectory "
@@ -343,6 +381,8 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_intent=True,
         uses_agent_messages=True,
         uses_obstacles=True,
+        fidelity="inspired_clean_room",
+        provenance="Clean-room buffered-Voronoi/tube-DMPC-style spatial partitioning baseline.",
         description=(
             "Clean-room tube-based distributed MPC baseline that builds time-indexed buffered "
             "Voronoi-cell halfspace tubes, projects planned waypoints into hard non-overlapping "
@@ -367,6 +407,13 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_intent=True,
         uses_agent_messages=True,
         uses_obstacles=True,
+        fidelity="faithful_reimplementation",
+        provenance=(
+            "Clean-room paper-specific reimplementation of the dynamic tube-DMPC formulation, "
+            "adapted to DAA Microbench's command and obstacle contracts."
+        ),
+        reference_urls=("https://www.mdpi.com/2504-446X/10/3/177",),
+        external_reference_candidate=True,
         description=(
             "Paper-specific dynamic tube-based DMPC baseline following Dai/Liao/Chen 2026: "
             "condensed double-integrator QP over acceleration controls, elastic virtual-tube "
@@ -392,6 +439,13 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_intent=True,
         uses_agent_messages=True,
         uses_obstacles=True,
+        fidelity="faithful_reimplementation",
+        provenance=(
+            "Clean-room RMADER/MADER-family reimplementation with MINVO hulls and hard separating "
+            "hyperplanes; not a ROS/Gurobi port of the official MIT ACL code."
+        ),
+        reference_urls=("https://github.com/mit-acl/rmader",),
+        external_reference_candidate=True,
         description=(
             "Clean-room RMADER/MADER-style baseline with cubic B-spline plans, continuous MINVO "
             "interval polyhedra, hard separating hyperplanes against dynamic and static hulls, "
@@ -414,6 +468,9 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_v2v=True,
         uses_local_sensing=True,
         uses_obstacles=True,
+        fidelity="inspired_clean_room",
+        provenance="Clean-room velocity-obstacle-family sampler adapted to DAA Microbench 2D/3D tracks and AABB obstacles.",
+        reference_urls=("https://gamma-web.iacs.umd.edu/RVO2/downloads/",),
         description=(
             "Deterministic 2D/3D velocity-obstacle cone sampler that scores finite-horizon "
             "candidate commands against local tracks and static obstacles."
@@ -436,6 +493,13 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_local_sensing=True,
         uses_intent=True,
         uses_obstacles=True,
+        fidelity="inspired_clean_room",
+        provenance=(
+            "Clean-room EGO-Swarm-inspired trajectory-sharing baseline; not a port or vendored copy "
+            "of the upstream GPL ROS/C++ implementation."
+        ),
+        reference_urls=("https://github.com/ZJU-FAST-Lab/ego-planner-swarm",),
+        external_reference_candidate=True,
         description=(
             "Clean-room EGO-Swarm-inspired baseline that samples smooth local trajectory "
             "topologies, scores swarm/obstacle clearance and smoothness, and advertises "
@@ -459,6 +523,16 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_local_sensing=True,
         uses_intent=True,
         uses_obstacles=True,
+        fidelity="inspired_clean_room",
+        provenance=(
+            "Clean-room EGO-Swarm-style control-point optimizer; not a port or vendored copy "
+            "of the upstream GPL ROS/C++ implementation."
+        ),
+        reference_urls=(
+            "https://github.com/ZJU-FAST-Lab/ego-planner-swarm",
+            "https://github.com/ZJU-FAST-Lab/EGO-Planner-v2",
+        ),
+        external_reference_candidate=True,
         description=(
             "Clean-room EGO-Swarm-style baseline that seeds topological local trajectories, "
             "optimizes smooth control points against dynamic feasibility, swarm clearance, "
@@ -481,6 +555,12 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_v2v=True,
         uses_local_sensing=True,
         uses_obstacles=True,
+        fidelity="inspired_clean_room",
+        provenance="Clean-room reciprocal/HRVO-style sampler adapted to DAA Microbench tracks and degraded observation metadata.",
+        reference_urls=(
+            "https://gamma-web.iacs.umd.edu/ORCA/",
+            "https://gamma-web.iacs.umd.edu/RVO2/downloads/",
+        ),
         description=(
             "Hybrid reciprocal velocity-obstacle sampler with deterministic responsibility "
             "sharing, stale-track responsibility inflation, and tangent-boundary candidate commands."
@@ -500,6 +580,8 @@ _METADATA: dict[str, PlannerMetadata] = {
         dimensions=("2d", "3d"),
         observation_sources=("ego_state", "goal"),
         aliases=("template_planner",),
+        fidelity="benchmark_utility",
+        provenance="Built-in developer example for planner API tutorials.",
         description="Minimal plugin example for implementing a custom local planner.",
         limitations=("Intended for API examples, not for benchmark scoring.",),
     ),
@@ -513,6 +595,8 @@ _METADATA: dict[str, PlannerMetadata] = {
         observation_sources=("ego_state", "goal", "agent_messages"),
         uses_intent=True,
         uses_agent_messages=True,
+        fidelity="benchmark_utility",
+        provenance="Built-in message-plumbing fixture for intent and trace tests.",
         description="Simple planner that exercises intent message emission and receipt.",
         limitations=("Useful for plumbing tests; not designed as a competitive DAA baseline.",),
     ),
@@ -527,6 +611,8 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_v2v=True,
         uses_local_sensing=True,
         learned=True,
+        fidelity="benchmark_utility",
+        provenance="Built-in frozen synthetic learned-policy fixture for packaging and submission plumbing.",
         description=(
             "Frozen linear-tanh learned-policy fixture loaded from a versioned JSON weight artifact. "
             "It maps public local planner features to normalized velocity commands."
@@ -548,6 +634,8 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_v2v=True,
         uses_local_sensing=True,
         learned=True,
+        fidelity="submission_bridge",
+        provenance="Built-in bridge for trusted external learned-policy specs using the DAA RL observation/action contract.",
         description=(
             "Loads a trusted JSON/YAML RL policy spec and evaluates it as a normal local planner "
             "using the stable DAA RL observation/action contract."
@@ -569,6 +657,8 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_v2v=True,
         uses_local_sensing=True,
         uses_agent_messages=True,
+        fidelity="benchmark_utility",
+        provenance="Built-in deterministic agentic right-of-way baseline for priority/message scenarios.",
         description="Decentralized yielding heuristic that uses per-agent priority and agent messages.",
         limitations=("Negotiation is one-shot and heuristic rather than formally optimized.",),
     ),
@@ -583,6 +673,8 @@ _METADATA: dict[str, PlannerMetadata] = {
         uses_v2v=True,
         uses_local_sensing=True,
         uses_agent_messages=True,
+        fidelity="benchmark_utility",
+        provenance="Built-in structured proposal/ACK agentic baseline for decentralized communication tests.",
         description="Agentic yielding baseline that exchanges proposals, acknowledgments, and local separation actions.",
         limitations=("Pre-v1 reference behavior; not yet a stable-v1 leaderboard anchor.",),
     ),

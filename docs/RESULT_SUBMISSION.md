@@ -112,7 +112,7 @@ python -m microbench.cli canonical-sweep \
 
 Use `python -m microbench.cli list-suites` to confirm suite status, source, and default run matrix.
 Use `python -m microbench.cli list-suites --json` to inspect generated-suite acceptance rules.
-Use `python -m microbench.cli list-methods --json --include-aliases` or [BASELINES.md](BASELINES.md) to confirm whether a submitted method is a canonical baseline or compatibility alias.
+Use `python -m microbench.cli list-methods --json --include-aliases` or [BASELINES.md](BASELINES.md) to confirm whether a submitted method is a canonical baseline or compatibility alias. Use [BASELINE_FIDELITY.md](BASELINE_FIDELITY.md) and `python -m microbench.cli validate-external-reference --manifest <manifest>` when comparing an official or dependency-heavy external implementation against built-in baselines.
 Generated suite manifests preserve the same `acceptance` metadata and should be submitted with results.
 
 ## Result Tables

@@ -66,6 +66,7 @@ from microbench.tools import (
     run_high_volume_evidence,
     run_optimizer_suite_review,
     run_scale_benchmark,
+    validate_external_reference_manifest,
     write_high_volume_leaderboard,
     write_baseline_report,
     write_current_schema_golden,
@@ -667,7 +668,8 @@ def _baseline_audit(args) -> None:
             blockers = ",".join(entry["blockers"]) if entry["blockers"] else "-"
             print(
                 f"{entry['method']}: readiness={entry['readiness']} "
-                f"role={entry['role']} status={entry['status']} blockers={blockers}"
+                f"role={entry['role']} status={entry['status']} "
+                f"fidelity={entry.get('fidelity')} blockers={blockers}"
             )
     if args.require_public_alpha_ready and not report["public_alpha_ready"]:
         raise SystemExit("baseline audit failed: public-alpha reference baseline blockers present")
@@ -780,6 +782,30 @@ def _baseline_evidence(args) -> None:
     if args.require_pass and not report["ok"]:
         failed = [f"{check['method']}:{check['name']}" for check in report["checks"] if not check["ok"]]
         raise SystemExit(f"baseline evidence checks failed: {','.join(failed)}")
+
+
+def _validate_external_reference(args) -> None:
+    report = validate_external_reference_manifest(
+        manifest=args.manifest,
+        require_artifacts=bool(args.require_artifacts),
+    )
+
+    if args.json:
+        print(json.dumps(report, allow_nan=False, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        print(
+            "validate-external-reference: "
+            f"{status} reference={report['reference_id']} "
+            f"method={report['related_microbench_method']} fidelity={report['fidelity']}"
+        )
+        for error in report["errors"]:
+            print(f"  error: {error}")
+        for warning in report["warnings"]:
+            print(f"  warning: {warning}")
+
+    if args.require_pass and not report["ok"]:
+        raise SystemExit(f"external reference manifest failed validation: {report['errors']}")
 
 
 def _advanced_baseline_comparison(args) -> None:
@@ -1642,6 +1668,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_be.add_argument("--json", action="store_true", help="Emit machine-readable evidence report")
     p_be.add_argument("--require-pass", action="store_true", help="Fail if any evidence check fails")
 
+    p_ext = sub.add_parser(
+        "validate-external-reference",
+        help="Validate an external official/reference-baseline manifest without executing external code",
+    )
+    p_ext.add_argument("--manifest", required=True, help="External reference manifest YAML/JSON path")
+    p_ext.add_argument(
+        "--require-artifacts",
+        action="store_true",
+        help="Require declared artifact paths such as results.csv to exist and match the core result fields",
+    )
+    p_ext.add_argument("--json", action="store_true", help="Emit machine-readable validation report")
+    p_ext.add_argument("--require-pass", action="store_true", help="Fail if the manifest has validation errors")
+
     p_abc = sub.add_parser(
         "advanced-baseline-comparison",
         help="Run a compact shared 3D comparison lane for advanced baselines",
@@ -2201,6 +2240,9 @@ def main() -> None:
         return
     if args.cmd == "baseline-evidence":
         _baseline_evidence(args)
+        return
+    if args.cmd == "validate-external-reference":
+        _validate_external_reference(args)
         return
     if args.cmd == "advanced-baseline-comparison":
         _advanced_baseline_comparison(args)

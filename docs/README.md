@@ -11,6 +11,7 @@ Start here when navigating the public docs.
 
 - [SCENARIO_SUITES.md](SCENARIO_SUITES.md): official/generated suite registry, suite materialization, validation, and acceptance metadata.
 - [BASELINES.md](BASELINES.md): built-in baseline roles, limitations, recommended comparison sets, and promotion criteria.
+- [BASELINE_FIDELITY.md](BASELINE_FIDELITY.md): implementation-fidelity tiers, provenance matrix, and external-reference manifest workflow.
 - [LEADERBOARD.md](LEADERBOARD.md): ranking policy, primary metrics, result categories, reproducibility rules, and review policy.
 - [RL_INTERFACE.md](RL_INTERFACE.md): PettingZoo/Gymnasium-style wrappers for learning researchers.
 - [LEARNED_POLICY_ADOPTION.md](LEARNED_POLICY_ADOPTION.md): exported-policy specs, model adapters, planner CSV generation, and learned bundle review.
@@ -62,6 +63,12 @@ Audit baseline readiness:
 
 ```bash
 python -m microbench.cli baseline-audit --require-public-alpha-ready
+```
+
+Validate an external official/reference manifest:
+
+```bash
+python -m microbench.cli validate-external-reference --manifest examples/external_reference_rmader_manifest.yaml --json
 ```
 
 Run baseline behavior smoke:

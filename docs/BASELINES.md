@@ -13,6 +13,7 @@ python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --re
 python -m microbench.cli advanced-baseline-comparison --out-dir runs_advanced_baseline_comparison --require-pass
 python -m microbench.cli baseline-review --out-dir runs_baseline_review --duration-s 20
 python -m microbench.cli baseline-leaderboard --out-dir runs_baseline_leaderboard --suites all --require-pass --require-complete
+python -m microbench.cli validate-external-reference --manifest examples/external_reference_rmader_manifest.yaml --json
 ```
 
 The public-alpha baseline gate is intentionally stricter than "the code imports":
@@ -22,6 +23,8 @@ The public-alpha baseline gate is intentionally stricter than "the code imports"
 - illustrative or template methods: `baseline_goal`, `intent_dummy`, `template`
 
 Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pass`, and `baseline-promotion --require-calibrated` before inviting external baseline comparisons. Stable v1 still requires promotion work; `baseline-audit --require-stable-v1-ready` and `baseline-promotion --require-stable-v1-ready` are expected to fail while experimental baselines remain experimental.
+
+Every baseline also carries machine-readable fidelity/provenance metadata. See [BASELINE_FIDELITY.md](BASELINE_FIDELITY.md) for the full matrix and the external-reference manifest workflow. In short: `dynamic_tube_dmpc` and `rmader` are clean-room faithful reimplementations, EGO-Swarm-style methods are clean-room inspired implementations, and official dependency-heavy stacks should be compared through validated external manifests rather than vendored into this package.
 
 ## Current Methods
 

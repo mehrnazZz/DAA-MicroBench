@@ -25,6 +25,8 @@ def test_baseline_audit_public_alpha_contract() -> None:
         "negotiation_yield",
     ]
     assert report["summary"]["public_alpha_blockers"] == []
+    assert report["summary"]["fidelity_counts"]["faithful_reimplementation"] >= 2
+    assert report["summary"]["external_reference_candidate_count"] >= 3
 
     for method in report["required_public_alpha_reference_methods"]:
         entry = by_method[method]
@@ -37,8 +39,11 @@ def test_baseline_audit_public_alpha_contract() -> None:
         assert entry["checks"]["supports_3d"] is True
         assert entry["checks"]["in_official_suite_defaults"] is True
         assert entry["checks"]["has_acceptance_coverage"] is True
+        assert entry["checks"]["fidelity_declared"] is True
+        assert entry["checks"]["provenance_declared"] is True
 
     assert by_method["cbf_qp"]["readiness"] == "experimental_runnable"
+    assert by_method["cbf_qp"]["fidelity"] == "inspired_clean_room"
     assert by_method["mpc_local"]["readiness"] == "experimental_runnable"
     assert by_method["mpc_nonlinear"]["readiness"] == "experimental_runnable"
     assert by_method["mpc_nonlinear"]["checks"]["docs_mentioned"] is True
@@ -52,12 +57,16 @@ def test_baseline_audit_public_alpha_contract() -> None:
     assert by_method["dynamic_tube_dmpc"]["readiness"] == "experimental_runnable"
     assert by_method["dynamic_tube_dmpc"]["checks"]["docs_mentioned"] is True
     assert by_method["dynamic_tube_dmpc"]["checks"]["tests_mentioned"] is True
+    assert by_method["dynamic_tube_dmpc"]["fidelity"] == "faithful_reimplementation"
     assert by_method["rmader"]["readiness"] == "experimental_runnable"
     assert by_method["rmader"]["checks"]["docs_mentioned"] is True
     assert by_method["rmader"]["checks"]["tests_mentioned"] is True
+    assert by_method["rmader"]["fidelity"] == "faithful_reimplementation"
+    assert by_method["rmader"]["external_reference_candidate"] is True
     assert by_method["ego_swarm_opt"]["readiness"] == "experimental_runnable"
     assert by_method["ego_swarm_opt"]["checks"]["docs_mentioned"] is True
     assert by_method["ego_swarm_opt"]["checks"]["tests_mentioned"] is True
+    assert by_method["ego_swarm_opt"]["fidelity"] == "inspired_clean_room"
     assert by_method["velocity_obstacle"]["readiness"] == "experimental_runnable"
     assert by_method["velocity_obstacle"]["checks"]["docs_mentioned"] is True
     assert by_method["velocity_obstacle"]["checks"]["tests_mentioned"] is True

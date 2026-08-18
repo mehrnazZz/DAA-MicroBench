@@ -1,0 +1,88 @@
+# Baseline Fidelity And External References
+
+DAA Microbench separates **benchmark performance** from **implementation fidelity**. A method can be useful and well tested without being an official implementation of a paper, and an official implementation can be valuable while still requiring external dependencies that do not belong in the core Python package.
+
+Check the current machine-readable metadata with:
+
+```bash
+python -m microbench.cli list-methods --json --include-aliases
+python -m microbench.cli baseline-audit --json
+```
+
+## Fidelity Tiers
+
+| Tier | Meaning |
+|---|---|
+| `official_implementation` | Code comes from, or is wrapped around, an upstream official implementation. These should usually live outside the core package and enter via an external-reference manifest. |
+| `faithful_reimplementation` | Clean-room implementation intended to reproduce the main algorithmic structure of a paper or method family, adapted to the DAA Microbench planner contract. |
+| `inspired_clean_room` | Clean-room method inspired by a paper/family, but not a claim of exact reproduction. |
+| `benchmark_utility` | Built-in baseline, fixture, lower bound, tutorial method, or plumbing check. Useful for benchmark interpretation but not a paper-fidelity claim. |
+| `submission_bridge` | Adapter path for externally supplied learned policies or reference implementations. |
+
+## Current Fidelity Matrix
+
+| Method | Fidelity | External reference candidate | Provenance |
+|---|---|---:|---|
+| `baseline_goal` | `benchmark_utility` | no | Built-in lower-bound behavior for scenario sanity checks. |
+| `orca_heuristic` | `inspired_clean_room` | no | Clean-room ORCA/RVO-family geometric heuristic adapted to the local planner contract. References: [ORCA](https://gamma-web.iacs.umd.edu/ORCA/), [RVO2](https://gamma-web.iacs.umd.edu/RVO2/downloads/). |
+| `orca_with_staleness` | `inspired_clean_room` | no | Clean-room ORCA/RVO-family stale-track variant adapted to the benchmark observation model. |
+| `cbf_qp` | `inspired_clean_room` | no | Clean-room CBF-style safety filter with dependency-free projection and optional SciPy solve. |
+| `mpc_local` | `benchmark_utility` | no | Deterministic predictive sampling baseline for API and metric comparisons. |
+| `mpc_nonlinear` | `inspired_clean_room` | no | Clean-room nonlinear MPC-style trajectory optimizer adapted to the velocity-command contract. |
+| `dmpc_best_response` | `inspired_clean_room` | no | Clean-room distributed-MPC-style best-response coordinator for intent-sharing experiments. |
+| `bvc_tube_dmpc` | `inspired_clean_room` | no | Clean-room buffered-Voronoi/tube-DMPC-style spatial partitioning baseline. |
+| `dynamic_tube_dmpc` | `faithful_reimplementation` | yes | Clean-room paper-specific dynamic tube-DMPC reimplementation adapted to Microbench commands and AABB obstacles. Reference: [Drones 10(3), 177](https://www.mdpi.com/2504-446X/10/3/177). |
+| `rmader` | `faithful_reimplementation` | yes | Clean-room RMADER/MADER-family reimplementation with MINVO hulls and separating hyperplanes; not a ROS/Gurobi port. Reference: [MIT ACL RMADER](https://github.com/mit-acl/rmader). |
+| `ego_swarm` | `inspired_clean_room` | yes | Clean-room EGO-Swarm-inspired trajectory-sharing baseline; not a port or vendored copy of the upstream GPL ROS/C++ implementation. Reference: [EGO-Planner-Swarm](https://github.com/ZJU-FAST-Lab/ego-planner-swarm). |
+| `ego_swarm_opt` | `inspired_clean_room` | yes | Clean-room EGO-Swarm-style control-point optimizer; not a port or vendored copy of the upstream GPL ROS/C++ implementation. References: [EGO-Planner-Swarm](https://github.com/ZJU-FAST-Lab/ego-planner-swarm), [EGO-Planner-v2](https://github.com/ZJU-FAST-Lab/EGO-Planner-v2). |
+| `velocity_obstacle` | `inspired_clean_room` | no | Clean-room velocity-obstacle-family sampler adapted to DAA Microbench tracks and obstacles. |
+| `reciprocal_velocity_obstacle` | `inspired_clean_room` | no | Clean-room reciprocal/HRVO-style sampler adapted to degraded observation metadata. |
+| `learned_tiny` | `benchmark_utility` | no | Frozen synthetic learned-policy fixture for packaging and submission plumbing. |
+| `learned_policy_spec` | `submission_bridge` | no | Bridge for trusted external learned-policy specs using the DAA RL observation/action contract. |
+| `priority_yield` | `benchmark_utility` | no | Deterministic agentic right-of-way baseline for priority/message scenarios. |
+| `negotiation_yield` | `benchmark_utility` | no | Structured proposal/ACK agentic baseline for decentralized communication tests. |
+| `intent_dummy` | `benchmark_utility` | no | Intent and trace message-plumbing fixture. |
+| `template` | `benchmark_utility` | no | Developer example for planner API tutorials. |
+
+## External Reference Manifests
+
+External official implementations should be compared through a manifest rather than vendored into the package. This is especially important for stacks with ROS, Gurobi, CUDA, GPL licensing, or hardware-specific build assumptions.
+
+Validate a manifest without executing external code:
+
+```bash
+python -m microbench.cli validate-external-reference \
+  --manifest examples/external_reference_rmader_manifest.yaml \
+  --json
+```
+
+After an external run writes artifacts, require declared artifacts to exist and expose the core result fields:
+
+```bash
+python -m microbench.cli validate-external-reference \
+  --manifest runs_external_references/rmader_official/manifest.yaml \
+  --require-artifacts \
+  --require-pass
+```
+
+The manifest must declare:
+
+- upstream implementation name, source URL, license, and preferably commit
+- related Microbench method family
+- runner type and command notes
+- no privileged information
+- use of Microbench scenarios
+- output artifacts, especially `results.csv`
+
+The validator does **not** run ROS, Docker, Gurobi, or arbitrary scripts. It only checks disclosure, contract declarations, and optional artifact presence/schema.
+
+## Promotion Rule
+
+Do not promote a baseline to a stable reference role only because it wins a leaderboard row. Stable reference status requires:
+
+- explicit fidelity/provenance metadata
+- docs and tests
+- behavior evidence on 2D and 3D scenarios
+- stress-suite or high-volume evidence
+- clear known limitations
+- external-reference comparison when an official implementation exists and is practical to run

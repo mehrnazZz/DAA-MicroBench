@@ -127,8 +127,14 @@ def test_planner_metadata_includes_public_baseline_contract() -> None:
     assert by_method["learned_policy_spec"]["role"] == "submission_bridge"
     assert by_method["learned_policy_spec"]["planner_type"] == "learned_policy"
     assert by_method["learned_policy_spec"]["learned"] is True
+    assert by_method["learned_policy_spec"]["fidelity"] == "submission_bridge"
     assert by_method["negotiation_yield"]["role"] == "agentic_reference_baseline"
     assert by_method["negotiation_yield"]["status"] == "pre_v1"
+    assert by_method["rmader"]["fidelity"] == "faithful_reimplementation"
+    assert by_method["rmader"]["external_reference_candidate"] is True
+    assert "https://github.com/mit-acl/rmader" in by_method["rmader"]["reference_urls"]
+    assert by_method["ego_swarm_opt"]["fidelity"] == "inspired_clean_room"
+    assert by_method["ego_swarm_opt"]["external_reference_candidate"] is True
     assert by_method["orca_expert"]["status"] == "alias"
     assert by_method["orca_expert"]["canonical_method"] == "orca_heuristic"
 
@@ -232,5 +238,8 @@ def test_list_methods_cli_can_emit_metadata_json() -> None:
     assert by_method["reciprocal_velocity_obstacle"]["status"] == "experimental"
     assert by_method["learned_tiny"]["learned"] is True
     assert by_method["learned_policy_spec"]["role"] == "submission_bridge"
+    assert by_method["learned_policy_spec"]["fidelity"] == "submission_bridge"
+    assert by_method["dynamic_tube_dmpc"]["fidelity"] == "faithful_reimplementation"
+    assert by_method["ego_swarm"]["fidelity"] == "inspired_clean_room"
     assert by_method["negotiation_yield"]["status"] == "pre_v1"
     assert by_method["orca_expert"]["canonical_method"] == "orca_heuristic"

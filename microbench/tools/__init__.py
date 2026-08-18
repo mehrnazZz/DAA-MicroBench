@@ -49,6 +49,10 @@ from microbench.tools.current_schema_golden import (
     compare_current_schema_golden,
     write_current_schema_golden,
 )
+from microbench.tools.external_reference import (
+    EXTERNAL_REFERENCE_SCHEMA_VERSION,
+    validate_external_reference_manifest,
+)
 from microbench.tools.hard_case_mining import mine_worst_cases
 from microbench.tools.high_volume_leaderboard import (
     DEFAULT_LATENCY_BUDGET_MS,
@@ -93,6 +97,7 @@ __all__ = [
     "DEFAULT_HIGH_VOLUME_SEEDS",
     "HIGH_VOLUME_EVIDENCE_SCHEMA_VERSION",
     "HIGH_VOLUME_LEADERBOARD_SCHEMA_VERSION",
+    "EXTERNAL_REFERENCE_SCHEMA_VERSION",
     "MAX_RUNS_STRATEGIES",
     "DEFAULT_OPTIMIZER_REVIEW_SUITES",
     "OPTIMIZER_REVIEW_METHODS",
@@ -120,4 +125,5 @@ __all__ = [
     "write_baseline_stable_review",
     "write_current_schema_golden",
     "write_high_volume_leaderboard",
+    "validate_external_reference_manifest",
 ]

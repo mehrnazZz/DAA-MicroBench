@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from microbench.planners import make_planner, planner_metadata
+from microbench.planners import BASELINE_FIDELITY_TIERS, make_planner, planner_metadata
 from microbench.scenarios import suite_registry_dicts
 
 
@@ -25,6 +25,7 @@ EXPERIMENTAL_METHODS = (
     "bvc_tube_dmpc",
     "dynamic_tube_dmpc",
     "rmader",
+    "ego_swarm",
     "ego_swarm_opt",
     "velocity_obstacle",
     "reciprocal_velocity_obstacle",
@@ -127,10 +128,20 @@ def _method_entry(
         "supports_3d": "3d" in dimensions,
         "in_official_suite_defaults": bool(default_suites),
         "has_acceptance_coverage": bool(acceptance_rules),
+        "fidelity_declared": str(entry.get("fidelity", "")) in BASELINE_FIDELITY_TIERS,
+        "provenance_declared": bool(str(entry.get("provenance", "")).strip()),
     }
 
     blockers: list[str] = []
-    for key in ("factory_constructible", "docs_mentioned", "tests_mentioned", "supports_2d", "supports_3d"):
+    for key in (
+        "factory_constructible",
+        "docs_mentioned",
+        "tests_mentioned",
+        "supports_2d",
+        "supports_3d",
+        "fidelity_declared",
+        "provenance_declared",
+    ):
         if not checks[key]:
             blockers.append(key)
 
@@ -165,6 +176,10 @@ def _method_entry(
         "role": entry.get("role"),
         "status": entry.get("status"),
         "planner_type": entry.get("planner_type"),
+        "fidelity": entry.get("fidelity"),
+        "provenance": entry.get("provenance"),
+        "reference_urls": list(entry.get("reference_urls", [])),
+        "external_reference_candidate": bool(entry.get("external_reference_candidate", False)),
         "dimensions": list(dimensions),
         "category": category,
         "readiness": readiness,
@@ -195,6 +210,10 @@ def build_baseline_audit(*, root: str | Path = ".") -> dict[str, Any]:
     ]
 
     by_method = {entry["method"]: entry for entry in methods}
+    fidelity_counts = {
+        tier: sum(1 for entry in methods if entry.get("fidelity") == tier)
+        for tier in BASELINE_FIDELITY_TIERS
+    }
     missing_required = [m for m in PUBLIC_ALPHA_REFERENCE_METHODS if m not in by_method]
     public_alpha_blockers: list[str] = [f"missing_required_reference:{m}" for m in missing_required]
     for method in PUBLIC_ALPHA_REFERENCE_METHODS:
@@ -225,6 +244,10 @@ def build_baseline_audit(*, root: str | Path = ".") -> dict[str, Any]:
             ),
             "public_alpha_blockers": public_alpha_blockers,
             "stable_v1_blockers": stable_v1_blockers,
+            "fidelity_counts": fidelity_counts,
+            "external_reference_candidate_count": sum(
+                1 for entry in methods if entry.get("external_reference_candidate")
+            ),
         },
         "methods": methods,
     }

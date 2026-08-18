@@ -1,0 +1,31 @@
+schema_version: "0.1"
+reference_id: rmader_official_ros_noetic
+method_family: RMADER
+related_microbench_method: rmader
+fidelity: official_implementation
+
+implementation:
+  name: "MIT ACL RMADER"
+  source_url: "https://github.com/mit-acl/rmader"
+  license: "BSD-3-Clause"
+  commit: "<external-repo-commit>"
+  dependency_notes: "ROS Noetic, Gurobi, CGAL/DecompROS dependencies; kept outside the core Python package."
+
+runner:
+  type: ros
+  command: "<external command that consumes materialized DAA Microbench scenarios and writes CSV artifacts>"
+  working_dir: "<external-rmader-workspace>"
+
+contract:
+  input_format: daa_microbench_scenario_yaml
+  output_format: daa_microbench_results_csv
+  uses_microbench_scenarios: true
+  privileged_information: false
+  decentralized_authority: true
+  notes: "External process must only use each agent's allowed local observations/intents for the declared scenario."
+
+artifacts:
+  results_csv: runs_external_references/rmader_official/results.csv
+  summary_csv: runs_external_references/rmader_official/summary.csv
+  mcap: runs_external_references/rmader_official/baseline_comparison.mcap
+  notes: runs_external_references/rmader_official/RUN_NOTES.md
