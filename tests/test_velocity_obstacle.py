@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from microbench.config import load_defaults
 from microbench.planners.velocity_obstacle import ReciprocalVelocityObstaclePlanner, VelocityObstaclePlanner
 from microbench.types import AABBObs, AgentContext, AgentState, NeighborObs, PlannerInput
 
@@ -67,6 +68,15 @@ def test_velocity_obstacle_open_space_tracks_goal() -> None:
     assert out.debug_info["vo_candidates"] > 0
     assert out.debug_info["vo_conflict_count"] == 0
     assert out.debug_info["vo_planar"] is True
+
+
+def test_velocity_obstacle_default_timeout_budget_absorbs_ci_jitter() -> None:
+    guardrails = load_defaults()["planner_guardrails"]
+    timeouts = guardrails["method_timeout_ms"]
+
+    assert guardrails["timeout_clock"] == "process_cpu"
+    assert float(timeouts["velocity_obstacle"]) >= 200.0
+    assert float(timeouts["reciprocal_velocity_obstacle"]) >= 200.0
 
 
 def test_velocity_obstacle_head_on_avoids_full_speed_cone() -> None:

@@ -103,6 +103,7 @@ The benchmark validates planner output:
 - values must be finite
 - exceptions are caught
 - soft timeouts are counted after the call returns
+- the default timeout clock is planner process CPU time, while wall-clock planner latency is still reported in metrics
 
 Failures are scored through:
 

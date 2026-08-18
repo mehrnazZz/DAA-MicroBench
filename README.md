@@ -1101,6 +1101,7 @@ Recommended scale for training: at least `100k+` samples across multiple scenari
   - `planner_error_count`
   - `planner_fallback_count`
 - `planner_guardrails.timeout_ms` is a soft timeout: an over-budget call is counted and its returned output is replaced with a deterministic fallback after the call returns.
+- `planner_guardrails.timeout_clock` defaults to `process_cpu`, so offline smoke tests ignore OS scheduling stalls while wall-clock planner latency is still reported; use `wall` for real-time deadline experiments.
 - Planner exceptions and invalid outputs increment `planner_error_count`; timeouts increment `planner_timeout_count`; all guardrail replacements increment `planner_fallback_count`.
 - The fallback command moves away from currently observed neighbors/obstacles at `planner_guardrails.fallback_speed_scale * v_max`; if no risk direction is available, it returns zero.
 - Track safety using explicit collision semantics:

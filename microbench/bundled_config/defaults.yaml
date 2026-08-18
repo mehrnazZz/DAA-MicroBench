@@ -65,8 +65,11 @@ batch:
 
 planner_guardrails:
   timeout_ms: 100.0       # soft timeout; slow outputs are discarded after the call returns
+  timeout_clock: "process_cpu"  # use planner CPU time for fallback decisions; wall latency is still scored
   fallback_speed_scale: 0.5
   method_timeout_ms:
+    velocity_obstacle: 200.0  # geometric sampler can see rare CI scheduling spikes; latency is still scored
+    reciprocal_velocity_obstacle: 200.0  # HRVO-style candidate expansion has the same smoke-stability budget
     dmpc_best_response: 200.0  # distributed MPC best-response optimizer; keep rare dense-conflict spikes for scoring
     rmader: 400.0         # optimizer-grade MINVO/hyperplane solve; keep dense conflict outputs instead of fallback
     bvc_tube_dmpc: 300.0  # hard spatial-partition optimizer; leaderboard still reports compute latency

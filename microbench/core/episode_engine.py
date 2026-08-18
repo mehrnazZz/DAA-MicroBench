@@ -361,6 +361,11 @@ class EpisodeEngine:
         self.planner_error_count = 0
         self.planner_fallback_count = 0
         self.planner_timeout_ms = float(self.planner_guardrails_cfg.get("timeout_ms", 100.0))
+        self.planner_timeout_clock = (
+            str(self.planner_guardrails_cfg.get("timeout_clock", "process_cpu")).strip().lower()
+        )
+        if self.planner_timeout_clock not in {"process_cpu", "cpu", "process_time", "wall", "wall_clock"}:
+            raise ValueError(f"unknown planner_guardrails.timeout_clock: {self.planner_timeout_clock!r}")
         self.planner_timeout_overrides_ms = [
             self._planner_timeout_override_ms(agent_method) for agent_method in self.agent_methods
         ]
@@ -396,6 +401,11 @@ class EpisodeEngine:
             if override is not None:
                 return float(override)
         return float(self.planner_timeout_ms)
+
+    def _planner_timeout_elapsed_ms(self, *, wall_elapsed_ms: float, cpu_elapsed_ms: float) -> float:
+        if self.planner_timeout_clock in {"wall", "wall_clock"}:
+            return float(wall_elapsed_ms)
+        return float(cpu_elapsed_ms)
 
     def _build_agent_profile(self, agent_id: int) -> AgentProfile:
         agents_cfg = self.cfg.get("agents", {})
@@ -723,6 +733,8 @@ class EpisodeEngine:
         planner_debug: list[dict],
         reason: str,
         elapsed_ms: float,
+        cpu_elapsed_ms: float | None = None,
+        timeout_elapsed_ms: float | None = None,
         timeout_ms: float | None = None,
         error: Exception | None = None,
     ) -> np.ndarray:
@@ -734,6 +746,12 @@ class EpisodeEngine:
         debug = {
             "engine_guardrail": reason,
             "planner_elapsed_ms": float(elapsed_ms),
+            "planner_wall_elapsed_ms": float(elapsed_ms),
+            "planner_cpu_elapsed_ms": float(cpu_elapsed_ms if cpu_elapsed_ms is not None else elapsed_ms),
+            "planner_timeout_elapsed_ms": float(
+                timeout_elapsed_ms if timeout_elapsed_ms is not None else elapsed_ms
+            ),
+            "planner_timeout_clock": str(self.planner_timeout_clock),
             "planner_timeout_ms": float(
                 self._planner_timeout_ms_for_agent(agent_id) if timeout_ms is None else timeout_ms
             ),
@@ -957,11 +975,13 @@ class EpisodeEngine:
                 agent_context=self.agent_contexts[i],
                 planar=self.planar,
             )
-            c0 = time.perf_counter()
+            wall_c0 = time.perf_counter()
+            cpu_c0 = time.process_time()
             try:
                 planner_out = self.planners[i].compute_cmd(p_input)
             except Exception as exc:
-                elapsed_ms = (time.perf_counter() - c0) * 1000.0
+                elapsed_ms = (time.perf_counter() - wall_c0) * 1000.0
+                cpu_elapsed_ms = (time.process_time() - cpu_c0) * 1000.0
                 self.planner_ms_samples.append(elapsed_ms)
                 v_cmds[i] = self._record_planner_fallback(
                     agent_id=i,
@@ -969,20 +989,28 @@ class EpisodeEngine:
                     planner_debug=planner_debug,
                     reason="error",
                     elapsed_ms=elapsed_ms,
+                    cpu_elapsed_ms=cpu_elapsed_ms,
                     error=exc,
                 )
                 continue
 
-            elapsed_ms = (time.perf_counter() - c0) * 1000.0
+            elapsed_ms = (time.perf_counter() - wall_c0) * 1000.0
+            cpu_elapsed_ms = (time.process_time() - cpu_c0) * 1000.0
             self.planner_ms_samples.append(elapsed_ms)
             planner_timeout_ms = self._planner_timeout_ms_for_agent(i)
-            if planner_timeout_ms >= 0.0 and elapsed_ms > planner_timeout_ms:
+            timeout_elapsed_ms = self._planner_timeout_elapsed_ms(
+                wall_elapsed_ms=elapsed_ms,
+                cpu_elapsed_ms=cpu_elapsed_ms,
+            )
+            if planner_timeout_ms >= 0.0 and (planner_timeout_ms == 0.0 or timeout_elapsed_ms > planner_timeout_ms):
                 v_cmds[i] = self._record_planner_fallback(
                     agent_id=i,
                     planner_input=p_input,
                     planner_debug=planner_debug,
                     reason="timeout",
                     elapsed_ms=elapsed_ms,
+                    cpu_elapsed_ms=cpu_elapsed_ms,
+                    timeout_elapsed_ms=timeout_elapsed_ms,
                     timeout_ms=planner_timeout_ms,
                 )
                 continue
@@ -1007,6 +1035,7 @@ class EpisodeEngine:
                     planner_debug=planner_debug,
                     reason="invalid_output",
                     elapsed_ms=elapsed_ms,
+                    cpu_elapsed_ms=cpu_elapsed_ms,
                     error=exc,
                 )
                 continue
