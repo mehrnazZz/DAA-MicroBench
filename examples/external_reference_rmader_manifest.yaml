@@ -9,7 +9,23 @@ implementation:
   source_url: "https://github.com/mit-acl/rmader"
   license: "BSD-3-Clause"
   commit: "<external-repo-commit>"
+  publication_urls:
+    - "https://arxiv.org/abs/2303.06222"
+    - "https://doi.org/10.1109/ICRA48891.2023.10161244"
+    - "https://acl.mit.edu/projects/real-world-multi-agent-trajectory-planning"
   dependency_notes: "ROS Noetic, Gurobi, CGAL/DecompROS dependencies; kept outside the core Python package."
+
+method_claims:
+  decentralized_asynchronous_planning: true
+  communication_delay_robustness: true
+  delay_check: true
+  two_step_trajectory_publication: true
+  trajectory_storing_and_checking: true
+  minvo_interval_polyhedra: true
+  hard_separating_hyperplanes: true
+  dynamic_obstacles: true
+  static_obstacles: true
+  solver_backend: "Gurobi"
 
 runner:
   type: ros
@@ -24,8 +40,19 @@ contract:
   decentralized_authority: true
   notes: "External process must only use each agent's allowed local observations/intents for the declared scenario."
 
+adapter:
+  scenario_mapping: "Materialize DAA Microbench scenario YAML into RMADER/ROS starts, goals, static obstacle polyhedra, dynamic obstacle tracks, and timing parameters."
+  agent_authority_mapping: "Run one RMADER planner authority per drone; no centralized optimizer may choose multi-agent actions."
+  observation_mapping: "Each RMADER agent receives only its own state plus locally allowed neighbor/intent tracks after the declared Microbench sensing and V2V impairment filters."
+  communication_mapping: "Map the declared Microbench communication profile to the external ROS/DDS trajectory publication delay, jitter, loss, and staleness model."
+  obstacle_mapping: "Map Microbench AABB obstacles to static convex obstacle constraints and declared dynamic intruders to dynamic obstacle trajectories."
+  output_mapping: "Convert external trajectories/events into DAA Microbench results.csv rows with the required result fields and optional trace/MCAP artifacts."
+  known_differences:
+    - "External RMADER may use its original trajectory-command stack, while the built-in rmader baseline returns the first velocity command under the Microbench local-planner contract."
+    - "Any perception, map, or communication assumption not present in the Microbench scenario must be disclosed in RUN_NOTES.md."
+
 artifacts:
-  results_csv: runs_external_references/rmader_official/results.csv
-  summary_csv: runs_external_references/rmader_official/summary.csv
-  mcap: runs_external_references/rmader_official/baseline_comparison.mcap
-  notes: runs_external_references/rmader_official/RUN_NOTES.md
+  results_csv: ../runs_external_references/rmader_official/results.csv
+  summary_csv: ../runs_external_references/rmader_official/summary.csv
+  mcap: ../runs_external_references/rmader_official/baseline_comparison.mcap
+  notes: ../runs_external_references/rmader_official/RUN_NOTES.md

@@ -76,6 +76,34 @@ The manifest must declare:
 
 The validator does **not** run ROS, Docker, Gurobi, or arbitrary scripts. It only checks disclosure, contract declarations, and optional artifact presence/schema.
 
+### RMADER External Reference Contract
+
+`rmader` has a stricter external-reference manifest because the upstream method makes specific safety and communication-delay claims. The example manifest at `examples/external_reference_rmader_manifest.yaml` is a capture template for an official MIT ACL RMADER run, not a claim that the official run has already been executed inside this repository.
+
+For an official RMADER comparison, the manifest must explicitly declare these upstream method claims:
+
+- decentralized asynchronous planning
+- communication-delay robustness
+- Delay Check
+- two-step trajectory publication
+- trajectory storing/checking
+- MINVO interval polyhedra
+- hard separating hyperplanes
+- dynamic obstacle handling
+- static obstacle handling
+- solver backend, normally Gurobi for the upstream ROS stack
+
+It must also explain the Microbench adapter boundary:
+
+- scenario YAML to ROS starts, goals, obstacles, dynamic tracks, and timing
+- one RMADER authority per drone
+- local observation and intent filtering with no privileged global/future state
+- mapping of Microbench V2V delay, jitter, loss, and staleness to the external process
+- obstacle conversion
+- conversion back to `results.csv`, optional traces, and optional MCAP
+
+The built-in `rmader` planner remains a clean-room Python reimplementation adapted to the Microbench velocity-command contract. The external-reference manifest is how we compare against the official ROS/Gurobi implementation when that dependency-heavy stack is run outside the package.
+
 ## Promotion Rule
 
 Do not promote a baseline to a stable reference role only because it wins a leaderboard row. Stable reference status requires:

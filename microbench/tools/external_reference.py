@@ -12,6 +12,26 @@ from microbench.planners import BASELINE_FIDELITY_TIERS, canonical_method, list_
 
 EXTERNAL_REFERENCE_SCHEMA_VERSION = "0.1"
 EXTERNAL_REFERENCE_RUNNER_TYPES = ("external_process", "docker", "ros", "manual_import")
+RMADER_METHOD_FAMILY = "rmader"
+RMADER_REQUIRED_METHOD_CLAIMS = (
+    "decentralized_asynchronous_planning",
+    "communication_delay_robustness",
+    "delay_check",
+    "two_step_trajectory_publication",
+    "trajectory_storing_and_checking",
+    "minvo_interval_polyhedra",
+    "hard_separating_hyperplanes",
+    "dynamic_obstacles",
+    "static_obstacles",
+)
+RMADER_REQUIRED_ADAPTER_FIELDS = (
+    "scenario_mapping",
+    "agent_authority_mapping",
+    "observation_mapping",
+    "communication_mapping",
+    "obstacle_mapping",
+    "output_mapping",
+)
 REQUIRED_TOP_LEVEL_FIELDS = (
     "schema_version",
     "reference_id",
@@ -55,6 +75,20 @@ def _bool_field(section: dict[str, Any], key: str) -> bool | None:
     if isinstance(value, bool):
         return value
     return None
+
+
+def _nonempty(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, tuple, set, dict)):
+        return bool(value)
+    return True
+
+
+def _is_rmader_reference(data: dict[str, Any], related_method: str) -> bool:
+    return str(data.get("method_family", "")).strip().lower() == RMADER_METHOD_FAMILY or related_method == RMADER_METHOD_FAMILY
 
 
 def _csv_fields(path: Path) -> list[str]:
@@ -125,6 +159,36 @@ def validate_external_reference_manifest(
         if not str(contract.get("output_format", "")).strip():
             warnings.append("contract_output_format_missing")
 
+    rmader_claim_status: dict[str, Any] = {}
+    if fidelity == "official_implementation" and _is_rmader_reference(data, related_method):
+        method_claims = data.get("method_claims", {})
+        if not isinstance(method_claims, dict):
+            errors.append("rmader_method_claims_not_mapping")
+            method_claims = {}
+        for claim in RMADER_REQUIRED_METHOD_CLAIMS:
+            value = _bool_field(method_claims, claim)
+            rmader_claim_status[claim] = value
+            if value is not True:
+                errors.append(f"rmader_required_claim_missing_or_false:{claim}")
+        solver_backend = str(method_claims.get("solver_backend", "")).strip().lower()
+        rmader_claim_status["solver_backend"] = solver_backend or None
+        if not solver_backend:
+            warnings.append("rmader_solver_backend_not_declared")
+        elif "gurobi" not in solver_backend:
+            warnings.append(f"rmader_solver_backend_not_gurobi:{solver_backend}")
+
+        adapter = data.get("adapter", {})
+        if not isinstance(adapter, dict):
+            errors.append("rmader_adapter_not_mapping")
+            adapter = {}
+        adapter_status = {}
+        for field in RMADER_REQUIRED_ADAPTER_FIELDS:
+            present = _nonempty(adapter.get(field))
+            adapter_status[field] = present
+            if not present:
+                errors.append(f"rmader_adapter_field_missing:{field}")
+        rmader_claim_status["adapter_fields"] = adapter_status
+
     artifacts = data.get("artifacts", {})
     artifact_status: dict[str, Any] = {}
     if not isinstance(artifacts, dict):
@@ -163,6 +227,7 @@ def validate_external_reference_manifest(
         "runner_type": runner.get("type") if isinstance(runner, dict) else None,
         "require_artifacts": bool(require_artifacts),
         "artifact_status": artifact_status,
+        "method_claim_status": rmader_claim_status,
         "errors": errors,
         "warnings": warnings,
         "note": (

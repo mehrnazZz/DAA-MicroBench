@@ -613,6 +613,7 @@ Use `rmader` when comparing robust trajectory publication and hard convex-separa
 
 Additional promotion requirements for `rmader`:
 
+- validate any official MIT ACL RMADER comparison through `examples/external_reference_rmader_manifest.yaml` or a filled copy of it
 - add capped optimizer-suite evidence across dense 3D, delayed/lossy V2V, and noncooperative-intruder scenarios
 - characterize delay-check fallback rates separately from planner guardrail fallbacks
 - compare against nonlinear MPC, distributed MPC, and EGO-Swarm optimized baselines with side-by-side Foxglove traces
