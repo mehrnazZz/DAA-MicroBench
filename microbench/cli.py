@@ -65,6 +65,7 @@ from microbench.tools import (
     mine_worst_cases,
     run_advanced_baseline_comparison,
     run_baseline_leaderboard,
+    run_baseline_validation_matrix,
     run_baseline_behavior_smoke,
     run_baseline_reference_evidence,
     run_baseline_promotion_calibration,
@@ -1138,6 +1139,39 @@ def _baseline_review(args) -> None:
         raise SystemExit(f"baseline review checks failed: {failed}")
 
 
+def _baseline_validation_matrix(args) -> None:
+    report = run_baseline_validation_matrix(
+        out_dir=args.out_dir,
+        methods=_parse_str_list(args.methods) if args.methods else None,
+        lanes=_parse_str_list(args.lanes) if args.lanes else None,
+        duration_s=args.duration_s,
+        max_runs=args.max_runs,
+        plan_only=bool(args.plan_only),
+    )
+    report_path = Path(args.out_dir) / "baseline_validation_matrix.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PLAN" if report["plan_only"] else ("PASS" if report["ok"] else "FAIL")
+        print(
+            "baseline-validation-matrix: "
+            f"{status} runs={report['run_count']}/{report['selected_run_count']} "
+            f"methods={len(report['methods'])} lanes={len(report['lanes'])} "
+            f"behavior_pass={report['behavior_pass']}"
+        )
+        print(f"  report: {report_path}")
+
+    if args.require_pass and not report["plan_only"] and not report["ok"]:
+        failed = [check for check in report["checks"] if check["severity"] == "gate" and not check["ok"]]
+        raise SystemExit(f"baseline validation matrix gate checks failed: {failed}")
+    if args.require_behavior_pass and not report["plan_only"] and not report["behavior_pass"]:
+        failed = [check for check in report["checks"] if check["severity"] == "behavior" and not check["ok"]]
+        raise SystemExit(f"baseline validation matrix behavior checks failed: {failed}")
+
+
 def _rl_smoke(args) -> None:
     report = run_rl_policy_smoke(
         out_dir=args.out_dir,
@@ -2116,6 +2150,32 @@ def build_parser() -> argparse.ArgumentParser:
     p_brv.add_argument("--json", action="store_true", help="Emit machine-readable review report")
     p_brv.add_argument("--require-pass", action="store_true", help="Fail if any executed review check fails")
 
+    p_bvm = sub.add_parser(
+        "baseline-validation-matrix",
+        help="Plan or run per-baseline validation lanes for key encounter families",
+    )
+    p_bvm.add_argument("--out-dir", required=True, help="Fresh output directory for validation artifacts")
+    p_bvm.add_argument(
+        "--methods",
+        default=None,
+        help="Comma-separated methods; defaults to serious built-in baselines",
+    )
+    p_bvm.add_argument(
+        "--lanes",
+        default=None,
+        help="Comma-separated lane ids; defaults to head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge",
+    )
+    p_bvm.add_argument("--duration-s", type=float, default=None, help="Override all lane durations")
+    p_bvm.add_argument("--max-runs", type=int, default=None, help="Run only the first K planned validation episodes")
+    p_bvm.add_argument("--plan-only", action="store_true", help="Write/print the validation plan without running episodes")
+    p_bvm.add_argument("--json", action="store_true", help="Emit machine-readable validation report")
+    p_bvm.add_argument("--require-pass", action="store_true", help="Fail if hard gate checks fail")
+    p_bvm.add_argument(
+        "--require-behavior-pass",
+        action="store_true",
+        help="Fail if behavior-evidence checks fail; useful for candidate promotion, not lower-bound rows",
+    )
+
     p_rl = sub.add_parser("rl-smoke", help="Run compact PettingZoo/Gymnasium wrapper smoke checks")
     p_rl.add_argument("--out-dir", required=True, help="Fresh output directory for RL smoke artifacts")
     p_rl.add_argument("--policy", choices=POLICY_NAMES, default="goal_direction", help="Built-in smoke policy")
@@ -2383,6 +2443,9 @@ def main() -> None:
         return
     if args.cmd == "baseline-review":
         _baseline_review(args)
+        return
+    if args.cmd == "baseline-validation-matrix":
+        _baseline_validation_matrix(args)
         return
     if args.cmd == "rl-smoke":
         _rl_smoke(args)

@@ -24,6 +24,12 @@ from microbench.tools.baseline_leaderboard import (
     SERIOUS_BASELINE_METHODS,
     run_baseline_leaderboard,
 )
+from microbench.tools.baseline_validation_matrix import (
+    BASELINE_VALIDATION_MATRIX_SCHEMA_VERSION,
+    VALIDATION_LANES,
+    run_baseline_validation_matrix,
+    write_baseline_validation_matrix,
+)
 from microbench.tools.optimizer_suite_review import (
     DEFAULT_OPTIMIZER_REVIEW_SUITES,
     OPTIMIZER_REVIEW_METHODS,
@@ -107,6 +113,8 @@ __all__ = [
     "HIGH_VOLUME_LEADERBOARD_SCHEMA_VERSION",
     "EXTERNAL_REFERENCE_SCHEMA_VERSION",
     "EXTERNAL_REFERENCE_BUNDLE_SCHEMA_VERSION",
+    "BASELINE_VALIDATION_MATRIX_SCHEMA_VERSION",
+    "VALIDATION_LANES",
     "DEFAULT_EXTERNAL_REFERENCE_COMM_PROFILES",
     "DEFAULT_EXTERNAL_REFERENCE_N_AGENTS",
     "DEFAULT_EXTERNAL_REFERENCE_SCENARIOS",
@@ -117,6 +125,7 @@ __all__ = [
     "DEFAULT_SCALE_BENCHMARK_METHODS",
     "SCALE_SPAWN_PROFILES",
     "run_baseline_leaderboard",
+    "run_baseline_validation_matrix",
     "build_high_volume_leaderboard",
     "run_optimizer_suite_review",
     "run_scale_benchmark",
@@ -136,6 +145,7 @@ __all__ = [
     "write_baseline_reference_evidence",
     "write_baseline_promotion_calibration",
     "write_baseline_stable_review",
+    "write_baseline_validation_matrix",
     "write_current_schema_golden",
     "write_high_volume_leaderboard",
     "build_external_reference_bundle",

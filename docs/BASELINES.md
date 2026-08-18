@@ -11,6 +11,7 @@ python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-
 python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass
 python -m microbench.cli advanced-baseline-comparison --out-dir runs_advanced_baseline_comparison --require-pass
+python -m microbench.cli baseline-validation-matrix --out-dir runs_baseline_validation_matrix --plan-only
 python -m microbench.cli baseline-review --out-dir runs_baseline_review --duration-s 20
 python -m microbench.cli baseline-leaderboard --out-dir runs_baseline_leaderboard --suites all --require-pass --require-complete
 python -m microbench.cli external-reference-bundle --method-family rmader --out-dir runs_external_references/rmader_official_bundle --scenarios urban_conflict_3d,urban_throughput_3d,stacked_swap_3d --n 4,8 --seeds 2 --comm realistic_v2v_50hz --runner-type ros
@@ -25,7 +26,7 @@ The public-alpha baseline gate is intentionally stricter than "the code imports"
 - experimental but runnable baselines: `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, `centralized_oracle`, `centralized_mpc_oracle`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, `reciprocal_velocity_obstacle`, `learned_tiny`
 - illustrative or template methods: `baseline_goal`, `intent_dummy`, `template`
 
-Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pass`, and `baseline-promotion --require-calibrated` before inviting external baseline comparisons. Stable v1 still requires promotion work; `baseline-audit --require-stable-v1-ready` and `baseline-promotion --require-stable-v1-ready` are expected to fail while experimental baselines remain experimental.
+Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pass`, `baseline-promotion --require-calibrated`, and the per-family `baseline-validation-matrix` before inviting external baseline comparisons. Stable v1 still requires promotion work; `baseline-audit --require-stable-v1-ready` and `baseline-promotion --require-stable-v1-ready` are expected to fail while experimental baselines remain experimental.
 
 Every baseline also carries machine-readable fidelity/provenance metadata. See [BASELINE_FIDELITY.md](BASELINE_FIDELITY.md) for the full matrix and the external-reference manifest workflow. In short: `dynamic_tube_dmpc` and `rmader` are clean-room faithful reimplementations, EGO-Swarm-style methods are clean-room inspired implementations, and official dependency-heavy stacks should be compared through validated external manifests rather than vendored into this package.
 

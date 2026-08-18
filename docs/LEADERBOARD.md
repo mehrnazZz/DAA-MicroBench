@@ -157,6 +157,16 @@ python -m microbench.cli baseline-leaderboard \
 
 This writes one per-suite `baseline_report.json` plus an aggregate `baseline_leaderboard.json`. The aggregate is a navigation and smoke-comparison artifact; official comparisons should still be read per suite because suite difficulty and purpose differ.
 
+Before promoting a baseline, run the per-family validation matrix:
+
+```bash
+python -m microbench.cli baseline-validation-matrix \
+  --out-dir runs_baseline_validation_matrix \
+  --require-pass
+```
+
+This is not a replacement for the leaderboard. It is a compact, inspectable matrix over head-on, crossing, urban-obstacle, communication-delay, and high-N dense-merge lanes, with hard gate checks separated from behavior evidence.
+
 For optimizer-grade NMPC versus EGO-Swarm review, use the narrower wrapper:
 
 ```bash

@@ -109,6 +109,7 @@ python -m microbench.cli external-reference-bundle --method-family ego_swarm --o
 python -m microbench.cli baseline-smoke --out-dir runs_baseline_smoke --require-pass
 python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --require-calibrated
 python -m microbench.cli baseline-evidence --out-dir runs_baseline_evidence --require-pass
+python -m microbench.cli baseline-validation-matrix --out-dir runs_baseline_validation_matrix --plan-only
 python -m microbench.cli baseline-evidence --out-dir runs_optimizer_evidence --save-optimizer-traces --require-pass
 python -m microbench.cli advanced-baseline-comparison --out-dir runs_advanced_baseline_comparison --require-pass
 python -m microbench.cli optimizer-suite-review --out-dir runs_optimizer_suite_review --max-runs 4 --require-pass
@@ -1155,6 +1156,7 @@ python -m microbench.cli baseline-promotion --out-dir runs_baseline_promotion --
 Optional longer stable-metadata review:
 
 ```bash
+python -m microbench.cli baseline-validation-matrix --out-dir runs_baseline_validation_matrix --plan-only
 python -m microbench.cli baseline-review --out-dir runs_baseline_review --plan-only
 python -m microbench.cli baseline-review --out-dir runs_baseline_review --duration-s 20
 ```
