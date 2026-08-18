@@ -4,7 +4,7 @@ Status date: 2026-07-06
 
 DAA Microbench is ready for public-alpha evaluation: the repository has a documented planner contract, generated 2D/3D/agentic scenario suites, baseline metadata, result-schema manifests, issue templates, package smoke checks, and GitHub Actions CI.
 
-This is not yet a stable v1 release. The public contract is intended to be reviewable and usable, but official suite membership, acceptance bands, experimental baselines, RL observation/reward wrappers, and leaderboard scoring may still change before v1. In particular, `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, and `reciprocal_velocity_obstacle` are runnable experimental baselines, `centralized_oracle` is a nondeployable privileged upper bound, and `negotiation_yield` is a pre-v1 agentic reference rather than a stable-v1 leaderboard anchor.
+This is not yet a stable v1 release. The public contract is intended to be reviewable and usable, but official suite membership, acceptance bands, experimental baselines, RL observation/reward wrappers, and leaderboard scoring may still change before v1. In particular, `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, and `reciprocal_velocity_obstacle` are runnable experimental baselines, `centralized_oracle` and `centralized_mpc_oracle` are nondeployable privileged upper bounds, and `negotiation_yield` is a pre-v1 agentic reference rather than a stable-v1 leaderboard anchor.
 
 ## Supported Environment
 
@@ -70,7 +70,7 @@ python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --re
 
 - `orca_heuristic` and `orca_with_staleness` are geometric reference heuristics, not expert or certified DAA controllers.
 - `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, `reciprocal_velocity_obstacle`, and `negotiation_yield` are part of the growing advanced baseline library, but still have stable-v1 promotion blockers; do not treat them as stable-v1 leaderboard anchors yet.
-- `centralized_oracle` uses all-agent/all-obstacle global truth inside the episode engine and should only be read as an upper-bound comparison row, never as a deployable DAA planner.
+- `centralized_oracle` and `centralized_mpc_oracle` use privileged global truth inside the episode engine and should only be read as upper-bound comparison rows, never as deployable DAA planners.
 - Serious baseline claims should use `baseline-leaderboard --suites all --require-pass --require-complete` and publish the per-suite reports, not only smoke or promotion-calibration rows. Use `--resume`, `--max-wall-time-s`, and `--run-timeout-s` for development checkpoints, but do not present partial or timed-out reports as final leaderboard evidence.
 - `learned_tiny` is a frozen tiny learned-model fixture for adapter, disclosure, and CSV-plumbing tests; it is not a competitive learned DAA baseline.
 - `cbf_qp` and `mpc_local` also pass the longer stable-metadata prep lanes in `baseline-review`, but they remain experimental until the reference-role decision, CBF validation, and MPC compute/stress characterization are stronger.

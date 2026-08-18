@@ -27,6 +27,7 @@ BASELINE_BEHAVIOR_METHODS = (
     "bvc_tube_dmpc",
     "dynamic_tube_dmpc",
     "centralized_oracle",
+    "centralized_mpc_oracle",
     "rmader",
     "ego_swarm",
     "ego_swarm_opt",
@@ -416,6 +417,38 @@ def _planner_output_contracts(methods: list[str]) -> list[dict[str, Any]]:
         except Exception as exc:
             checks.append(
                 _check("centralized_oracle_local_fallback_contract", False, {"error": f"{type(exc).__name__}: {exc}"})
+            )
+
+    if "centralized_mpc_oracle" in methods:
+        try:
+            planner = make_planner("centralized_mpc_oracle")
+            planner.reset(agent_id=0, seed=0, config={"agent_id": 0})
+            out = planner.compute_cmd(_planner_input(neighbors=[_neighbor()], obstacles=[_obstacle()], planar=False))
+            info = getattr(out, "debug_info", {})
+            checks.append(
+                _check(
+                    "centralized_mpc_oracle_local_fallback_contract",
+                    bool(info.get("centralized_mpc_oracle"))
+                    and bool(info.get("centralized_mpc_oracle_local_fallback"))
+                    and bool(info.get("non_deployable"))
+                    and info.get("privileged_global_state") is False,
+                    {
+                        "centralized_mpc_oracle": info.get("centralized_mpc_oracle"),
+                        "centralized_mpc_oracle_local_fallback": info.get(
+                            "centralized_mpc_oracle_local_fallback"
+                        ),
+                        "non_deployable": info.get("non_deployable"),
+                        "privileged_global_state": info.get("privileged_global_state"),
+                    },
+                )
+            )
+        except Exception as exc:
+            checks.append(
+                _check(
+                    "centralized_mpc_oracle_local_fallback_contract",
+                    False,
+                    {"error": f"{type(exc).__name__}: {exc}"},
+                )
             )
 
     if "ego_swarm" in methods:

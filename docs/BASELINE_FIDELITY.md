@@ -33,6 +33,7 @@ python -m microbench.cli baseline-audit --json
 | `bvc_tube_dmpc` | `inspired_clean_room` | no | Clean-room buffered-Voronoi/tube-DMPC-style spatial partitioning baseline. |
 | `dynamic_tube_dmpc` | `faithful_reimplementation` | yes | Clean-room paper-specific dynamic tube-DMPC reimplementation adapted to Microbench commands and AABB obstacles. Reference: [Drones 10(3), 177](https://www.mdpi.com/2504-446X/10/3/177). |
 | `centralized_oracle` | `benchmark_utility` | no | Privileged all-agent/all-obstacle joint controller for nondeployable upper-bound comparisons. |
+| `centralized_mpc_oracle` | `benchmark_utility` | no | Privileged all-agent/all-obstacle/world-bounds route-aware joint MPC oracle for nondeployable upper-bound comparisons. |
 | `rmader` | `faithful_reimplementation` | yes | Clean-room RMADER/MADER-family reimplementation with MINVO hulls and separating hyperplanes; not a ROS/Gurobi port. Reference: [MIT ACL RMADER](https://github.com/mit-acl/rmader). |
 | `ego_swarm` | `inspired_clean_room` | yes | Clean-room EGO-Swarm-inspired trajectory-sharing baseline; not a port or vendored copy of the upstream GPL ROS/C++ implementation. Reference: [EGO-Planner-Swarm](https://github.com/ZJU-FAST-Lab/ego-planner-swarm). |
 | `ego_swarm_opt` | `inspired_clean_room` | yes | Clean-room EGO-Swarm-style control-point optimizer; not a port or vendored copy of the upstream GPL ROS/C++ implementation. References: [EGO-Planner-Swarm](https://github.com/ZJU-FAST-Lab/ego-planner-swarm), [EGO-Planner-v2](https://github.com/ZJU-FAST-Lab/EGO-Planner-v2). |

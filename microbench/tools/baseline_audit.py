@@ -25,6 +25,7 @@ EXPERIMENTAL_METHODS = (
     "bvc_tube_dmpc",
     "dynamic_tube_dmpc",
     "centralized_oracle",
+    "centralized_mpc_oracle",
     "rmader",
     "ego_swarm",
     "ego_swarm_opt",

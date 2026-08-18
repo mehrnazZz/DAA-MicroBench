@@ -30,6 +30,9 @@ from microbench.types import (
 )
 
 
+PRIVILEGED_JOINT_METHODS = frozenset({"centralized_oracle", "centralized_mpc_oracle"})
+
+
 @dataclass
 class EpisodeStep:
     k: int
@@ -288,10 +291,14 @@ class EpisodeEngine:
             resolved_agent_methods = profile_methods
         self.agent_methods, self.method_label = resolve_agent_methods(method, self.n_agents, resolved_agent_methods)
         self.canonical_agent_methods = [canonical_method(agent_method) for agent_method in self.agent_methods]
-        oracle_agents = [m == "centralized_oracle" for m in self.canonical_agent_methods]
+        oracle_agents = [m in PRIVILEGED_JOINT_METHODS for m in self.canonical_agent_methods]
         self.centralized_oracle_enabled = bool(oracle_agents) and all(oracle_agents)
         if any(oracle_agents) and not self.centralized_oracle_enabled:
-            raise ValueError("centralized_oracle must control all agents in an episode; mixed oracle/local runs are invalid")
+            raise ValueError(
+                "privileged centralized oracle methods must control all agents in an episode; "
+                "mixed oracle/local runs are invalid"
+            )
+        self.privileged_joint_method = self.canonical_agent_methods[0] if self.centralized_oracle_enabled else None
         make_planner = planner_factory or default_make_planner
         self.planners = [self._make_planner(make_planner, agent_method) for agent_method in self.agent_methods]
         self.agent_contexts: list[AgentContext] = []
@@ -768,6 +775,16 @@ class EpisodeEngine:
         planner_debug[agent_id] = debug
         return self._planner_fallback_cmd(planner_input)
 
+    def _privileged_joint_debug_flags(self) -> dict:
+        return {
+            "centralized_oracle": True,
+            "centralized_mpc_oracle": self.privileged_joint_method == "centralized_mpc_oracle",
+            "privileged_joint_controller": True,
+            "privileged_joint_method": self.privileged_joint_method,
+            "non_deployable": True,
+            "privileged_global_state": True,
+        }
+
     def _centralized_oracle_fallback_input(self, agent_id: int, t: float) -> PlannerInput:
         s = self.states[agent_id]
         neighbors = [
@@ -822,14 +839,8 @@ class EpisodeEngine:
                     elapsed_ms=elapsed_ms,
                     error=TypeError("centralized_oracle planner does not implement compute_joint_cmds"),
                 )
-                planner_debug[i].update(
-                    {
-                        "centralized_oracle": True,
-                        "non_deployable": True,
-                        "privileged_global_state": True,
-                        "oracle_guardrail": "missing_joint_api",
-                    }
-                )
+                planner_debug[i].update(self._privileged_joint_debug_flags())
+                planner_debug[i]["oracle_guardrail"] = "missing_joint_api"
             return
 
         wall_c0 = time.perf_counter()
@@ -841,6 +852,8 @@ class EpisodeEngine:
                 planar=self.planar,
                 t=t,
                 dt=self.dt,
+                world_bounds=dict(self.world_cfg.get("bounds", {})),
+                scenario_name=str(self.cfg.get("scenario", {}).get("name", self.scenario_stem)),
             )
         except Exception as exc:
             elapsed_ms = (time.perf_counter() - wall_c0) * 1000.0
@@ -858,14 +871,8 @@ class EpisodeEngine:
                     cpu_elapsed_ms=cpu_elapsed_ms,
                     error=exc,
                 )
-                planner_debug[i].update(
-                    {
-                        "centralized_oracle": True,
-                        "non_deployable": True,
-                        "privileged_global_state": True,
-                        "oracle_guardrail": "joint_exception",
-                    }
-                )
+                planner_debug[i].update(self._privileged_joint_debug_flags())
+                planner_debug[i]["oracle_guardrail"] = "joint_exception"
             return
 
         elapsed_ms = (time.perf_counter() - wall_c0) * 1000.0
@@ -877,7 +884,9 @@ class EpisodeEngine:
         output_cmds = list(getattr(joint_out, "v_cmds", []))
         output_debug = list(getattr(joint_out, "debug", []))
         if len(output_cmds) != self.n_agents:
-            exc = ValueError(f"centralized_oracle returned {len(output_cmds)} commands for N={self.n_agents}")
+            exc = ValueError(
+                f"privileged joint method returned {len(output_cmds)} commands for N={self.n_agents}"
+            )
             for i in active_agent_ids:
                 p_input = self._centralized_oracle_fallback_input(i, t)
                 v_cmds[i] = self._record_planner_fallback(
@@ -889,14 +898,8 @@ class EpisodeEngine:
                     cpu_elapsed_ms=cpu_elapsed_ms,
                     error=exc,
                 )
-                planner_debug[i].update(
-                    {
-                        "centralized_oracle": True,
-                        "non_deployable": True,
-                        "privileged_global_state": True,
-                        "oracle_guardrail": "joint_invalid_output",
-                    }
-                )
+                planner_debug[i].update(self._privileged_joint_debug_flags())
+                planner_debug[i]["oracle_guardrail"] = "joint_invalid_output"
             return
 
         timeout_elapsed_ms = self._planner_timeout_elapsed_ms(
@@ -917,27 +920,15 @@ class EpisodeEngine:
                     timeout_elapsed_ms=timeout_elapsed_ms,
                     timeout_ms=timeout_ms,
                 )
-                planner_debug[i].update(
-                    {
-                        "centralized_oracle": True,
-                        "non_deployable": True,
-                        "privileged_global_state": True,
-                        "oracle_guardrail": "joint_timeout",
-                    }
-                )
+                planner_debug[i].update(self._privileged_joint_debug_flags())
+                planner_debug[i]["oracle_guardrail"] = "joint_timeout"
             return
 
         for i, s in enumerate(self.states):
             if s.done:
                 v_cmds[i] = np.zeros(3, dtype=float)
                 planner_debug[i] = _json_safe(output_debug[i]) if i < len(output_debug) else {}
-                planner_debug[i].update(
-                    {
-                        "centralized_oracle": True,
-                        "non_deployable": True,
-                        "privileged_global_state": True,
-                    }
-                )
+                planner_debug[i].update(self._privileged_joint_debug_flags())
                 continue
 
             try:
@@ -953,14 +944,8 @@ class EpisodeEngine:
                     cpu_elapsed_ms=cpu_elapsed_ms,
                     error=exc,
                 )
-                planner_debug[i].update(
-                    {
-                        "centralized_oracle": True,
-                        "non_deployable": True,
-                        "privileged_global_state": True,
-                        "oracle_guardrail": "agent_invalid_output",
-                    }
-                )
+                planner_debug[i].update(self._privileged_joint_debug_flags())
+                planner_debug[i]["oracle_guardrail"] = "agent_invalid_output"
                 continue
 
             if self.planar:
@@ -969,11 +954,9 @@ class EpisodeEngine:
             info = _json_safe(output_debug[i]) if i < len(output_debug) else {}
             if not isinstance(info, dict):
                 info = {"oracle_debug": info}
+            info.update(self._privileged_joint_debug_flags())
             info.update(
                 {
-                    "centralized_oracle": True,
-                    "non_deployable": True,
-                    "privileged_global_state": True,
                     "planner_elapsed_ms": float(sample_ms),
                     "planner_wall_elapsed_ms": float(sample_ms),
                     "planner_cpu_elapsed_ms": float(cpu_elapsed_ms / sample_count),
@@ -1184,10 +1167,8 @@ class EpisodeEngine:
 
             if self.centralized_oracle_enabled:
                 planner_debug[i] = {
-                    "centralized_oracle": True,
+                    **self._privileged_joint_debug_flags(),
                     "centralized_oracle_pending_joint_command": True,
-                    "non_deployable": True,
-                    "privileged_global_state": True,
                 }
                 continue
 

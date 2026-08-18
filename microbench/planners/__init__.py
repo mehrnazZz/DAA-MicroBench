@@ -10,7 +10,7 @@ from microbench.planners.base import ILocalPlanner
 from microbench.planners.baseline_goal import BaselineGoalPlanner
 from microbench.planners.bvc_tube_dmpc import BvcTubeDmpcPlanner
 from microbench.planners.cbf_qp import CbfQpPlanner
-from microbench.planners.centralized_oracle import CentralizedOraclePlanner
+from microbench.planners.centralized_oracle import CentralizedMpcOraclePlanner, CentralizedOraclePlanner
 from microbench.planners.dmpc_best_response import DistributedMpcBestResponsePlanner
 from microbench.planners.dynamic_tube_dmpc import DynamicTubeDmpcPlanner
 from microbench.planners.ego_swarm import EgoSwarmPlanner
@@ -151,6 +151,11 @@ def _make_centralized_oracle() -> ILocalPlanner:
     return CentralizedOraclePlanner(cfg=_planner_cfg(defaults, "centralized_oracle"))
 
 
+def _make_centralized_mpc_oracle() -> ILocalPlanner:
+    defaults = load_defaults()
+    return CentralizedMpcOraclePlanner(cfg=_planner_cfg(defaults, "centralized_mpc_oracle"))
+
+
 def _make_rmader() -> ILocalPlanner:
     defaults = load_defaults()
     return RmaderPlanner(cfg=_planner_cfg(defaults, "rmader"))
@@ -187,6 +192,7 @@ _FACTORIES: dict[str, Callable[[], ILocalPlanner]] = {
     "bvc_tube_dmpc": _make_bvc_tube_dmpc,
     "dynamic_tube_dmpc": _make_dynamic_tube_dmpc,
     "centralized_oracle": _make_centralized_oracle,
+    "centralized_mpc_oracle": _make_centralized_mpc_oracle,
     "rmader": _make_rmader,
     "ego_swarm": _make_ego_swarm,
     "ego_swarm_opt": _make_ego_swarm_opt,
@@ -456,6 +462,32 @@ _METADATA: dict[str, PlannerMetadata] = {
             "Uses privileged global state and ignores sensing, V2V loss, stale tracks, and field-of-view limits.",
             "Not deployable and not valid as a local DAA planner.",
             "Heuristic upper-bound controller, not a formal optimal-control oracle.",
+        ),
+    ),
+    "centralized_mpc_oracle": PlannerMetadata(
+        method="centralized_mpc_oracle",
+        display_name="Centralized route-aware MPC oracle upper bound",
+        planner_type="centralized_privileged_route_mpc_oracle",
+        role="nondeployable_upper_bound",
+        status="experimental",
+        dimensions=("2d", "3d"),
+        observation_sources=("global_truth", "all_agent_states", "all_obstacles", "world_bounds"),
+        uses_obstacles=True,
+        fidelity="benchmark_utility",
+        provenance=(
+            "Built-in privileged route-aware joint controller for estimating an upper-bound gap "
+            "against decentralized local DAA planners."
+        ),
+        description=(
+            "Non-deployable centralized upper-bound controller with coarse global route planning "
+            "through static obstacle fields and deterministic joint candidate-MPC refinement "
+            "against all-agent predicted conflicts."
+        ),
+        limitations=(
+            "Uses privileged global state, all obstacles, and world bounds.",
+            "Not deployable and not valid as a local DAA planner.",
+            "Route planning is coarse-grid and controller optimization is heuristic, not a formal proof of optimality or safety.",
+            "Cannot fix impossible cases such as overlapping initial states or episodes too short for the commanded speed limits.",
         ),
     ),
     "rmader": PlannerMetadata(

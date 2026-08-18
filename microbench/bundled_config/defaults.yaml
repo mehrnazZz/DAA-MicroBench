@@ -76,6 +76,7 @@ planner_guardrails:
     dynamic_tube_dmpc: 250.0  # paper-grade tube QP; preserve rare dense-conflict spikes for scoring
     ego_swarm_opt: 200.0  # optimizer-grade control-point trajectory solve; preserve rare dense-conflict spikes for scoring
     centralized_oracle: 300.0  # privileged all-agent upper-bound controller; latency is still scored
+    centralized_mpc_oracle: 600.0  # route-aware privileged joint MPC oracle; latency is still scored
 
 planner_presets:
   scale:
@@ -484,6 +485,27 @@ centralized_oracle:
   lateral_weight: 0.85
   obstacle_weight: 1.0
   max_pair_corrections: 256
+
+centralized_mpc_oracle:
+  horizon_s: 5.0
+  trajectory_samples: 9
+  coord_iterations: 3
+  command_update_period_s: 0.1
+  route_resolution_m: 3.0
+  route_resolution_3d_m: 4.0
+  max_grid_cells: 180000
+  max_astar_expansions: 25000
+  route_margin_m: 0.35
+  route_lookahead_m: 9.0
+  mpc_safety_margin_m: 0.6
+  mpc_obstacle_margin_m: 0.45
+  collision_weight: 18000.0
+  clearance_weight: 160.0
+  obstacle_mpc_weight: 20000.0
+  route_tracking_weight: 1.8
+  progress_weight: 1.0
+  smoothness_weight: 0.25
+  stop_penalty_weight: 0.05
 
 rmader:
   horizon_s: 2.4

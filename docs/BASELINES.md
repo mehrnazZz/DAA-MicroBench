@@ -22,7 +22,7 @@ python -m microbench.cli validate-external-reference --manifest examples/externa
 The public-alpha baseline gate is intentionally stricter than "the code imports":
 
 - required public-alpha reference baselines: `orca_heuristic`, `orca_with_staleness`, `priority_yield`, `negotiation_yield`
-- experimental but runnable baselines: `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, `centralized_oracle`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, `reciprocal_velocity_obstacle`, `learned_tiny`
+- experimental but runnable baselines: `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, `centralized_oracle`, `centralized_mpc_oracle`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, `reciprocal_velocity_obstacle`, `learned_tiny`
 - illustrative or template methods: `baseline_goal`, `intent_dummy`, `template`
 
 Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pass`, and `baseline-promotion --require-calibrated` before inviting external baseline comparisons. Stable v1 still requires promotion work; `baseline-audit --require-stable-v1-ready` and `baseline-promotion --require-stable-v1-ready` are expected to fail while experimental baselines remain experimental.
@@ -43,6 +43,7 @@ Every baseline also carries machine-readable fidelity/provenance metadata. See [
 | `bvc_tube_dmpc` | experimental baseline | local neighbor tracks, intent trajectories, agent-message plan broadcasts, V2V/sensor/fused observations, obstacles | 2D, 3D | Tube-based DMPC baseline with hard buffered Voronoi-cell halfspace tubes and obstacle halfspace constraints. |
 | `dynamic_tube_dmpc` | experimental baseline | local neighbor tracks, intent trajectories, agent-message plan broadcasts, V2V/sensor/fused observations, obstacles | 2D, 3D | Paper-specific Dai/Liao/Chen dynamic tube-DMPC baseline with condensed acceleration QP, elastic tube reconstruction, risk-triggered collision constraints, and local tube halfspaces. |
 | `centralized_oracle` | nondeployable upper bound | privileged global truth for all agents and all obstacles | 2D, 3D | Centralized joint controller for estimating the performance gap caused by decentralization, limited sensing, V2V loss, and stale tracks. Not valid as a local DAA policy. |
+| `centralized_mpc_oracle` | nondeployable upper bound | privileged global truth, all obstacles, and world bounds | 2D, 3D | Stronger route-aware centralized oracle with coarse global obstacle routing and joint candidate-MPC refinement. Not valid as a local DAA policy. |
 | `rmader` | experimental baseline | local neighbor tracks, intent trajectories, agent-message plan broadcasts, V2V/sensor/fused observations, obstacles | 2D, 3D | Clean-room RMADER/MADER-style baseline with cubic B-spline plans, MINVO interval polyhedra, hard separating hyperplanes, and delay-check publication. |
 | `ego_swarm` | experimental baseline | local neighbor tracks, intent trajectories, V2V/sensor/fused observations, obstacles | 2D, 3D | Clean-room EGO-Swarm-inspired receding-horizon trajectory-sharing baseline. |
 | `ego_swarm_opt` | experimental baseline | local neighbor tracks, intent trajectories, V2V/sensor/fused observations, obstacles | 2D, 3D | Clean-room EGO-Swarm-style optimized control-point trajectory-sharing baseline. |
@@ -78,6 +79,7 @@ Experimental baselines are runnable but not leaderboard anchors yet:
 - `bvc_tube_dmpc`
 - `dynamic_tube_dmpc`
 - `centralized_oracle` as a nondeployable upper bound, never as a local-policy competitor
+- `centralized_mpc_oracle` as a stronger nondeployable route/MPC upper bound, never as a local-policy competitor
 - `rmader`
 - `ego_swarm`
 - `ego_swarm_opt`
@@ -111,7 +113,7 @@ python -m microbench.cli baseline-smoke \
   --require-pass
 ```
 
-This runs every non-template built-in baseline except contract-only heavy optimizer probes on one planar and one 3D generated smoke scenario, checks finite key metrics, planner errors, public-alpha guardrails, 2D/3D coverage, agent-message signals for `priority_yield`, proposal/ACK signals for `negotiation_yield`, privileged joint-path signals for `centralized_oracle`, and public debug/intent output contracts for `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `learned_tiny`, and `intent_dummy`. `bvc_tube_dmpc`, `dynamic_tube_dmpc`, and `rmader` are contract-only in this smoke gate because per-tick hard-tube, condensed-QP, and MINVO/hyperplane solves belong in optimizer evidence and leaderboard runs. Experimental `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, and `ego_swarm_opt` soft timeout/fallback counts are reported but do not block public-alpha smoke by themselves; any such counts still block stable-v1 promotion.
+This runs every non-template built-in baseline except contract-only heavy optimizer probes on one planar and one 3D generated smoke scenario, checks finite key metrics, planner errors, public-alpha guardrails, 2D/3D coverage, agent-message signals for `priority_yield`, proposal/ACK signals for `negotiation_yield`, privileged joint-path signals for `centralized_oracle` and `centralized_mpc_oracle`, and public debug/intent output contracts for `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `learned_tiny`, and `intent_dummy`. `bvc_tube_dmpc`, `dynamic_tube_dmpc`, and `rmader` are contract-only in this smoke gate because per-tick hard-tube, condensed-QP, and MINVO/hyperplane solves belong in optimizer evidence and leaderboard runs. Experimental `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, and `ego_swarm_opt` soft timeout/fallback counts are reported but do not block public-alpha smoke by themselves; any such counts still block stable-v1 promotion.
 
 Experimental promotion calibration:
 

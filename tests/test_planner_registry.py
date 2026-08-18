@@ -10,7 +10,7 @@ import pytest
 from microbench.planners import canonical_method, list_methods, make_planner, planner_metadata
 from microbench.planners.bvc_tube_dmpc import BvcTubeDmpcPlanner
 from microbench.planners.cbf_qp import CbfQpPlanner
-from microbench.planners.centralized_oracle import CentralizedOraclePlanner
+from microbench.planners.centralized_oracle import CentralizedMpcOraclePlanner, CentralizedOraclePlanner
 from microbench.planners.dmpc_best_response import DistributedMpcBestResponsePlanner
 from microbench.planners.dynamic_tube_dmpc import DynamicTubeDmpcPlanner
 from microbench.planners.ego_swarm import EgoSwarmPlanner
@@ -37,6 +37,7 @@ def test_orca_heuristic_is_canonical_and_orca_expert_is_alias() -> None:
     assert "bvc_tube_dmpc" in list_methods()
     assert "dynamic_tube_dmpc" in list_methods()
     assert "centralized_oracle" in list_methods()
+    assert "centralized_mpc_oracle" in list_methods()
     assert "rmader" in list_methods()
     assert "ego_swarm" in list_methods()
     assert "ego_swarm_opt" in list_methods()
@@ -55,6 +56,7 @@ def test_orca_heuristic_is_canonical_and_orca_expert_is_alias() -> None:
     assert isinstance(make_planner("bvc_tube_dmpc"), BvcTubeDmpcPlanner)
     assert isinstance(make_planner("dynamic_tube_dmpc"), DynamicTubeDmpcPlanner)
     assert isinstance(make_planner("centralized_oracle"), CentralizedOraclePlanner)
+    assert isinstance(make_planner("centralized_mpc_oracle"), CentralizedMpcOraclePlanner)
     assert isinstance(make_planner("rmader"), RmaderPlanner)
     assert isinstance(make_planner("ego_swarm"), EgoSwarmPlanner)
     assert isinstance(make_planner("ego_swarm_opt"), EgoSwarmOptimizingPlanner)
@@ -111,6 +113,13 @@ def test_planner_metadata_includes_public_baseline_contract() -> None:
     assert by_method["centralized_oracle"]["uses_local_sensing"] is False
     assert by_method["centralized_oracle"]["uses_obstacles"] is True
     assert any("privileged global state" in item for item in by_method["centralized_oracle"]["limitations"])
+    assert by_method["centralized_mpc_oracle"]["role"] == "nondeployable_upper_bound"
+    assert by_method["centralized_mpc_oracle"]["planner_type"] == "centralized_privileged_route_mpc_oracle"
+    assert "world_bounds" in by_method["centralized_mpc_oracle"]["observation_sources"]
+    assert by_method["centralized_mpc_oracle"]["uses_v2v"] is False
+    assert by_method["centralized_mpc_oracle"]["uses_local_sensing"] is False
+    assert by_method["centralized_mpc_oracle"]["uses_obstacles"] is True
+    assert any("too short" in item for item in by_method["centralized_mpc_oracle"]["limitations"])
     assert by_method["rmader"]["role"] == "experimental_baseline"
     assert by_method["rmader"]["planner_type"] == "rmader_minvo_hyperplane_trajectory_optimization"
     assert by_method["rmader"]["uses_intent"] is True
@@ -242,6 +251,7 @@ def test_list_methods_cli_can_emit_metadata_json() -> None:
     assert by_method["bvc_tube_dmpc"]["status"] == "experimental"
     assert by_method["dynamic_tube_dmpc"]["status"] == "experimental"
     assert by_method["centralized_oracle"]["status"] == "experimental"
+    assert by_method["centralized_mpc_oracle"]["status"] == "experimental"
     assert by_method["rmader"]["status"] == "experimental"
     assert by_method["ego_swarm"]["status"] == "experimental"
     assert by_method["ego_swarm_opt"]["status"] == "experimental"
