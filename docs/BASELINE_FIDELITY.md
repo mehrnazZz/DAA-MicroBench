@@ -80,7 +80,7 @@ python -m microbench.cli external-reference-bundle \
   --runner-type ros
 ```
 
-The bundle writes copied `scenarios/*.yaml`, `run_matrix.csv`, `run_matrix.json`, `manifest.yaml`, `result_schema.json`, `results_template.csv`, `summary_template.csv`, `RUN_NOTES.md`, `checksums.json`, and `external_reference_bundle.json`. The external stack should consume the scenario files and run matrix, then write the declared `results.csv` / `summary.csv` artifacts before final validation.
+The bundle writes copied `scenarios/*.yaml`, `run_matrix.csv`, `run_matrix.json`, `manifest.yaml`, `ADAPTER_PLAN.md`, `adapter_plan.json`, `result_schema.json`, `results_template.csv`, `summary_template.csv`, `RUN_NOTES.md`, `checksums.json`, and `external_reference_bundle.json`. The external stack should consume the scenario files and run matrix, follow the adapter plan, then write the declared `results.csv` / `summary.csv` artifacts before final validation.
 
 After an external run writes artifacts, require declared artifacts to exist and expose the core result fields:
 

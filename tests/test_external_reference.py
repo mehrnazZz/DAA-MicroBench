@@ -301,6 +301,8 @@ def test_external_reference_bundle_writes_rmader_capture_template(tmp_path: Path
     assert (out_dir / "summary_template.csv").exists()
     assert (out_dir / "result_schema.json").exists()
     assert (out_dir / "RUN_NOTES.md").exists()
+    assert (out_dir / "ADAPTER_PLAN.md").exists()
+    assert (out_dir / "adapter_plan.json").exists()
     assert (out_dir / "checksums.json").exists()
     assert (out_dir / "scenarios" / "urban_conflict_3d.yaml").exists()
     assert (out_dir / "scenarios" / "stacked_swap_3d.yaml").exists()
@@ -323,6 +325,23 @@ def test_external_reference_bundle_writes_rmader_capture_template(tmp_path: Path
     manifest = yaml.safe_load((out_dir / "manifest.yaml").read_text(encoding="utf-8"))
     assert manifest["method_claims"]["delay_check"] is True
     assert manifest["adapter"]["communication_mapping"]
+
+    adapter_plan = json.loads((out_dir / "adapter_plan.json").read_text(encoding="utf-8"))
+    assert adapter_plan["reference_id"] == "rmader_official_ros_noetic"
+    assert adapter_plan["run_count"] == 4
+    assert adapter_plan["adapter_fields"]["communication_mapping"]
+    assert {task["id"] for task in adapter_plan["method_specific_tasks"]} == {
+        "rmader_delay_check",
+        "rmader_minvo_hyperplanes",
+    }
+    adapter_plan_md = (out_dir / "ADAPTER_PLAN.md").read_text(encoding="utf-8")
+    assert "Preserve RMADER publication semantics" in adapter_plan_md
+    assert "Final Validation" in adapter_plan_md
+
+    checksums = json.loads((out_dir / "checksums.json").read_text(encoding="utf-8"))
+    checksum_paths = {entry["path"] for entry in checksums["files"]}
+    assert "ADAPTER_PLAN.md" in checksum_paths
+    assert "adapter_plan.json" in checksum_paths
 
     validation = validate_external_reference_manifest(manifest=out_dir / "manifest.yaml")
     assert validation["ok"] is True
@@ -350,6 +369,8 @@ def test_external_reference_bundle_writes_ego_swarm_capture_template(tmp_path: P
     assert report["related_microbench_method"] == "ego_swarm_opt"
     assert (out_dir / "manifest.yaml").exists()
     assert (out_dir / "run_matrix.csv").exists()
+    assert (out_dir / "ADAPTER_PLAN.md").exists()
+    assert (out_dir / "adapter_plan.json").exists()
     assert (out_dir / "scenarios" / "urban_conflict_3d.yaml").exists()
 
     manifest = yaml.safe_load((out_dir / "manifest.yaml").read_text(encoding="utf-8"))
@@ -358,6 +379,19 @@ def test_external_reference_bundle_writes_ego_swarm_capture_template(tmp_path: P
     assert manifest["method_claims"]["b_spline_trajectory_representation"] is True
     assert manifest["adapter"]["map_sensing_mapping"]
     assert manifest["adapter"]["license_boundary"]
+
+    adapter_plan = json.loads((out_dir / "adapter_plan.json").read_text(encoding="utf-8"))
+    assert adapter_plan["method_family"] == "EGO-Swarm"
+    assert adapter_plan["adapter_fields"]["map_sensing_mapping"]
+    assert adapter_plan["adapter_fields"]["license_boundary"]
+    assert {task["id"] for task in adapter_plan["method_specific_tasks"]} == {
+        "ego_swarm_sensing_and_map",
+        "ego_swarm_trajectory_broadcast",
+        "ego_swarm_gpl_boundary",
+    }
+    adapter_plan_md = (out_dir / "ADAPTER_PLAN.md").read_text(encoding="utf-8")
+    assert "Preserve the GPL boundary" in adapter_plan_md
+    assert "trajectory broadcast" in adapter_plan_md
 
     validation = validate_external_reference_manifest(manifest=out_dir / "manifest.yaml")
     assert validation["ok"] is True
@@ -400,6 +434,8 @@ def test_external_reference_bundle_cli_json(tmp_path: Path) -> None:
     assert report["ok"] is True
     assert report["run_count"] == 1
     assert report["reference_id"] == "rmader_official_ros_noetic"
+    assert (out_dir / Path(report["adapter_plan_md"]).name).exists()
+    assert (out_dir / Path(report["adapter_plan_json"]).name).exists()
     assert (out_dir / "external_reference_bundle.json").exists()
     assert (out_dir / "manifest.yaml").exists()
     assert (out_dir / "run_matrix.csv").exists()

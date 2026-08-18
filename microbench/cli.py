@@ -846,6 +846,7 @@ def _external_reference_bundle(args) -> None:
             f"bundle={report['out_dir']}"
         )
         print(f"  manifest: {report['manifest']}")
+        print(f"  adapter_plan: {report['adapter_plan_md']}")
         print(f"  run_matrix: {report['run_matrix_csv']}")
         print(f"  results_template: {report['results_template']}")
         print(f"  post_run_validation: {report['post_run_validation_command']}")

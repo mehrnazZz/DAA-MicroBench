@@ -17,6 +17,7 @@ from microbench.scenarios import list_official_suites, materialize_official_suit
 
 EXTERNAL_REFERENCE_SCHEMA_VERSION = "0.1"
 EXTERNAL_REFERENCE_BUNDLE_SCHEMA_VERSION = "0.1"
+EXTERNAL_REFERENCE_ADAPTER_PLAN_SCHEMA_VERSION = "0.1"
 EXTERNAL_REFERENCE_RUNNER_TYPES = ("external_process", "docker", "ros", "manual_import")
 RMADER_METHOD_FAMILY = "rmader"
 RMADER_REQUIRED_METHOD_CLAIMS = (
@@ -372,6 +373,231 @@ def _adapter_template(method_family: str) -> dict[str, Any]:
     return out
 
 
+def _required_adapter_fields(method_family: str) -> tuple[str, ...]:
+    if _method_family_key(method_family) in EGO_SWARM_METHOD_FAMILY_KEYS:
+        return EGO_SWARM_REQUIRED_ADAPTER_FIELDS
+    return RMADER_REQUIRED_ADAPTER_FIELDS
+
+
+def _method_specific_adapter_tasks(method_family: str) -> list[dict[str, Any]]:
+    family_key = _method_family_key(method_family)
+    if family_key == RMADER_METHOD_FAMILY:
+        return [
+            {
+                "id": "rmader_delay_check",
+                "title": "Preserve RMADER publication semantics",
+                "checks": [
+                    "Expose two-step trajectory publication and Delay Check behavior in run notes.",
+                    "Record solver backend, especially if it differs from upstream Gurobi expectations.",
+                    "Export any publish/check/replan/fallback counters needed to explain failures.",
+                ],
+            },
+            {
+                "id": "rmader_minvo_hyperplanes",
+                "title": "Preserve MINVO and separating-hyperplane evidence",
+                "checks": [
+                    "Disclose how Microbench AABB/static/dynamic obstacles become convex sets.",
+                    "Record whether separating hyperplanes were solved for all active obstacle and peer constraints.",
+                    "Report any rows where the official stack used a degraded or hand-tuned solver path.",
+                ],
+            },
+        ]
+    if family_key in EGO_SWARM_METHOD_FAMILY_KEYS:
+        return [
+            {
+                "id": "ego_swarm_sensing_and_map",
+                "title": "Disclose local sensing and map assumptions",
+                "checks": [
+                    "Declare CPU local_sensing, CUDA local_sensing, preloaded map, point cloud, or other backend.",
+                    "Confirm no hidden global map or future obstacle state is added beyond the Microbench row.",
+                    "Record simulator mode: fake_drone, quadrotor_simulator_so3, hardware log replay, or other.",
+                ],
+            },
+            {
+                "id": "ego_swarm_trajectory_broadcast",
+                "title": "Preserve swarm trajectory broadcast semantics",
+                "checks": [
+                    "Map upstream B-spline or trajectory topics to Microbench intent records with timestamps.",
+                    "Apply the run-matrix communication profile to delay, loss, rate, and stale peer trajectories.",
+                    "Disclose any changes to upstream swarm initialization, replanning, or trajectory message TTL.",
+                ],
+            },
+            {
+                "id": "ego_swarm_gpl_boundary",
+                "title": "Preserve the GPL boundary",
+                "checks": [
+                    "Keep GPL upstream code outside the core package unless the downstream distribution is compatible.",
+                    "Publish result artifacts, manifests, adapters, and logs with clear license/dependency notes.",
+                    "Do not imply the built-in Python ego_swarm or ego_swarm_opt planners are upstream ports.",
+                ],
+            },
+        ]
+    return []
+
+
+def _adapter_plan_json(
+    *,
+    method_family: str,
+    reference_id: str,
+    related_microbench_method: str,
+    matrix_rows: list[dict[str, Any]],
+    validation_command: str,
+) -> dict[str, Any]:
+    scenario_ids = sorted({str(row["scenario"]) for row in matrix_rows})
+    comm_profiles = sorted({str(row["comm_profile"]) for row in matrix_rows})
+    n_agents = sorted({int(row["N"]) for row in matrix_rows})
+    seeds = sorted({int(row["seed"]) for row in matrix_rows})
+    adapter_fields = _adapter_template(method_family)
+    expected_artifacts = {
+        "results_csv": "results.csv",
+        "summary_csv": "summary.csv",
+        "notes": "RUN_NOTES.md",
+        "optional_mcap": "baseline_comparison.mcap",
+    }
+    return {
+        "schema_version": EXTERNAL_REFERENCE_ADAPTER_PLAN_SCHEMA_VERSION,
+        "reference_id": reference_id,
+        "method_family": _method_family_label(method_family),
+        "related_microbench_method": related_microbench_method,
+        "run_matrix": "run_matrix.csv",
+        "run_count": len(matrix_rows),
+        "scenario_count": len(scenario_ids),
+        "scenarios": scenario_ids,
+        "n_agents": n_agents,
+        "seeds": seeds,
+        "comm_profiles": comm_profiles,
+        "adapter_fields": {
+            field: adapter_fields.get(field, "")
+            for field in _required_adapter_fields(method_family)
+        },
+        "stages": [
+            {
+                "id": "prepare_upstream_workspace",
+                "title": "Prepare external workspace",
+                "checks": [
+                    "Record upstream repository URL, commit/tag, license, OS, runtime, solver, and hardware.",
+                    "Keep dependency-heavy or incompatible-license code outside the core DAA Microbench package.",
+                    "Run only a filled copy of this bundle against the declared run matrix.",
+                ],
+            },
+            {
+                "id": "consume_run_matrix",
+                "title": "Consume run_matrix.csv",
+                "checks": [
+                    "Execute exactly one external run per run_matrix row unless a row is explicitly marked skipped.",
+                    "Use scenario_path, N, seed, and comm_profile from the row as the source of truth.",
+                    "Write the output method as expected_results_method for comparable CSV rows.",
+                ],
+            },
+            {
+                "id": "map_scenario_contract",
+                "title": "Map Microbench scenario contract",
+                "checks": [
+                    "Map starts, goals, world bounds, duration, dt, agent limits, and goal tolerance.",
+                    "Map static obstacles, dynamic intruders, noncooperative agents, and degraded sensing settings.",
+                    "Do not expose privileged global/future state not allowed by the Microbench row.",
+                ],
+            },
+            {
+                "id": "map_decentralized_authority",
+                "title": "Preserve decentralized authority",
+                "checks": [
+                    "Run one planner authority per drone or document equivalent distributed ownership.",
+                    "Ensure no centralized optimizer selects joint multi-agent actions.",
+                    "Keep per-agent observations filtered to the declared sensing/V2V contract.",
+                ],
+            },
+            {
+                "id": "map_communication_impairments",
+                "title": "Map communication impairments",
+                "checks": [
+                    "Apply run-matrix communication delay, jitter, loss, rate, stale belief, and TTL assumptions.",
+                    "Log sent, delivered, dropped, expired, and stale messages when the upstream stack exposes them.",
+                    "Disclose any upstream transport behavior that cannot be matched exactly.",
+                ],
+            },
+            {
+                "id": "export_microbench_results",
+                "title": "Export Microbench artifacts",
+                "checks": [
+                    "Write results.csv with required result_schema.json fields for every completed row.",
+                    "Write summary.csv using the same aggregation semantics as Microbench when possible.",
+                    "Attach RUN_NOTES.md and optional MCAP/trace artifacts for qualitative review.",
+                ],
+            },
+            {
+                "id": "validate_bundle_outputs",
+                "title": "Validate completed run",
+                "checks": [
+                    f"Run `{validation_command} --require-artifacts --require-pass`.",
+                    "Investigate any missing artifact, missing result field, skipped row, timeout, or contract deviation.",
+                    "Archive exact commands and upstream commits before using results as benchmark evidence.",
+                ],
+            },
+        ],
+        "method_specific_tasks": _method_specific_adapter_tasks(method_family),
+        "expected_artifacts": expected_artifacts,
+        "post_run_validation_command": f"{validation_command} --require-artifacts --require-pass",
+    }
+
+
+def _adapter_plan_markdown(plan: dict[str, Any]) -> str:
+    lines = [
+        f"# External Reference Adapter Plan: {plan['reference_id']}",
+        "",
+        f"Method family: `{plan['method_family']}`",
+        f"Related Microbench method: `{plan['related_microbench_method']}`",
+        f"Planned rows: `{plan['run_count']}`",
+        f"Scenarios: `{', '.join(plan['scenarios'])}`",
+        f"Agent counts: `{', '.join(str(x) for x in plan['n_agents'])}`",
+        f"Seeds: `{', '.join(str(x) for x in plan['seeds'])}`",
+        f"Communication profiles: `{', '.join(plan['comm_profiles'])}`",
+        "",
+        "Use this checklist when writing or reviewing the external adapter. It is intentionally an adapter plan, not an upstream implementation.",
+        "",
+        "## Adapter Fields",
+        "",
+    ]
+    for field, description in plan["adapter_fields"].items():
+        lines.extend([f"### {field}", "", str(description), ""])
+
+    lines.extend(["## Execution Stages", ""])
+    for stage in plan["stages"]:
+        lines.extend([f"### {stage['title']}", "", f"ID: `{stage['id']}`", ""])
+        for check in stage["checks"]:
+            lines.append(f"- [ ] {check}")
+        lines.append("")
+
+    if plan["method_specific_tasks"]:
+        lines.extend(["## Method-Specific Tasks", ""])
+        for task in plan["method_specific_tasks"]:
+            lines.extend([f"### {task['title']}", "", f"ID: `{task['id']}`", ""])
+            for check in task["checks"]:
+                lines.append(f"- [ ] {check}")
+            lines.append("")
+
+    lines.extend(
+        [
+            "## Expected Artifacts",
+            "",
+        ]
+    )
+    for name, path in plan["expected_artifacts"].items():
+        lines.append(f"- `{name}`: `{path}`")
+    lines.extend(
+        [
+            "",
+            "## Final Validation",
+            "",
+            "```bash",
+            str(plan["post_run_validation_command"]),
+            "```",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def _manifest_template(
     *,
     method_family: str,
@@ -453,6 +679,7 @@ def _run_notes(
         f"- Planned rows: {len(matrix_rows)}\n"
         "- Scenario files: `scenarios/*.yaml`\n"
         "- Run matrix: `run_matrix.csv` and `run_matrix.json`\n"
+        "- Adapter checklist: `ADAPTER_PLAN.md` and `adapter_plan.json`\n"
         "- Expected output schema: `result_schema.json`, `results_template.csv`, `summary_template.csv`\n\n"
         "## Validation\n\n"
         "After the external stack writes `results.csv` and the declared artifacts, run:\n\n"
@@ -631,6 +858,18 @@ def build_external_reference_bundle(
         encoding="utf-8",
     )
 
+    adapter_plan = _adapter_plan_json(
+        method_family=method_family_clean,
+        reference_id=ref_id,
+        related_microbench_method=related,
+        matrix_rows=matrix_rows,
+        validation_command=validation_command,
+    )
+    adapter_plan_json = out / "adapter_plan.json"
+    adapter_plan_json.write_text(json.dumps(adapter_plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    adapter_plan_md = out / "ADAPTER_PLAN.md"
+    adapter_plan_md.write_text(_adapter_plan_markdown(adapter_plan), encoding="utf-8")
+
     checksum_targets = [
         *copied_scenarios.values(),
         *(scenario_out.glob("suite_*/suite_manifest.yaml")),
@@ -641,6 +880,8 @@ def build_external_reference_bundle(
         results_template,
         summary_template,
         run_notes,
+        adapter_plan_json,
+        adapter_plan_md,
     ]
     checksums = {
         "schema_version": EXTERNAL_REFERENCE_BUNDLE_SCHEMA_VERSION,
@@ -671,6 +912,8 @@ def build_external_reference_bundle(
         "result_schema": str(schema_path),
         "checksums": str(checksums_path),
         "run_notes": str(run_notes),
+        "adapter_plan_json": str(adapter_plan_json),
+        "adapter_plan_md": str(adapter_plan_md),
         "validation": validation,
         "note": (
             "This bundle prepares official/dependency-heavy external implementation comparisons. "
