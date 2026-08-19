@@ -27,6 +27,13 @@ from microbench.rl.envs import (
 )
 from microbench.rl.adapters import CallablePolicyAdapter, ModelPredictPolicyAdapter, normalize_action
 from microbench.rl.calibration import RL_CALIBRATION_SCHEMA_VERSION, run_rl_policy_calibration
+from microbench.rl.bc_training import (
+    BC_POLICY_NAME,
+    BC_TEACHER_NAME,
+    BC_TRAINING_SCHEMA_VERSION,
+    DEFAULT_BC_LANES,
+    train_behavior_cloned_policy,
+)
 from microbench.rl.compliance import check_parallel_env_api
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import RL_FREEZE_CHECK_SCHEMA_VERSION, run_rl_freeze_check
@@ -85,8 +92,12 @@ from microbench.rl.submission_schemas import (
 
 __all__ = [
     "CallablePolicyAdapter",
+    "BC_POLICY_NAME",
+    "BC_TEACHER_NAME",
+    "BC_TRAINING_SCHEMA_VERSION",
     "DaaParallelEnv",
     "DaaSingleAgentEnv",
+    "DEFAULT_BC_LANES",
     "GoalDirectionPolicy",
     "LEARNED_BASELINE_SCHEMA_VERSION",
     "MLP_LEARNED_FEATURE_NAMES",
@@ -164,4 +175,5 @@ __all__ = [
     "write_learned_policy_leaderboard",
     "single_agent_env",
     "tiny_learned_model_path",
+    "train_behavior_cloned_policy",
 ]

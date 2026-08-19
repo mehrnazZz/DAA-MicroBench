@@ -31,6 +31,7 @@ python -m microbench.cli learned-submission-bundle --out-dir "${WORK_DIR}/learne
 python -m microbench.cli rl-smoke --out-dir "${WORK_DIR}/rl_tiny_learned" --policy tiny_learned --require-pass --json >"${WORK_DIR}/rl_tiny_learned.json"
 python -m microbench.cli rl-smoke --out-dir "${WORK_DIR}/rl_mlp_learned" --policy mlp_learned --require-pass --json >"${WORK_DIR}/rl_mlp_learned.json"
 python -m microbench.cli rl-calibration --out-dir "${WORK_DIR}/rl_calibration" --require-pass --json >"${WORK_DIR}/rl_calibration.json"
+python -m microbench.cli train-learned-bc --out-dir "${WORK_DIR}/bc_mlp_policy" --lanes head_on --max-steps 2 --eval-lanes head_on --eval-max-steps 2 --hidden-dim 8 --require-pass --json >"${WORK_DIR}/bc_mlp_policy.json"
 python -m microbench.cli rl-contract --json >"${WORK_DIR}/rl_contract.json"
 python -m microbench.cli rl-freeze-check --require-pass --json >"${WORK_DIR}/rl_freeze_check.json"
 python -m microbench.cli learned-submission-bundle --out-dir "${WORK_DIR}/learned_submission_bundle" --method learned_tiny --policy tiny_learned --max-runs 1 --max-steps 3 --require-pass --json >"${WORK_DIR}/learned_submission_bundle.json"

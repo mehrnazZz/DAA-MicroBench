@@ -21,6 +21,7 @@ The dependency-free examples are:
 - `examples/external_policy_model_predict_spec.json`: `model_predict` spec using a Python factory and `factory_kwargs`.
 - `examples/external_policy_callable_spec.json`: `callable` spec using `callable_policy(observation, info)`.
 - `examples/rl_train_tiny_linear_policy.py` and `examples/rl_train_mlp_policy.py`: deterministic recipes for the bundled learned-policy fixtures.
+- `python -m microbench.cli train-learned-bc`: behavior-cloned MLP trainer over real DAA Microbench RL validation-lane observations.
 - `examples/learned_submission_manifest_template.json`: full reviewer-ready manifest template.
 - `examples/learned_submission_manifest_overlay_example.json`: compact disclosure overlay for `--submission-manifest`.
 
@@ -43,6 +44,18 @@ The `model_predict` pattern is the recommended shape for real exported models be
 ```
 
 Relative `pythonpath`, `artifact_path`, and path-like `factory_kwargs` such as `artifact_path` resolve from the spec file. Import-based specs execute Python code, so only run specs from trusted sources.
+
+The built-in behavior-cloning trainer writes an `mlp_json` spec that avoids custom import code:
+
+```bash
+python -m microbench.cli train-learned-bc \
+  --out-dir runs_bc_mlp_policy \
+  --lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
+  --eval-lanes head_on,crossing,urban_obstacle \
+  --require-pass
+```
+
+Its output `runs_bc_mlp_policy/policy_spec.json` can be passed anywhere a learned policy spec is accepted. The generated `bc_training_report.json` records training lanes, seeds, sample counts, teacher policy, fit error, and validation-matrix evidence. The trainer uses only the public RL observation vector and a transparent local-avoidance teacher; disclose it as behavior cloning, not as privileged imitation from simulator truth.
 
 ## Health Gates
 

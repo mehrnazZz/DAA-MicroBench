@@ -226,6 +226,7 @@ For production-style import paths, see `examples/external_policy_model_predict_s
 Supported public-alpha adapters are:
 
 - `tiny_linear_json`: loads a DAA tiny-linear JSON weight artifact.
+- `mlp_json`: loads a DAA frozen MLP JSON weight artifact, including artifacts from `train-learned-bc`.
 - `callable`: imports a Python callable with `callable: "module:function"` and optional `signature`.
 - `model_predict`: imports a Python factory/class with `factory: "module:Factory"` and wraps objects exposing `predict(...)`, `compute_single_action(...)`, or callable inference.
 - `builtin`: aliases an existing built-in policy name for reproducible command files.
@@ -317,6 +318,26 @@ python -m microbench.cli rl-smoke \
 ```
 
 The matching official planner methods are `learned_tiny` and `learned_mlp`, which produce normal benchmark `results.csv` and `summary.csv` rows. Their deterministic synthetic training recipes are in `examples/rl_train_tiny_linear_policy.py` and `examples/rl_train_mlp_policy.py`; checked-in weight artifacts live under `microbench/bundled_config/learned_baselines/`.
+
+## Behavior-Cloned Training Workflow
+
+Train a portable learned policy from real DAA Microbench RL validation-lane observations:
+
+```bash
+python -m microbench.cli train-learned-bc \
+  --out-dir runs_bc_mlp_policy \
+  --lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
+  --eval-lanes head_on,crossing,urban_obstacle \
+  --require-pass
+```
+
+The trainer rolls out a transparent local DAA teacher over the public RL observation contract, fits a dependency-free two-layer tanh MLP, and writes:
+
+- `bc_mlp_policy.json`: frozen MLP JSON weights using the same model contract as `mlp_learned`
+- `policy_spec.json`: portable `mlp_json` policy spec for `rl-smoke`, `rl-validation-matrix`, `learned_policy_spec`, and learned-submission bundles
+- `bc_training_report.json`: sample counts, lane/seed provenance, fit error, and optional validation-matrix evidence
+
+This is the first built-in learned training path and is meant to make learned-policy evaluation reproducible. It is behavior cloning from a local teacher, not an upper-bound oracle or a certified DAA controller.
 
 ## Learned Submission Bundle
 

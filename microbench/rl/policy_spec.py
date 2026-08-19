@@ -9,13 +9,13 @@ from typing import Any, Callable
 
 import yaml
 
-from microbench.learned import TinyLinearPolicyModel
+from microbench.learned import FrozenMlpPolicyModel, TinyLinearPolicyModel
 from microbench.rl.adapters import CallablePolicyAdapter, ModelPredictPolicyAdapter
 from microbench.rl.policies import RlPolicy, make_policy
 
 
 RL_POLICY_SPEC_SCHEMA_VERSION = "0.1"
-SUPPORTED_POLICY_SPEC_ADAPTERS = ("builtin", "callable", "model_predict", "tiny_linear_json")
+SUPPORTED_POLICY_SPEC_ADAPTERS = ("builtin", "callable", "model_predict", "tiny_linear_json", "mlp_json")
 
 
 @dataclass
@@ -166,6 +166,14 @@ def load_policy_from_spec(path: str | Path, *, seed: int = 0) -> LoadedPolicySpe
         model_path = _resolve_relative(str(artifact), spec_path=spec_path) if artifact else None
         policy = ModelPredictPolicyAdapter(
             TinyLinearPolicyModel.from_path(model_path),
+            deterministic=deterministic,
+            clip=clip,
+        )
+    elif adapter == "mlp_json":
+        artifact = spec.get("artifact_path")
+        model_path = _resolve_relative(str(artifact), spec_path=spec_path) if artifact else None
+        policy = ModelPredictPolicyAdapter(
+            FrozenMlpPolicyModel.from_path(model_path),
             deterministic=deterministic,
             clip=clip,
         )

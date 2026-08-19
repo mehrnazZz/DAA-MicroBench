@@ -20,6 +20,7 @@ from microbench.replay import export_foxglove_comparison_mcap, export_foxglove_m
 from microbench.dataset import generate_dataset, expand_scenarios, expand_list, sanity_check_shard
 from microbench.logging import wandb_logger
 from microbench.rl.calibration import run_rl_policy_calibration
+from microbench.rl.bc_training import train_behavior_cloned_policy
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import run_rl_freeze_check
 from microbench.rl.learned_leaderboard import write_learned_policy_leaderboard
@@ -1276,6 +1277,47 @@ def _rl_validation_matrix(args) -> None:
         raise SystemExit(f"RL validation matrix behavior checks failed: {','.join(failed)}")
 
 
+def _train_learned_bc(args) -> None:
+    report = train_behavior_cloned_policy(
+        out_dir=args.out_dir,
+        lanes=_parse_str_list(args.lanes) if args.lanes else None,
+        seeds=_parse_int_list(args.seeds) if args.seeds else None,
+        max_steps=int(args.max_steps),
+        hidden_dim=int(args.hidden_dim),
+        ridge=float(args.ridge),
+        rollout_noise_std=float(args.rollout_noise_std),
+        eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
+        eval_max_steps=args.eval_max_steps,
+        policy_name=str(args.policy_name),
+        seed=int(args.seed),
+        overwrite=bool(args.overwrite),
+        run_validation=not bool(args.skip_validation),
+    )
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        validation = report.get("validation_matrix") or {}
+        print(
+            f"train-learned-bc: {status} policy={report['policy_name']} "
+            f"samples={report['sample_count']} hidden_dim={report['hidden_dim']} "
+            f"fit_rmse={report['fit_rmse']}"
+        )
+        print(f"  policy_spec: {report['policy_spec']}")
+        print(f"  model_artifact: {report['model_artifact']}")
+        if validation:
+            print(
+                f"  validation_matrix: ok={validation.get('ok')} "
+                f"runs={validation.get('run_count')}/{validation.get('planned_run_count')} "
+                f"behavior_pass={validation.get('behavior_pass')}"
+            )
+
+    if args.require_pass and not report["ok"]:
+        failed = [check["name"] for check in report["checks"] if not check["ok"]]
+        raise SystemExit(f"behavior-cloned learned-policy training failed: {','.join(failed)}")
+
+
 def _rl_contract(args) -> None:
     report = interface_contract(top_k=int(args.top_k))
     payload = json.dumps(report, indent=2, sort_keys=True)
@@ -2297,6 +2339,39 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fail if behavior-evidence checks fail; useful for policy promotion, not wrapper health",
     )
 
+    p_bc = sub.add_parser(
+        "train-learned-bc",
+        help="Train a dependency-free behavior-cloned MLP policy from public RL validation-lane observations",
+    )
+    p_bc.add_argument("--out-dir", required=True, help="Output directory for model, policy spec, and training report")
+    p_bc.add_argument(
+        "--lanes",
+        default=None,
+        help="Comma-separated training lane ids; defaults to the canonical learned-policy validation lanes",
+    )
+    p_bc.add_argument("--seeds", default=None, help="Optional seed list/range for every lane; defaults to each lane seed")
+    p_bc.add_argument("--max-steps", type=int, default=64, help="Teacher rollout steps per lane/seed")
+    p_bc.add_argument("--hidden-dim", type=int, default=32, help="Random-feature MLP hidden dimension")
+    p_bc.add_argument("--ridge", type=float, default=1e-4, help="Ridge regularization for the output layer fit")
+    p_bc.add_argument(
+        "--rollout-noise-std",
+        type=float,
+        default=0.03,
+        help="Optional clipped Gaussian action noise during teacher rollouts",
+    )
+    p_bc.add_argument(
+        "--eval-lanes",
+        default=None,
+        help="Comma-separated validation lane ids for the trained spec; defaults to the training lanes",
+    )
+    p_bc.add_argument("--eval-max-steps", type=int, default=12, help="Optional validation rollout step cap")
+    p_bc.add_argument("--policy-name", default="bc_mlp_learned", help="Policy name written to policy_spec.json")
+    p_bc.add_argument("--seed", type=int, default=29, help="Random-feature model seed")
+    p_bc.add_argument("--overwrite", action="store_true", help="Overwrite existing model/spec/report files")
+    p_bc.add_argument("--skip-validation", action="store_true", help="Skip post-training RL validation matrix")
+    p_bc.add_argument("--json", action="store_true", help="Emit machine-readable training report")
+    p_bc.add_argument("--require-pass", action="store_true", help="Fail if training or validation gates fail")
+
     p_rlc = sub.add_parser("rl-contract", help="Print the versioned RL action/observation/reward contract")
     p_rlc.add_argument("--top-k", type=int, default=8, help="Neighbor slots used to compute observation shape")
     p_rlc.add_argument("--out", default=None, help="Optional JSON output path")
@@ -2562,6 +2637,9 @@ def main() -> None:
         return
     if args.cmd == "rl-validation-matrix":
         _rl_validation_matrix(args)
+        return
+    if args.cmd == "train-learned-bc":
+        _train_learned_bc(args)
         return
     if args.cmd == "rl-contract":
         _rl_contract(args)
