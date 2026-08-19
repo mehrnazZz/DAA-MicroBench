@@ -171,6 +171,18 @@ python -m microbench.cli review-learned-bundle \
   --require-pass
 ```
 
+Compare two or more learned-policy bundles as a development leaderboard table:
+
+```bash
+python -m microbench.cli learned-leaderboard \
+  --bundle runs_learned_bundle \
+  --bundle runs_external_model_predict_bundle \
+  --out runs_learned_leaderboard/learned_policy_leaderboard.json \
+  --require-pass
+```
+
+The command writes JSON plus a sibling CSV and combines planner `summary.csv` score fields with RL validation-matrix lane evidence. Treat it as reviewer evidence; final learned-policy claims should still include the underlying bundle artifacts.
+
 ## Submission Manifest Checklist
 
 For review, include:

@@ -99,6 +99,16 @@ python -m microbench.cli review-learned-bundle \
   --require-pass
 ```
 
+Compare multiple learned-policy bundles as a review table when submitting several policies:
+
+```bash
+python -m microbench.cli learned-leaderboard \
+  --bundle runs_learned_bundle \
+  --bundle runs_external_learned_bundle \
+  --out runs_learned_leaderboard/learned_policy_leaderboard.json \
+  --require-pass
+```
+
 ## Reproduction Command
 
 Paste the exact command. Example:

@@ -128,6 +128,7 @@ python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle
 python -m microbench.cli learned-submission-bundle --out-dir runs_external_learned_bundle --method learned_policy_spec --policy-spec examples/external_policy_spec.json --require-pass
 python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass
 python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --require-pass
+python -m microbench.cli learned-leaderboard --bundle runs_learned_bundle --bundle runs_external_learned_bundle --out runs_learned_leaderboard/learned_policy_leaderboard.json --require-pass
 ```
 
 You can also inspect `microbench/planners/` (each planner module maps to a method name in the planner registry).

@@ -367,6 +367,18 @@ python -m microbench.cli review-learned-bundle \
 
 The reviewer does not rerun simulations. It validates the bundle, computes the documented v0 score from `summary.csv`, reports safety/mission/compute/communication/observation dimensions, and flags limitations such as limited planner sweeps, collision episodes, or planner guardrails.
 
+Compare multiple learned-policy bundles without rerunning simulations:
+
+```bash
+python -m microbench.cli learned-leaderboard \
+  --bundle runs_learned_bundle \
+  --bundle runs_external_learned_bundle \
+  --out runs_learned_leaderboard/learned_policy_leaderboard.json \
+  --require-pass
+```
+
+This writes a JSON report and sibling CSV with one row per bundle, combining planner `summary.csv` score fields with RL validation-matrix lane evidence. It is a development review table; only rows marked `leaderboard_candidate` should be treated as candidate leaderboard evidence.
+
 ## Compatibility Check
 
 For custom adapters, use the lightweight compatibility checker without installing PettingZoo's optional test helpers:

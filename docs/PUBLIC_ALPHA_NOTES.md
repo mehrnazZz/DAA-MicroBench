@@ -65,6 +65,7 @@ python -m microbench.cli learned-submission-bundle --out-dir runs_learned_bundle
 python -m microbench.cli learned-submission-bundle --out-dir runs_external_learned_bundle --method learned_policy_spec --policy-spec examples/external_policy_spec.json --require-pass
 python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass
 python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --require-pass
+python -m microbench.cli learned-leaderboard --bundle runs_learned_bundle --bundle runs_external_learned_bundle --out runs_learned_leaderboard/learned_policy_leaderboard.json --require-pass
 ```
 
 ## Known Public Alpha Limitations
@@ -99,6 +100,7 @@ python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --re
 - `learned-submission-bundle` creates the standard learned-policy artifact folder, including `learned_submission_manifest.json`, RL contract/freeze/smoke/calibration reports, and official planner CSVs.
 - `validate-learned-bundle` reviews an existing learned-policy bundle without rerunning simulations and checks required artifacts, manifest schema/provenance/hash consistency, parseability, passing RL reports, planner acceptance, and nonempty planner CSVs.
 - `review-learned-bundle` summarizes an existing learned-policy bundle into manifest disclosure, safety, mission, compute, communication, observation, and v0-score fields for manual leaderboard review.
+- `learned-leaderboard` compares existing learned-policy bundles as JSON/CSV review tables without rerunning simulations; publish the underlying bundles with any learned-policy claim.
 - Learned-policy submissions should include `learned_submission_bundle.json`, `learned_submission_manifest.json`, or equivalent `rl_contract.json`, `rl_freeze_check.json`, `rl_smoke.json`, `rl_calibration.json`, weight/version disclosures, and training scenario disclosure.
 - The benchmark models local planning and simplified dynamics; it is not a full flight stack, airspace model, PX4/ROS simulator, or certification tool.
 - Generated official suites are pre-v1 and may be adjusted as external users stress-test the benchmark.

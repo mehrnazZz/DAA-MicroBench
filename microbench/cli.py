@@ -22,6 +22,7 @@ from microbench.logging import wandb_logger
 from microbench.rl.calibration import run_rl_policy_calibration
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import run_rl_freeze_check
+from microbench.rl.learned_leaderboard import write_learned_policy_leaderboard
 from microbench.rl.policies import POLICY_NAMES
 from microbench.rl.schema import interface_contract
 from microbench.rl.submission_bundle import (
@@ -1474,6 +1475,36 @@ def _review_learned_bundle(args) -> None:
         raise SystemExit(f"learned bundle review failed: {','.join(failed)}")
 
 
+def _learned_leaderboard(args) -> None:
+    report = write_learned_policy_leaderboard(
+        bundles=list(args.bundle),
+        out=args.out,
+        csv_out=args.csv_out,
+    )
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        print(
+            f"learned-leaderboard: {status} bundles={report['bundle_count']} "
+            f"reviewable={report['reviewable_count']} candidates={report['leaderboard_candidate_count']}"
+        )
+        for row in report["rows"][:10]:
+            print(
+                "  "
+                f"rank={row.get('development_rank')} method={row.get('method')} "
+                f"policy={row.get('policy')} score={row.get('score_v0_mean')} "
+                f"recommendation={row.get('recommendation')} ok={row.get('ok')}"
+            )
+        print(f"  leaderboard={report['leaderboard_path']}")
+        print(f"  csv={report['leaderboard_csv']}")
+
+    if args.require_pass and not report["ok"]:
+        failed = [row["bundle"] for row in report["rows"] if not row.get("ok")]
+        raise SystemExit(f"learned leaderboard failed bundles: {','.join(failed)}")
+
+
 def _golden_current_schema(args) -> None:
     if args.update and args.candidate:
         raise SystemExit("--update cannot be combined with --candidate")
@@ -2331,6 +2362,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_rlb.add_argument("--json", action="store_true", help="Emit machine-readable review report")
     p_rlb.add_argument("--require-pass", action="store_true", help="Fail if the bundle is not structurally reviewable")
 
+    p_llb = sub.add_parser("learned-leaderboard", help="Build a development leaderboard from learned-policy bundles")
+    p_llb.add_argument(
+        "--bundle",
+        action="append",
+        required=True,
+        help="Path to a bundle directory or learned_submission_bundle.json; repeat for multiple policies",
+    )
+    p_llb.add_argument("--out", required=True, help="Output JSON leaderboard path")
+    p_llb.add_argument("--csv-out", default=None, help="Optional CSV output path; defaults beside --out")
+    p_llb.add_argument("--json", action="store_true", help="Emit machine-readable leaderboard report")
+    p_llb.add_argument("--require-pass", action="store_true", help="Fail if any bundle is not structurally reviewable")
+
     p_golden = sub.add_parser("golden-current-schema", help="Check or regenerate the current result-schema fixture")
     p_golden.add_argument("--golden-dir", default="golden/current_schema", help="Path to checked-in fixture")
     p_golden.add_argument("--candidate", default=None, help="Compare an existing candidate directory instead of running")
@@ -2540,6 +2583,9 @@ def main() -> None:
         return
     if args.cmd == "review-learned-bundle":
         _review_learned_bundle(args)
+        return
+    if args.cmd == "learned-leaderboard":
+        _learned_leaderboard(args)
         return
     if args.cmd == "golden-current-schema":
         _golden_current_schema(args)

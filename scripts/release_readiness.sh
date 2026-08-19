@@ -36,6 +36,7 @@ python -m microbench.cli rl-freeze-check --require-pass --json >"${WORK_DIR}/rl_
 python -m microbench.cli learned-submission-bundle --out-dir "${WORK_DIR}/learned_submission_bundle" --method learned_tiny --policy tiny_learned --max-runs 1 --max-steps 3 --require-pass --json >"${WORK_DIR}/learned_submission_bundle.json"
 python -m microbench.cli validate-learned-bundle --bundle "${WORK_DIR}/learned_submission_bundle" --require-pass --json >"${WORK_DIR}/learned_bundle_validation.json"
 python -m microbench.cli review-learned-bundle --bundle "${WORK_DIR}/learned_submission_bundle" --require-pass --json >"${WORK_DIR}/learned_bundle_review.json"
+python -m microbench.cli learned-leaderboard --bundle "${WORK_DIR}/learned_submission_bundle" --bundle "${WORK_DIR}/learned_submission_policy_spec_bundle" --out "${WORK_DIR}/learned_policy_leaderboard.json" --require-pass --json >"${WORK_DIR}/learned_policy_leaderboard.stdout.json"
 python -m microbench.cli list-suites --json >"${WORK_DIR}/suites.json"
 python -m microbench.cli list-methods --json --include-aliases >"${WORK_DIR}/methods.json"
 

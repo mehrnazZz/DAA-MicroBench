@@ -30,6 +30,11 @@ from microbench.rl.calibration import RL_CALIBRATION_SCHEMA_VERSION, run_rl_poli
 from microbench.rl.compliance import check_parallel_env_api
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import RL_FREEZE_CHECK_SCHEMA_VERSION, run_rl_freeze_check
+from microbench.rl.learned_leaderboard import (
+    LEARNED_POLICY_LEADERBOARD_SCHEMA_VERSION,
+    build_learned_policy_leaderboard,
+    write_learned_policy_leaderboard,
+)
 from microbench.rl.policies import GoalDirectionPolicy, MlpLearnedPolicy, RandomPolicy, TinyLearnedPolicy, ZeroPolicy, make_policy
 from microbench.rl.policy_spec import (
     RL_POLICY_SPEC_SCHEMA_VERSION,
@@ -96,6 +101,7 @@ __all__ = [
     "LEARNED_SUBMISSION_MANIFEST_SCHEMA_FILE",
     "LEARNED_SUBMISSION_MANIFEST_VALIDATION_SCHEMA_VERSION",
     "LEARNED_SUBMISSION_SCHEMA_CHECK_VERSION",
+    "LEARNED_POLICY_LEADERBOARD_SCHEMA_VERSION",
     "ModelPredictPolicyAdapter",
     "MlpLearnedPolicy",
     "OBSERVATION_LAYOUT",
@@ -122,6 +128,7 @@ __all__ = [
     "agent_id_from_name",
     "agent_name",
     "action_schema",
+    "build_learned_policy_leaderboard",
     "check_parallel_env_api",
     "interface_contract",
     "load_mlp_learned_spec",
@@ -154,6 +161,7 @@ __all__ = [
     "validate_learned_policy_submission_bundle",
     "validate_learned_submission_manifest",
     "validate_with_schema_subset",
+    "write_learned_policy_leaderboard",
     "single_agent_env",
     "tiny_learned_model_path",
 ]
