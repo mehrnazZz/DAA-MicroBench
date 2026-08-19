@@ -41,6 +41,13 @@ HARD_DIAGNOSTIC_LABELS = (
     "safe_but_slow",
     "balanced_limited_evidence",
 )
+SCENARIO_FAMILY_LANE_ALIASES = (
+    (("head_on", "head-on"), "head_on"),
+    (("crossing", "intersection"), "crossing"),
+    (("urban", "city", "building"), "urban_obstacle"),
+    (("sensor", "sensing", "degraded", "stale", "occlusion", "fused"), "communication_delay"),
+    (("merge", "sphere_swap", "dense", "swarm", "funnel", "bottleneck"), "high_n_dense_merge"),
+)
 
 
 def _json_default(value: Any) -> Any:
@@ -146,6 +153,9 @@ def _match_lane_id(value: Any, lookup: dict[str, str]) -> str | None:
     for known, lane_id in lookup.items():
         if known and (known in key or key in known):
             return lane_id
+    for needles, lane_id in SCENARIO_FAMILY_LANE_ALIASES:
+        if any(needle in key for needle in needles):
+            return lane_id
     return None
 
 
@@ -159,11 +169,23 @@ def select_hard_lanes_from_diagnostics(
     *,
     fallback_lanes: tuple[str, ...] | list[str] | None = None,
     max_lanes: int = 3,
+    target_policy: str | None = None,
+    target_method: str | None = None,
+    fill_with_fallback: bool = True,
 ) -> dict[str, Any]:
     """Select canonical learned-validation lanes from diagnostics rows."""
 
     payload, diagnostics_path = _diagnostics_payload(diagnostics)
-    rows = list(payload.get("rows", [])) if isinstance(payload, dict) else []
+    rows_all = list(payload.get("rows", [])) if isinstance(payload, dict) else []
+    rows = []
+    for row in rows_all:
+        if not isinstance(row, dict):
+            continue
+        if target_policy is not None and str(row.get("policy") or "") != str(target_policy):
+            continue
+        if target_method is not None and str(row.get("method") or "") != str(target_method):
+            continue
+        rows.append(row)
     lookup = _lane_match_lookup()
     label_priority = {label: idx for idx, label in enumerate(HARD_DIAGNOSTIC_LABELS)}
 
@@ -186,7 +208,7 @@ def select_hard_lanes_from_diagnostics(
         label = str(row.get("diagnostic_label") or "")
         if label not in label_priority:
             continue
-        for field in ("worst_rl_lane", "worst_scenario", "category", "lane_id"):
+        for field in ("worst_scenario", "worst_rl_lane", "category", "lane_id"):
             lane_id = _match_lane_id(row.get(field), lookup)
             if lane_id is None or lane_id in selected:
                 continue
@@ -220,15 +242,35 @@ def select_hard_lanes_from_diagnostics(
             }
             for lane_id in selected
         ]
+    elif bool(fill_with_fallback) and len(selected) < max(1, int(max_lanes)):
+        for lane_id in _fallback_selection(fallback_lanes, max_lanes):
+            if lane_id in selected:
+                continue
+            selected.append(lane_id)
+            reasons.append(
+                {
+                    "lane_id": lane_id,
+                    "source_field": "fallback_lanes",
+                    "source_value": ",".join(_fallback_selection(fallback_lanes, max_lanes)),
+                    "diagnostic_label": None,
+                    "primary_failure": "fill_remaining_hard_lane_budget",
+                }
+            )
+            if len(selected) >= max(1, int(max_lanes)):
+                break
 
     return {
         "schema_version": LEARNED_HARD_LANE_LOOP_SCHEMA_VERSION,
         "selected_lanes": selected,
         "fallback_used": bool(fallback_used),
+        "fill_with_fallback": bool(fill_with_fallback),
         "fallback_lanes": _fallback_selection(fallback_lanes, max_lanes),
         "max_lanes": int(max_lanes),
+        "target_policy": target_policy,
+        "target_method": target_method,
         "diagnostics_path": None if diagnostics_path is None else str(diagnostics_path),
-        "diagnostic_rows_seen": len(rows),
+        "diagnostic_rows_seen": len(rows_all),
+        "diagnostic_rows_considered": len(rows),
         "hard_labels": list(HARD_DIAGNOSTIC_LABELS),
         "reasons": reasons,
     }
@@ -540,6 +582,9 @@ def run_learned_hard_lane_loop(
     bundles: tuple[str | Path, ...] | list[str | Path] | None = None,
     fallback_lanes: tuple[str, ...] | list[str] | None = None,
     max_lanes: int = 3,
+    target_policy: str | None = None,
+    target_method: str | None = None,
+    fill_with_fallback: bool = True,
     dataset_policy: str = LEARNED_DATASET_TEACHER_POLICY,
     dataset_policy_spec: str | Path | None = None,
     dataset_max_steps: int | None = 64,
@@ -586,6 +631,9 @@ def run_learned_hard_lane_loop(
         input_diagnostics,
         fallback_lanes=fallback_lanes,
         max_lanes=int(max_lanes),
+        target_policy=target_policy,
+        target_method=target_method,
+        fill_with_fallback=bool(fill_with_fallback),
     )
     selected_lanes = list(selection["selected_lanes"])
 

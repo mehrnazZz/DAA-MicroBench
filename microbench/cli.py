@@ -1407,6 +1407,9 @@ def _learned_hard_lane_loop(args) -> None:
         bundles=args.bundle,
         fallback_lanes=_parse_str_list(args.fallback_lanes) if args.fallback_lanes else None,
         max_lanes=int(args.max_lanes),
+        target_policy=args.target_policy,
+        target_method=args.target_method,
+        fill_with_fallback=not bool(args.no_fill_fallback),
         dataset_policy=str(args.dataset_policy),
         dataset_policy_spec=args.dataset_policy_spec,
         dataset_max_steps=args.dataset_max_steps,
@@ -2613,6 +2616,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fallback lane ids when diagnostics do not identify a canonical hard lane",
     )
     p_hlt.add_argument("--max-lanes", type=int, default=3, help="Maximum selected hard lanes to retrain on")
+    p_hlt.add_argument("--target-policy", default=None, help="Only select hard lanes from diagnostics rows for this policy")
+    p_hlt.add_argument("--target-method", default=None, help="Only select hard lanes from diagnostics rows for this method")
+    p_hlt.add_argument(
+        "--no-fill-fallback",
+        action="store_true",
+        help="Do not fill remaining hard-lane slots with --fallback-lanes after diagnostics selection",
+    )
     p_hlt.add_argument(
         "--dataset-policy",
         choices=LEARNED_DATASET_POLICY_CHOICES,

@@ -1132,6 +1132,8 @@ Recommended scale for training: at least `100k+` samples across multiple scenari
 python -m microbench.cli learned-hard-lane-loop \
   --out-dir runs_hard_lane_loop \
   --diagnostics runs_learned_diagnostics/learned_policy_diagnostics.json \
+  --target-policy bc_mlp_learned \
+  --fallback-lanes urban_obstacle,communication_delay,high_n_dense_merge \
   --max-lanes 3 \
   --max-runs 1 \
   --require-pass

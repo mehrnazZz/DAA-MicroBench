@@ -56,6 +56,41 @@ def test_hard_lane_selector_maps_diagnostics_to_canonical_lanes() -> None:
     assert report["reasons"][0]["source_field"] == "worst_rl_lane"
 
 
+def test_hard_lane_selector_can_target_policy_and_fill_3d_fallbacks() -> None:
+    report = select_hard_lanes_from_diagnostics(
+        _diagnostics(
+            [
+                {
+                    "diagnostic_rank": 1,
+                    "policy": "tiny_learned",
+                    "method": "learned_tiny",
+                    "diagnostic_label": "fast_but_close",
+                    "primary_failure": "low_clearance",
+                    "worst_scenario": "crossing_2d_medium",
+                },
+                {
+                    "diagnostic_rank": 3,
+                    "policy": "bc_mlp_learned",
+                    "method": "learned_policy_spec",
+                    "diagnostic_label": "safe_but_slow",
+                    "primary_failure": "incomplete_missions",
+                    "worst_scenario": "sphere_swap_3d_medium",
+                    "worst_rl_lane": "crossing",
+                },
+            ]
+        ),
+        fallback_lanes=["urban_obstacle", "communication_delay", "high_n_dense_merge"],
+        max_lanes=3,
+        target_policy="bc_mlp_learned",
+    )
+
+    assert report["selected_lanes"] == ["high_n_dense_merge", "urban_obstacle", "communication_delay"]
+    assert report["diagnostic_rows_seen"] == 2
+    assert report["diagnostic_rows_considered"] == 1
+    assert report["reasons"][0]["source_field"] == "worst_scenario"
+    assert report["reasons"][1]["source_field"] == "fallback_lanes"
+
+
 def test_dataset_shard_training_writes_portable_policy(tmp_path: Path) -> None:
     dataset = export_learned_policy_dataset(
         out_dir=tmp_path / "dataset",
