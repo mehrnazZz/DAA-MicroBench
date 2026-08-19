@@ -145,6 +145,7 @@ Use `python -m microbench.cli list-suites --json` to inspect pre-v1 acceptance m
 See [BASELINES.md](BASELINES.md) for canonical baseline roles, aliases, and limitations.
 For learned-policy bundles, use `python -m microbench.cli review-learned-bundle --bundle <bundle> --json` to generate a machine-readable summary of the safety, mission, compute, communication, observation, and v0-score dimensions used during manual review.
 Use `python -m microbench.cli learned-leaderboard --bundle <bundle-a> --bundle <bundle-b> --out runs_learned_leaderboard/learned_policy_leaderboard.json` to compare multiple learned-policy bundles without rerunning simulations; the JSON/CSV table combines planner CSV score fields with RL validation-matrix lane evidence.
+Use `python -m microbench.cli learned-diagnostics --bundle <bundle-a> --bundle <bundle-b> --out runs_learned_diagnostics/learned_policy_diagnostics.json` to add JSON/CSV/Markdown labels that explain whether a learned policy is unsafe, safe-but-slow, fast-but-close, balanced, or still needs training.
 
 For built-in baselines, use:
 

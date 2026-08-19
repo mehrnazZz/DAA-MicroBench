@@ -67,7 +67,7 @@ python -m microbench.cli learned-bc-evidence \
   --require-pass
 ```
 
-The evidence command trains the BC policy, generates a manifest overlay with training disclosure, packages the trained spec through `learned-submission-bundle`, packages `learned_tiny` and `learned_mlp` for side-by-side context, and writes a learned leaderboard JSON/CSV. Keep the output directory with any learned-policy claim because the leaderboard rows are derived from those bundles.
+The evidence command trains the BC policy, generates a manifest overlay with training disclosure, packages the trained spec through `learned-submission-bundle`, packages `learned_tiny` and `learned_mlp` for side-by-side context, and writes learned leaderboard plus diagnostics JSON/CSV/Markdown reports. Keep the output directory with any learned-policy claim because the leaderboard and diagnostic rows are derived from those bundles.
 
 ## Health Gates
 
@@ -204,9 +204,15 @@ python -m microbench.cli learned-leaderboard \
   --bundle runs_external_model_predict_bundle \
   --out runs_learned_leaderboard/learned_policy_leaderboard.json \
   --require-pass
+
+python -m microbench.cli learned-diagnostics \
+  --bundle runs_learned_bundle \
+  --bundle runs_external_model_predict_bundle \
+  --out runs_learned_diagnostics/learned_policy_diagnostics.json \
+  --require-pass
 ```
 
-The command writes JSON plus a sibling CSV and combines planner `summary.csv` score fields with RL validation-matrix lane evidence. Treat it as reviewer evidence; final learned-policy claims should still include the underlying bundle artifacts.
+The leaderboard command writes JSON plus a sibling CSV and combines planner `summary.csv` score fields with RL validation-matrix lane evidence. The diagnostics command writes JSON/CSV/Markdown labels such as `safe_but_slow`, `fast_but_close`, and `balanced`, including the weakest scenario/lane and next suggested action. Treat both as reviewer evidence; final learned-policy claims should still include the underlying bundle artifacts.
 
 ## Submission Manifest Checklist
 

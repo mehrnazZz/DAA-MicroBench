@@ -68,6 +68,7 @@ python -m microbench.cli learned-submission-bundle --out-dir runs_external_learn
 python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass
 python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --require-pass
 python -m microbench.cli learned-leaderboard --bundle runs_learned_bundle --bundle runs_external_learned_bundle --out runs_learned_leaderboard/learned_policy_leaderboard.json --require-pass
+python -m microbench.cli learned-diagnostics --bundle runs_learned_bundle --bundle runs_external_learned_bundle --out runs_learned_diagnostics/learned_policy_diagnostics.json --require-pass
 ```
 
 ## Known Public Alpha Limitations
@@ -98,13 +99,14 @@ python -m microbench.cli learned-leaderboard --bundle runs_learned_bundle --bund
 - `rl-freeze-check` publishes a machine-readable stable-v1 readiness checklist for the RL interface, but passing it does not make this public alpha a stable v1 release.
 - `tiny_learned` and `mlp_learned` are available as built-in RL smoke policies and map to the same frozen model families as the planner methods `learned_tiny` and `learned_mlp`.
 - `train-learned-bc` is the first built-in learned training workflow: it behavior-clones a transparent local DAA teacher from public RL validation-lane observations and writes a portable `mlp_json` policy spec. Treat it as reproducible learned-policy plumbing and a starter baseline, not as a certified or SOTA learned DAA controller.
-- `learned-bc-evidence` packages a trained BC policy through the learned-submission bundle path and compares it with `learned_tiny`/`learned_mlp` in a learned leaderboard. Capped runs are development evidence; uncapped official suite bundles remain required for stronger claims.
+- `learned-bc-evidence` packages a trained BC policy through the learned-submission bundle path and compares it with `learned_tiny`/`learned_mlp` in a learned leaderboard plus diagnostics report. Capped runs are development evidence; uncapped official suite bundles remain required for stronger claims.
 - `validate-learned-manifest` checks learned-policy disclosure drafts, dependency declarations, and optional artifact hashes before running the heavier learned bundle workflow.
 - Learned-submission JSON Schemas are packaged under `microbench/bundled_config/schemas/` and documented in `docs/LEARNED_SUBMISSION_SCHEMAS.md`; schema `0.1` is still public-alpha, and `learned-submission-schema-check` gates schema packaging, docs coverage, template validity, and overlay guidance.
 - `learned-submission-bundle` creates the standard learned-policy artifact folder, including `learned_submission_manifest.json`, RL contract/freeze/smoke/calibration reports, and official planner CSVs.
 - `validate-learned-bundle` reviews an existing learned-policy bundle without rerunning simulations and checks required artifacts, manifest schema/provenance/hash consistency, parseability, passing RL reports, planner acceptance, and nonempty planner CSVs.
 - `review-learned-bundle` summarizes an existing learned-policy bundle into manifest disclosure, safety, mission, compute, communication, observation, and v0-score fields for manual leaderboard review.
 - `learned-leaderboard` compares existing learned-policy bundles as JSON/CSV review tables without rerunning simulations; publish the underlying bundles with any learned-policy claim.
+- `learned-diagnostics` adds JSON/CSV/Markdown labels such as `safe_but_slow`, `fast_but_close`, and `balanced` from the same learned bundles, so reviewers can see why a policy scored the way it did.
 - Learned-policy submissions should include `learned_submission_bundle.json`, `learned_submission_manifest.json`, or equivalent `rl_contract.json`, `rl_freeze_check.json`, `rl_smoke.json`, `rl_calibration.json`, weight/version disclosures, and training scenario disclosure.
 - The benchmark models local planning and simplified dynamics; it is not a full flight stack, airspace model, PX4/ROS simulator, or certification tool.
 - Generated official suites are pre-v1 and may be adjusted as external users stress-test the benchmark.

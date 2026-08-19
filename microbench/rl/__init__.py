@@ -40,6 +40,11 @@ from microbench.rl.bc_training import (
 from microbench.rl.compliance import check_parallel_env_api
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import RL_FREEZE_CHECK_SCHEMA_VERSION, run_rl_freeze_check
+from microbench.rl.learned_diagnostics import (
+    LEARNED_POLICY_DIAGNOSTICS_SCHEMA_VERSION,
+    build_learned_policy_diagnostics,
+    write_learned_policy_diagnostics,
+)
 from microbench.rl.learned_leaderboard import (
     LEARNED_POLICY_LEADERBOARD_SCHEMA_VERSION,
     build_learned_policy_leaderboard,
@@ -118,6 +123,7 @@ __all__ = [
     "LEARNED_SUBMISSION_MANIFEST_VALIDATION_SCHEMA_VERSION",
     "LEARNED_SUBMISSION_SCHEMA_CHECK_VERSION",
     "LEARNED_POLICY_LEADERBOARD_SCHEMA_VERSION",
+    "LEARNED_POLICY_DIAGNOSTICS_SCHEMA_VERSION",
     "ModelPredictPolicyAdapter",
     "MlpLearnedPolicy",
     "OBSERVATION_LAYOUT",
@@ -145,6 +151,7 @@ __all__ = [
     "agent_name",
     "action_schema",
     "build_learned_policy_leaderboard",
+    "build_learned_policy_diagnostics",
     "build_behavior_cloned_policy_evidence",
     "check_parallel_env_api",
     "interface_contract",
@@ -179,6 +186,7 @@ __all__ = [
     "validate_learned_submission_manifest",
     "validate_with_schema_subset",
     "write_learned_policy_leaderboard",
+    "write_learned_policy_diagnostics",
     "single_agent_env",
     "tiny_learned_model_path",
     "train_behavior_cloned_policy",

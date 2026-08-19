@@ -219,6 +219,7 @@ python -m microbench.cli learned-submission-bundle --out-dir runs_external_learn
 python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass
 python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --require-pass
 python -m microbench.cli learned-leaderboard --bundle runs_learned_bundle --bundle runs_external_learned_bundle --out runs_learned_leaderboard/learned_policy_leaderboard.json --require-pass
+python -m microbench.cli learned-diagnostics --bundle runs_learned_bundle --bundle runs_external_learned_bundle --out runs_learned_diagnostics/learned_policy_diagnostics.json --require-pass
 ```
 
 Check the current result-schema fixture:

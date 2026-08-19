@@ -23,6 +23,7 @@ from microbench.rl.calibration import run_rl_policy_calibration
 from microbench.rl.bc_training import build_behavior_cloned_policy_evidence, train_behavior_cloned_policy
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import run_rl_freeze_check
+from microbench.rl.learned_diagnostics import write_learned_policy_diagnostics
 from microbench.rl.learned_leaderboard import write_learned_policy_leaderboard
 from microbench.rl.policies import POLICY_NAMES
 from microbench.rl.schema import interface_contract
@@ -1590,6 +1591,39 @@ def _learned_leaderboard(args) -> None:
         raise SystemExit(f"learned leaderboard failed bundles: {','.join(failed)}")
 
 
+def _learned_diagnostics(args) -> None:
+    report = write_learned_policy_diagnostics(
+        bundles=list(args.bundle),
+        out=args.out,
+        csv_out=args.csv_out,
+        markdown_out=args.markdown_out,
+    )
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        summary = report.get("summary", {})
+        print(
+            f"learned-diagnostics: {status} bundles={report['bundle_count']} "
+            f"balanced={summary.get('balanced_leader')} safety={summary.get('safety_leader')} "
+            f"mission={summary.get('mission_leader')}"
+        )
+        for row in report["rows"][:10]:
+            print(
+                "  "
+                f"rank={row.get('diagnostic_rank')} policy={row.get('policy')} "
+                f"label={row.get('diagnostic_label')} failure={row.get('primary_failure')}"
+            )
+        print(f"  diagnostics={report['diagnostics_path']}")
+        print(f"  csv={report['diagnostics_csv']}")
+        print(f"  markdown={report['diagnostics_markdown']}")
+
+    if args.require_pass and not report["ok"]:
+        failed = [row["bundle"] for row in report["rows"] if row.get("error")]
+        raise SystemExit(f"learned diagnostics failed bundles: {','.join(failed)}")
+
+
 def _golden_current_schema(args) -> None:
     if args.update and args.candidate:
         raise SystemExit("--update cannot be combined with --candidate")
@@ -2521,6 +2555,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_llb.add_argument("--json", action="store_true", help="Emit machine-readable leaderboard report")
     p_llb.add_argument("--require-pass", action="store_true", help="Fail if any bundle is not structurally reviewable")
 
+    p_ld = sub.add_parser("learned-diagnostics", help="Explain learned-policy bundle behavior beyond leaderboard rank")
+    p_ld.add_argument(
+        "--bundle",
+        action="append",
+        required=True,
+        help="Path to a bundle directory or learned_submission_bundle.json; repeat for multiple policies",
+    )
+    p_ld.add_argument("--out", required=True, help="Output JSON diagnostics path")
+    p_ld.add_argument("--csv-out", default=None, help="Optional CSV output path; defaults beside --out")
+    p_ld.add_argument("--markdown-out", default=None, help="Optional Markdown output path; defaults beside --out")
+    p_ld.add_argument("--json", action="store_true", help="Emit machine-readable diagnostics report")
+    p_ld.add_argument("--require-pass", action="store_true", help="Fail if any bundle cannot be diagnosed")
+
     p_golden = sub.add_parser("golden-current-schema", help="Check or regenerate the current result-schema fixture")
     p_golden.add_argument("--golden-dir", default="golden/current_schema", help="Path to checked-in fixture")
     p_golden.add_argument("--candidate", default=None, help="Compare an existing candidate directory instead of running")
@@ -2739,6 +2786,9 @@ def main() -> None:
         return
     if args.cmd == "learned-leaderboard":
         _learned_leaderboard(args)
+        return
+    if args.cmd == "learned-diagnostics":
+        _learned_diagnostics(args)
         return
     if args.cmd == "golden-current-schema":
         _golden_current_schema(args)

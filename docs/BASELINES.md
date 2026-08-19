@@ -834,7 +834,7 @@ python -m microbench.cli learned-bc-evidence \
   --require-pass
 ```
 
-This writes a trained BC bundle, `learned_tiny`/`learned_mlp` comparison bundles, and a learned-policy leaderboard JSON/CSV.
+This writes a trained BC bundle, `learned_tiny`/`learned_mlp` comparison bundles, a learned-policy leaderboard JSON/CSV, and a diagnostics JSON/CSV/Markdown report with labels such as `safe_but_slow`, `fast_but_close`, and `balanced`.
 
 ## Promotion Calibration
 

@@ -134,6 +134,13 @@ def test_behavior_cloned_evidence_builds_bundles_and_leaderboard(tmp_path: Path)
     assert report["bundles"]["bc"]["policy"] == "bc_mlp_learned"
     assert report["leaderboard"]["ok"] is True
     assert report["leaderboard"]["bundle_count"] == 3
+    assert report["diagnostics"]["ok"] is True
+    assert report["diagnostics"]["bundle_count"] == 3
+    assert {row["policy"] for row in report["diagnostics"]["rows"]} == {
+        "bc_mlp_learned",
+        "tiny_learned",
+        "mlp_learned",
+    }
     assert {row["policy"] for row in report["leaderboard"]["rows"]} == {
         "bc_mlp_learned",
         "tiny_learned",
@@ -191,3 +198,6 @@ def test_learned_bc_evidence_cli_smoke_without_fixtures(tmp_path: Path) -> None:
     assert report["leaderboard"]["bundle_count"] == 1
     assert (out_dir / "learned_bc_evidence.json").exists()
     assert (out_dir / "learned_policy_leaderboard.csv").exists()
+    assert (out_dir / "learned_policy_diagnostics.json").exists()
+    assert (out_dir / "learned_policy_diagnostics.csv").exists()
+    assert (out_dir / "learned_policy_diagnostics.md").exists()

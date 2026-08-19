@@ -408,9 +408,15 @@ python -m microbench.cli learned-leaderboard \
   --bundle runs_external_learned_bundle \
   --out runs_learned_leaderboard/learned_policy_leaderboard.json \
   --require-pass
+
+python -m microbench.cli learned-diagnostics \
+  --bundle runs_learned_bundle \
+  --bundle runs_external_learned_bundle \
+  --out runs_learned_diagnostics/learned_policy_diagnostics.json \
+  --require-pass
 ```
 
-This writes a JSON report and sibling CSV with one row per bundle, combining planner `summary.csv` score fields with RL validation-matrix lane evidence. It is a development review table; only rows marked `leaderboard_candidate` should be treated as candidate leaderboard evidence.
+The leaderboard writes a JSON report and sibling CSV with one row per bundle, combining planner `summary.csv` score fields with RL validation-matrix lane evidence. Diagnostics writes JSON/CSV/Markdown labels that explain the main behavior pattern and weakest scenario/lane. These are development review tables; only rows marked `leaderboard_candidate` should be treated as candidate leaderboard evidence.
 
 ## Compatibility Check
 

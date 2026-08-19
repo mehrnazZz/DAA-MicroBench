@@ -194,6 +194,9 @@ def _remove_known_evidence_outputs(out: Path) -> None:
         "bc_manifest_overlay.json",
         "learned_policy_leaderboard.json",
         "learned_policy_leaderboard.csv",
+        "learned_policy_diagnostics.json",
+        "learned_policy_diagnostics.csv",
+        "learned_policy_diagnostics.md",
         "learned_bc_evidence.json",
     ):
         path = out / name
@@ -508,6 +511,7 @@ def build_behavior_cloned_policy_evidence(
 ) -> dict[str, Any]:
     """Train, bundle, and compare a behavior-cloned learned policy."""
 
+    from microbench.rl.learned_diagnostics import write_learned_policy_diagnostics
     from microbench.rl.learned_leaderboard import write_learned_policy_leaderboard
     from microbench.rl.submission_bundle import run_learned_policy_submission_bundle
 
@@ -573,6 +577,10 @@ def build_behavior_cloned_policy_evidence(
         bundles=bundle_paths,
         out=out / "learned_policy_leaderboard.json",
     )
+    diagnostics = write_learned_policy_diagnostics(
+        bundles=bundle_paths,
+        out=out / "learned_policy_diagnostics.json",
+    )
 
     checks = [
         {
@@ -591,6 +599,14 @@ def build_behavior_cloned_policy_evidence(
             "details": {
                 "bundle_count": leaderboard.get("bundle_count"),
                 "leaderboard_path": leaderboard.get("leaderboard_path"),
+            },
+        },
+        {
+            "name": "diagnostics_ok",
+            "ok": bool(diagnostics.get("ok")),
+            "details": {
+                "bundle_count": diagnostics.get("bundle_count"),
+                "diagnostics_path": diagnostics.get("diagnostics_path"),
             },
         },
     ]
@@ -630,6 +646,7 @@ def build_behavior_cloned_policy_evidence(
             for label, bundle in bundles.items()
         },
         "leaderboard": leaderboard,
+        "diagnostics": diagnostics,
         "checks": checks,
     }
     _write_json(evidence_path, report)
