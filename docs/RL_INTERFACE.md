@@ -136,7 +136,7 @@ python -m microbench.cli rl-smoke \
   --require-pass
 ```
 
-The command materializes `official_smoke_generated`, runs one 2D and one 3D scenario through the RL wrapper, writes `rl_smoke.json`, and writes per-episode rows to `rl_smoke_episodes.csv`. Built-in smoke policies are `zero`, `random`, `goal_direction`, and `tiny_learned`.
+The command materializes `official_smoke_generated`, runs one 2D and one 3D scenario through the RL wrapper, writes `rl_smoke.json`, and writes per-episode rows to `rl_smoke_episodes.csv`. Built-in smoke policies are `zero`, `random`, `goal_direction`, `tiny_learned`, and `mlp_learned`.
 
 Run compact 3D/degraded calibration before submitting learned-policy results:
 
@@ -302,16 +302,21 @@ python -m microbench.cli validate-learned-manifest \
 
 See [LEARNED_POLICY_ADOPTION.md](LEARNED_POLICY_ADOPTION.md) for the full exported-policy-to-bundle workflow and submission manifest checklist.
 
-DAA Microbench also ships a tiny frozen learned-policy fixture:
+DAA Microbench also ships frozen learned-policy fixtures:
 
 ```bash
 python -m microbench.cli rl-smoke \
   --out-dir runs_rl_tiny_learned \
   --policy tiny_learned \
   --require-pass
+
+python -m microbench.cli rl-smoke \
+  --out-dir runs_rl_mlp_learned \
+  --policy mlp_learned \
+  --require-pass
 ```
 
-The matching official planner method is `learned_tiny`, which produces normal benchmark `results.csv` and `summary.csv` rows. Its deterministic synthetic training recipe is in `examples/rl_train_tiny_linear_policy.py`, and the checked-in weight artifact is `microbench/bundled_config/learned_baselines/tiny_linear_policy.json`.
+The matching official planner methods are `learned_tiny` and `learned_mlp`, which produce normal benchmark `results.csv` and `summary.csv` rows. Their deterministic synthetic training recipes are in `examples/rl_train_tiny_linear_policy.py` and `examples/rl_train_mlp_policy.py`; checked-in weight artifacts live under `microbench/bundled_config/learned_baselines/`.
 
 ## Learned Submission Bundle
 

@@ -9,15 +9,33 @@ from microbench.learned.tiny_linear import (
     planner_input_to_tiny_features,
     tiny_learned_model_path,
 )
+from microbench.learned.mlp_policy import (
+    FrozenMlpPolicyModel,
+    MLP_LEARNED_FEATURE_NAMES,
+    MLP_LEARNED_MODEL_ID,
+    MLP_LEARNED_POLICY_NAME,
+    load_mlp_learned_spec,
+    mlp_learned_model_path,
+    observation_to_mlp_features,
+    planner_input_to_mlp_features,
+)
 
 __all__ = [
     "LEARNED_BASELINE_SCHEMA_VERSION",
+    "FrozenMlpPolicyModel",
+    "MLP_LEARNED_FEATURE_NAMES",
+    "MLP_LEARNED_MODEL_ID",
+    "MLP_LEARNED_POLICY_NAME",
     "TINY_LEARNED_FEATURE_NAMES",
     "TINY_LEARNED_MODEL_ID",
     "TINY_LEARNED_POLICY_NAME",
     "TinyLinearPolicyModel",
+    "load_mlp_learned_spec",
     "load_tiny_learned_spec",
+    "mlp_learned_model_path",
+    "observation_to_mlp_features",
     "observation_to_tiny_features",
+    "planner_input_to_mlp_features",
     "planner_input_to_tiny_features",
     "tiny_learned_model_path",
 ]

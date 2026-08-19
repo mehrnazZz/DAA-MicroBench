@@ -5,7 +5,12 @@ from typing import Any, Protocol
 
 import numpy as np
 
-from microbench.learned import TINY_LEARNED_POLICY_NAME, TinyLinearPolicyModel
+from microbench.learned import (
+    MLP_LEARNED_POLICY_NAME,
+    TINY_LEARNED_POLICY_NAME,
+    FrozenMlpPolicyModel,
+    TinyLinearPolicyModel,
+)
 from microbench.rl.schema import OBS_GOAL_DIR_SLICE
 
 
@@ -85,7 +90,27 @@ class TinyLearnedPolicy:
         return np.asarray(action, dtype=np.float32)
 
 
-POLICY_NAMES = ("zero", "random", "goal_direction", TINY_LEARNED_POLICY_NAME)
+@dataclass
+class MlpLearnedPolicy:
+    """Frozen MLP learned-policy fixture for nonlinear learned baseline tests."""
+
+    model: FrozenMlpPolicyModel | None = None
+
+    def __post_init__(self) -> None:
+        if self.model is None:
+            self.model = FrozenMlpPolicyModel.from_path()
+
+    def reset(self, seed: int) -> None:
+        _ = seed
+
+    def action(self, agent: str, observation: np.ndarray, action_space: Any, info: dict[str, Any]) -> np.ndarray:
+        _ = agent, action_space, info
+        assert self.model is not None
+        action, _state = self.model.predict(observation, deterministic=True)
+        return np.asarray(action, dtype=np.float32)
+
+
+POLICY_NAMES = ("zero", "random", "goal_direction", TINY_LEARNED_POLICY_NAME, MLP_LEARNED_POLICY_NAME)
 
 
 def make_policy(name: str, *, seed: int = 0) -> RlPolicy:
@@ -98,6 +123,8 @@ def make_policy(name: str, *, seed: int = 0) -> RlPolicy:
         policy = GoalDirectionPolicy()
     elif key == TINY_LEARNED_POLICY_NAME:
         policy = TinyLearnedPolicy()
+    elif key == MLP_LEARNED_POLICY_NAME:
+        policy = MlpLearnedPolicy()
     else:
         raise ValueError(f"Unknown RL policy {name!r}; expected one of {','.join(POLICY_NAMES)}")
     policy.reset(int(seed))

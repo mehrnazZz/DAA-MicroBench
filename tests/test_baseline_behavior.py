@@ -65,12 +65,13 @@ def test_baseline_behavior_smoke_output_contracts(tmp_path: Path) -> None:
             "velocity_obstacle",
             "reciprocal_velocity_obstacle",
             "learned_tiny",
+            "learned_mlp",
             "intent_dummy",
         ),
     )
 
     assert report["ok"] is True
-    assert report["run_count"] == 24
+    assert report["run_count"] == 26
     assert report["contract_only_methods"] == ["bvc_tube_dmpc", "dynamic_tube_dmpc", "rmader"]
     assert _check(report, "cbf_qp_debug_contract")["ok"] is True
     assert _check(report, "mpc_local_debug_contract")["ok"] is True
@@ -86,6 +87,7 @@ def test_baseline_behavior_smoke_output_contracts(tmp_path: Path) -> None:
     assert _check(report, "velocity_obstacle_debug_contract")["ok"] is True
     assert _check(report, "reciprocal_velocity_obstacle_debug_contract")["ok"] is True
     assert _check(report, "learned_tiny_model_contract")["ok"] is True
+    assert _check(report, "learned_mlp_model_contract")["ok"] is True
     assert _check(report, "intent_dummy_intent_contract")["ok"] is True
 
 

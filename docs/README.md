@@ -208,6 +208,7 @@ python -m microbench.cli rl-smoke --out-dir runs_external_rl_smoke --policy-spec
 python -m microbench.cli rl-smoke --out-dir runs_external_model_predict_smoke --policy-spec examples/external_policy_model_predict_spec.json --max-steps 3 --require-pass
 python -m microbench.cli run --scenario config/scenarios/stacked_swap_3d.yaml --method learned_policy_spec --policy-spec examples/external_policy_spec.json --n 4 --seed 0 --comm ideal_50hz --out-dir runs_external_policy_planner
 python -m microbench.cli rl-smoke --out-dir runs_rl_tiny_learned --policy tiny_learned --require-pass
+python -m microbench.cli rl-smoke --out-dir runs_rl_mlp_learned --policy mlp_learned --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-contract --json
 python -m microbench.cli rl-freeze-check --require-pass --json
@@ -245,10 +246,11 @@ python -m microbench.cli rl-smoke --out-dir runs_external_model_predict_smoke --
 python -m microbench.cli run --scenario config/scenarios/stacked_swap_3d.yaml --method learned_policy_spec --policy-spec examples/external_policy_spec.json --n 4 --seed 0 --comm ideal_50hz --out-dir runs_external_policy_planner
 ```
 
-Regenerate a compatible tiny learned-policy weight artifact:
+Regenerate compatible frozen learned-policy weight artifacts:
 
 ```bash
 python examples/rl_train_tiny_linear_policy.py --out /tmp/tiny_linear_policy.json
+python examples/rl_train_mlp_policy.py --out /tmp/mlp_policy.json
 ```
 
 Build a learned-policy submission bundle:

@@ -20,6 +20,7 @@ The dependency-free examples are:
 - `examples/exported_policy.py`: inference wrapper with `predict(...)`, `make_model(...)`, and `callable_policy(...)`.
 - `examples/external_policy_model_predict_spec.json`: `model_predict` spec using a Python factory and `factory_kwargs`.
 - `examples/external_policy_callable_spec.json`: `callable` spec using `callable_policy(observation, info)`.
+- `examples/rl_train_tiny_linear_policy.py` and `examples/rl_train_mlp_policy.py`: deterministic recipes for the bundled learned-policy fixtures.
 - `examples/learned_submission_manifest_template.json`: full reviewer-ready manifest template.
 - `examples/learned_submission_manifest_overlay_example.json`: compact disclosure overlay for `--submission-manifest`.
 

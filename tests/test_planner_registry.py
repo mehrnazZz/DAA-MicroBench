@@ -15,6 +15,7 @@ from microbench.planners.dmpc_best_response import DistributedMpcBestResponsePla
 from microbench.planners.dynamic_tube_dmpc import DynamicTubeDmpcPlanner
 from microbench.planners.ego_swarm import EgoSwarmPlanner
 from microbench.planners.ego_swarm_opt import EgoSwarmOptimizingPlanner
+from microbench.planners.learned_mlp import LearnedMlpPlanner
 from microbench.planners.learned_tiny import LearnedTinyPlanner
 from microbench.planners.learned_policy_spec import LearnedPolicySpecPlanner
 from microbench.planners.mpc_local import MpcLocalPlanner
@@ -44,6 +45,7 @@ def test_orca_heuristic_is_canonical_and_orca_expert_is_alias() -> None:
     assert "velocity_obstacle" in list_methods()
     assert "reciprocal_velocity_obstacle" in list_methods()
     assert "learned_tiny" in list_methods()
+    assert "learned_mlp" in list_methods()
     assert "learned_policy_spec" in list_methods()
     assert "orca_expert" not in list_methods()
     assert "orca_expert" in list_methods(include_aliases=True)
@@ -63,6 +65,7 @@ def test_orca_heuristic_is_canonical_and_orca_expert_is_alias() -> None:
     assert isinstance(make_planner("velocity_obstacle"), VelocityObstaclePlanner)
     assert isinstance(make_planner("reciprocal_velocity_obstacle"), ReciprocalVelocityObstaclePlanner)
     assert isinstance(make_planner("learned_tiny"), LearnedTinyPlanner)
+    assert isinstance(make_planner("learned_mlp"), LearnedMlpPlanner)
     assert isinstance(make_planner("learned_policy_spec", policy_spec="examples/external_policy_spec.json"), LearnedPolicySpecPlanner)
     assert isinstance(make_planner("orca_expert"), OrcaExpertPlanner)
 
@@ -143,6 +146,10 @@ def test_planner_metadata_includes_public_baseline_contract() -> None:
     assert by_method["learned_tiny"]["planner_type"] == "learned_policy"
     assert by_method["learned_tiny"]["learned"] is True
     assert by_method["learned_tiny"]["uses_v2v"] is True
+    assert by_method["learned_mlp"]["role"] == "experimental_baseline"
+    assert by_method["learned_mlp"]["planner_type"] == "learned_policy"
+    assert by_method["learned_mlp"]["learned"] is True
+    assert by_method["learned_mlp"]["uses_v2v"] is True
     assert by_method["learned_policy_spec"]["role"] == "submission_bridge"
     assert by_method["learned_policy_spec"]["planner_type"] == "learned_policy"
     assert by_method["learned_policy_spec"]["learned"] is True
@@ -258,6 +265,7 @@ def test_list_methods_cli_can_emit_metadata_json() -> None:
     assert by_method["velocity_obstacle"]["status"] == "experimental"
     assert by_method["reciprocal_velocity_obstacle"]["status"] == "experimental"
     assert by_method["learned_tiny"]["learned"] is True
+    assert by_method["learned_mlp"]["learned"] is True
     assert by_method["learned_policy_spec"]["role"] == "submission_bridge"
     assert by_method["learned_policy_spec"]["fidelity"] == "submission_bridge"
     assert by_method["dynamic_tube_dmpc"]["fidelity"] == "faithful_reimplementation"

@@ -34,6 +34,7 @@ BASELINE_BEHAVIOR_METHODS = (
     "velocity_obstacle",
     "reciprocal_velocity_obstacle",
     "learned_tiny",
+    "learned_mlp",
     "intent_dummy",
     "priority_yield",
     "negotiation_yield",
@@ -608,6 +609,32 @@ def _planner_output_contracts(methods: list[str]) -> list[dict[str, Any]]:
             )
         except Exception as exc:
             checks.append(_check("learned_tiny_model_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
+
+    if "learned_mlp" in methods:
+        try:
+            planner = make_planner("learned_mlp")
+            planner.reset(0)
+            out = planner.compute_cmd(_planner_input(neighbors=[_neighbor()], planar=False))
+            info = getattr(out, "debug_info", {})
+            checks.append(
+                _check(
+                    "learned_mlp_model_contract",
+                    bool(info.get("learned_model"))
+                    and str(info.get("learned_model_id", ""))
+                    and info.get("learned_policy_architecture") == "mlp_tanh"
+                    and int(info.get("learned_policy_hidden_dim", 0)) > 0
+                    and float(info.get("learned_policy_threat_scalar", 0.0)) > 0.0,
+                    {
+                        "learned_model_id": info.get("learned_model_id"),
+                        "learned_policy_architecture": info.get("learned_policy_architecture"),
+                        "learned_policy_hidden_dim": info.get("learned_policy_hidden_dim"),
+                        "learned_policy_action_norm": info.get("learned_policy_action_norm"),
+                        "learned_policy_threat_scalar": info.get("learned_policy_threat_scalar"),
+                    },
+                )
+            )
+        except Exception as exc:
+            checks.append(_check("learned_mlp_model_contract", False, {"error": f"{type(exc).__name__}: {exc}"}))
 
     return checks
 

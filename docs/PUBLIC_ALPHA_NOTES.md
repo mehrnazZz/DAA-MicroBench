@@ -55,6 +55,7 @@ python -m microbench.cli rl-smoke --out-dir runs_external_rl_smoke --policy-spec
 python -m microbench.cli rl-smoke --out-dir runs_external_model_predict_smoke --policy-spec examples/external_policy_model_predict_spec.json --max-steps 3 --require-pass
 python -m microbench.cli run --scenario config/scenarios/stacked_swap_3d.yaml --method learned_policy_spec --policy-spec examples/external_policy_spec.json --n 4 --seed 0 --comm ideal_50hz --out-dir runs_external_policy_planner
 python -m microbench.cli rl-smoke --out-dir runs_rl_tiny_learned --policy tiny_learned --require-pass
+python -m microbench.cli rl-smoke --out-dir runs_rl_mlp_learned --policy mlp_learned --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-contract --json
 python -m microbench.cli rl-freeze-check --require-pass --json
@@ -72,7 +73,7 @@ python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --re
 - `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, `reciprocal_velocity_obstacle`, and `negotiation_yield` are part of the growing advanced baseline library, but still have stable-v1 promotion blockers; do not treat them as stable-v1 leaderboard anchors yet.
 - `centralized_oracle` and `centralized_mpc_oracle` use privileged global truth inside the episode engine and should only be read as upper-bound comparison rows, never as deployable DAA planners.
 - Serious baseline claims should use `baseline-leaderboard --suites all --require-pass --require-complete` and publish the per-suite reports, not only smoke or promotion-calibration rows. Use `--resume`, `--max-wall-time-s`, and `--run-timeout-s` for development checkpoints, but do not present partial or timed-out reports as final leaderboard evidence.
-- `learned_tiny` is a frozen tiny learned-model fixture for adapter, disclosure, and CSV-plumbing tests; it is not a competitive learned DAA baseline.
+- `learned_tiny` and `learned_mlp` are frozen synthetic learned-model fixtures for adapter, disclosure, and CSV-plumbing tests; they are not competitive learned DAA baselines.
 - `cbf_qp` and `mpc_local` also pass the longer stable-metadata prep lanes in `baseline-review`, but they remain experimental until the reference-role decision, CBF validation, and MPC compute/stress characterization are stronger.
 - `mpc_nonlinear` is the clean-room optimizer-grade MPC baseline for comparison with `ego_swarm_opt`; it is still experimental and not a full quadrotor attitude/rotor NMPC stack.
 - `dmpc_best_response` is a clean-room asynchronous distributed-MPC best-response baseline that uses neighbor intent trajectories as coupled predictions; it is not a centralized joint MPC or ADMM/consensus solver.
@@ -92,7 +93,7 @@ python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --re
 - `rl-calibration` adds compact 3D/degraded wrapper exposure for learned-policy submissions, but it is not a leaderboard score.
 - `rl-contract` publishes schema-versioned action, observation, and reward metadata for adapter authors, but those versions are still pre-v1.
 - `rl-freeze-check` publishes a machine-readable stable-v1 readiness checklist for the RL interface, but passing it does not make this public alpha a stable v1 release.
-- `tiny_learned` is available as a built-in RL smoke policy and maps to the same frozen model family as the planner method `learned_tiny`.
+- `tiny_learned` and `mlp_learned` are available as built-in RL smoke policies and map to the same frozen model families as the planner methods `learned_tiny` and `learned_mlp`.
 - `validate-learned-manifest` checks learned-policy disclosure drafts, dependency declarations, and optional artifact hashes before running the heavier learned bundle workflow.
 - Learned-submission JSON Schemas are packaged under `microbench/bundled_config/schemas/` and documented in `docs/LEARNED_SUBMISSION_SCHEMAS.md`; schema `0.1` is still public-alpha, and `learned-submission-schema-check` gates schema packaging, docs coverage, template validity, and overlay guidance.
 - `learned-submission-bundle` creates the standard learned-policy artifact folder, including `learned_submission_manifest.json`, RL contract/freeze/smoke/calibration reports, and official planner CSVs.

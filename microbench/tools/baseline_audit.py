@@ -32,6 +32,7 @@ EXPERIMENTAL_METHODS = (
     "velocity_obstacle",
     "reciprocal_velocity_obstacle",
     "learned_tiny",
+    "learned_mlp",
 )
 
 REFERENCE_ROLES = {"reference_baseline", "agentic_reference_baseline"}

@@ -132,7 +132,7 @@ Results should be grouped, not blended:
 - `official_agentic_stress`: generated heterogeneous-priority and multi-intruder noncooperative 3D stress suite
 - `official_experimental_baselines`: generated calibration lane for runnable experimental baselines, not a ranking category
 - nondeployable upper bounds such as `centralized_oracle` and `centralized_mpc_oracle`: useful for quantifying the cost of decentralization and limited sensing, but not valid local-policy leaderboard competitors
-- learned fixtures such as `learned_tiny`: useful for submission plumbing and adapter tests, not ranking anchors unless explicitly promoted later
+- learned fixtures such as `learned_tiny` and `learned_mlp`: useful for submission plumbing and adapter tests, not ranking anchors unless explicitly promoted later
 - `primary`: official planar suite
 - `three_d`: hand-written 3D development suite
 - `perception_stress`: partial observation and fused-observation suite

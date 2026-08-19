@@ -40,6 +40,7 @@ python -m microbench.cli baseline-audit --json
 | `velocity_obstacle` | `inspired_clean_room` | no | Clean-room velocity-obstacle-family sampler adapted to DAA Microbench tracks and obstacles. |
 | `reciprocal_velocity_obstacle` | `inspired_clean_room` | no | Clean-room reciprocal/HRVO-style sampler adapted to degraded observation metadata. |
 | `learned_tiny` | `benchmark_utility` | no | Frozen synthetic learned-policy fixture for packaging and submission plumbing. |
+| `learned_mlp` | `benchmark_utility` | no | Frozen synthetic nonlinear learned-policy fixture for adapter, bundle, and submission plumbing. |
 | `learned_policy_spec` | `submission_bridge` | no | Bridge for trusted external learned-policy specs using the DAA RL observation/action contract. |
 | `priority_yield` | `benchmark_utility` | no | Deterministic agentic right-of-way baseline for priority/message scenarios. |
 | `negotiation_yield` | `benchmark_utility` | no | Structured proposal/ACK agentic baseline for decentralized communication tests. |

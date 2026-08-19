@@ -43,6 +43,7 @@ SERIOUS_BASELINE_METHODS = (
     "priority_yield",
     "negotiation_yield",
     "learned_tiny",
+    "learned_mlp",
 )
 
 

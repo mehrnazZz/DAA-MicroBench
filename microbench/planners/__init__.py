@@ -17,6 +17,7 @@ from microbench.planners.ego_swarm import EgoSwarmPlanner
 from microbench.planners.ego_swarm_opt import EgoSwarmOptimizingPlanner
 from microbench.planners.intent_dummy import IntentDummyPlanner
 from microbench.planners.learned_tiny import LearnedTinyPlanner
+from microbench.planners.learned_mlp import LearnedMlpPlanner
 from microbench.planners.mpc_local import MpcLocalPlanner
 from microbench.planners.mpc_nonlinear import NonlinearMpcPlanner
 from microbench.planners.negotiation_yield import NegotiationYieldPlanner
@@ -201,6 +202,7 @@ _FACTORIES: dict[str, Callable[[], ILocalPlanner]] = {
     "template": TemplatePlanner,
     "intent_dummy": IntentDummyPlanner,
     "learned_tiny": LearnedTinyPlanner,
+    "learned_mlp": LearnedMlpPlanner,
     "priority_yield": PriorityYieldPlanner,
     "negotiation_yield": NegotiationYieldPlanner,
 }
@@ -684,6 +686,29 @@ _METADATA: dict[str, PlannerMetadata] = {
         limitations=(
             "Tiny synthetic behavior-cloning fixture, not a competitive or certified DAA controller.",
             "Included to exercise learned-model packaging, disclosure, and benchmark-result plumbing.",
+            "Uses local tracks supplied by PlannerInput rather than raw sensor processing.",
+        ),
+    ),
+    "learned_mlp": PlannerMetadata(
+        method="learned_mlp",
+        display_name="Frozen MLP learned-policy baseline",
+        planner_type="learned_policy",
+        role="experimental_baseline",
+        status="experimental",
+        dimensions=("2d", "3d"),
+        observation_sources=("ego_state", "goal", "local_neighbors", "v2v", "sensor", "fused"),
+        uses_v2v=True,
+        uses_local_sensing=True,
+        learned=True,
+        fidelity="benchmark_utility",
+        provenance="Built-in frozen synthetic learned-policy MLP fixture for learned baseline and submission workflow tests.",
+        description=(
+            "Frozen two-layer tanh MLP learned-policy fixture loaded from a versioned JSON weight artifact. "
+            "It maps the public local learned-policy feature contract to normalized velocity commands."
+        ),
+        limitations=(
+            "Synthetic behavior-cloning fixture, not a competitive or certified DAA controller.",
+            "Included to exercise nonlinear learned-model packaging, disclosure, and benchmark-result plumbing.",
             "Uses local tracks supplied by PlannerInput rather than raw sensor processing.",
         ),
     ),

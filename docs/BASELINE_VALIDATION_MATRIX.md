@@ -21,7 +21,7 @@ Run a compact development slice:
 ```bash
 python -m microbench.cli baseline-validation-matrix \
   --out-dir runs_baseline_validation_matrix_dev \
-  --methods orca_heuristic,mpc_local,learned_tiny \
+  --methods orca_heuristic,mpc_local,learned_tiny,learned_mlp \
   --lanes head_on,communication_delay \
   --max-runs 4 \
   --require-pass

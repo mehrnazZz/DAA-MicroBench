@@ -23,7 +23,7 @@ python -m microbench.cli validate-external-reference --manifest examples/externa
 The public-alpha baseline gate is intentionally stricter than "the code imports":
 
 - required public-alpha reference baselines: `orca_heuristic`, `orca_with_staleness`, `priority_yield`, `negotiation_yield`
-- experimental but runnable baselines: `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, `centralized_oracle`, `centralized_mpc_oracle`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, `reciprocal_velocity_obstacle`, `learned_tiny`
+- experimental but runnable baselines: `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, `centralized_oracle`, `centralized_mpc_oracle`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `velocity_obstacle`, `reciprocal_velocity_obstacle`, `learned_tiny`, `learned_mlp`
 - illustrative or template methods: `baseline_goal`, `intent_dummy`, `template`
 
 Run `baseline-audit --require-public-alpha-ready`, `baseline-smoke --require-pass`, `baseline-promotion --require-calibrated`, and the per-family `baseline-validation-matrix` before inviting external baseline comparisons. Stable v1 still requires promotion work; `baseline-audit --require-stable-v1-ready` and `baseline-promotion --require-stable-v1-ready` are expected to fail while experimental baselines remain experimental.
@@ -51,6 +51,7 @@ Every baseline also carries machine-readable fidelity/provenance metadata. See [
 | `velocity_obstacle` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Deterministic finite-horizon velocity-obstacle cone sampler with candidate-risk diagnostics. |
 | `reciprocal_velocity_obstacle` | experimental baseline | local neighbor tracks, V2V/sensor/fused observations, obstacles | 2D, 3D | Hybrid reciprocal/HRVO-style cone sampler with responsibility and apex-shift diagnostics. |
 | `learned_tiny` | experimental learned baseline | frozen JSON weights, goal, local neighbor tracks, V2V/sensor/fused observations | 2D, 3D | Tiny learned-model fixture for packaging, disclosure, adapter, and benchmark-result plumbing. |
+| `learned_mlp` | experimental learned baseline | frozen JSON MLP weights, goal, local neighbor tracks, V2V/sensor/fused observations | 2D, 3D | Nonlinear learned-model fixture for policy-interface, disclosure, adapter, and benchmark-result plumbing. |
 | `learned_policy_spec` | learned submission bridge | trusted JSON/YAML policy spec, RL observation/action contract, local neighbor tracks, V2V/sensor/fused observations | 2D, 3D | Externally configured bridge for evaluating learned policies as standard planner CSV rows; not a reference baseline. |
 | `priority_yield` | agentic reference baseline | local tracks, priority, agent messages | 2D, 3D | Simple decentralized right-of-way behavior. |
 | `negotiation_yield` | pre-v1 agentic reference | local tracks, proposal/ACK messages, priority, local separation | 2D, 3D | Structured negotiation plumbing and decentralized agentic comparison. |
@@ -87,6 +88,7 @@ Experimental baselines are runnable but not leaderboard anchors yet:
 - `velocity_obstacle`
 - `reciprocal_velocity_obstacle`
 - `learned_tiny`
+- `learned_mlp`
 
 Illustrative baselines are useful for sanity checks and tutorials but should not be treated as serious DAA competitors:
 
@@ -114,7 +116,7 @@ python -m microbench.cli baseline-smoke \
   --require-pass
 ```
 
-This runs every non-template built-in baseline except contract-only heavy optimizer probes on one planar and one 3D generated smoke scenario, checks finite key metrics, planner errors, public-alpha guardrails, 2D/3D coverage, agent-message signals for `priority_yield`, proposal/ACK signals for `negotiation_yield`, privileged joint-path signals for `centralized_oracle` and `centralized_mpc_oracle`, and public debug/intent output contracts for `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `learned_tiny`, and `intent_dummy`. `bvc_tube_dmpc`, `dynamic_tube_dmpc`, and `rmader` are contract-only in this smoke gate because per-tick hard-tube, condensed-QP, and MINVO/hyperplane solves belong in optimizer evidence and leaderboard runs. Experimental `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, and `ego_swarm_opt` soft timeout/fallback counts are reported but do not block public-alpha smoke by themselves; any such counts still block stable-v1 promotion.
+This runs every non-template built-in baseline except contract-only heavy optimizer probes on one planar and one 3D generated smoke scenario, checks finite key metrics, planner errors, public-alpha guardrails, 2D/3D coverage, agent-message signals for `priority_yield`, proposal/ACK signals for `negotiation_yield`, privileged joint-path signals for `centralized_oracle` and `centralized_mpc_oracle`, and public debug/intent output contracts for `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, `rmader`, `ego_swarm`, `ego_swarm_opt`, `learned_tiny`, `learned_mlp`, and `intent_dummy`. `bvc_tube_dmpc`, `dynamic_tube_dmpc`, and `rmader` are contract-only in this smoke gate because per-tick hard-tube, condensed-QP, and MINVO/hyperplane solves belong in optimizer evidence and leaderboard runs. Experimental `cbf_qp`, `mpc_local`, `mpc_nonlinear`, `dmpc_best_response`, `bvc_tube_dmpc`, `dynamic_tube_dmpc`, and `ego_swarm_opt` soft timeout/fallback counts are reported but do not block public-alpha smoke by themselves; any such counts still block stable-v1 promotion.
 
 Experimental promotion calibration:
 
@@ -202,6 +204,18 @@ python -m microbench.cli run \
   --seed 0 \
   --comm ideal_50hz \
   --out-dir runs_learned_tiny_smoke
+```
+
+MLP learned-model baseline smoke:
+
+```bash
+python -m microbench.cli run \
+  --scenario config/scenarios/stacked_swap_3d.yaml \
+  --method learned_mlp \
+  --n 4 \
+  --seed 0 \
+  --comm ideal_50hz \
+  --out-dir runs_learned_mlp_smoke
 ```
 
 Experimental baseline calibration:
@@ -756,6 +770,31 @@ python -m microbench.cli rl-smoke \
   --require-pass
 ```
 
+The deterministic synthetic training recipe is in `examples/rl_train_tiny_linear_policy.py`. This baseline is included so learned-model submissions have a minimal tested reference path for weight artifacts, disclosure, adapters, and official CSV generation. It should not be treated as a competitive or certified DAA controller.
+
+## MLP Learned Baseline
+
+`learned_mlp` is a stronger frozen learned-policy fixture than `learned_tiny`. It loads `microbench/bundled_config/learned_baselines/mlp_policy.json`, maps the same public local learned-policy features to a normalized `(3,)` action through a two-layer tanh MLP, and scales that action into the planner velocity-command contract.
+
+Additional debug fields:
+
+- `learned_policy_architecture`
+- `learned_policy_hidden_dim`
+- `learned_policy_action_norm`
+- `learned_policy_threat_scalar`
+- `learned_policy_neighbor_count_frac`
+
+The matching RL policy name is `mlp_learned`:
+
+```bash
+python -m microbench.cli rl-smoke \
+  --out-dir runs_rl_mlp_learned \
+  --policy mlp_learned \
+  --require-pass
+```
+
+The deterministic synthetic training recipe is in `examples/rl_train_mlp_policy.py`. This baseline is useful for nonlinear learned-policy adapter and submission-bundle testing, but it is still a benchmark fixture rather than a competitive learned DAA controller.
+
 ## External Learned-Policy Bridge
 
 `learned_policy_spec` loads a trusted external policy spec and evaluates it as a normal local planner. It uses the same observation/action contract as the RL wrappers, so a policy that passes `rl-smoke` can also produce benchmark `results.csv` and `summary.csv` rows:
@@ -772,8 +811,6 @@ python -m microbench.cli run \
 ```
 
 Use this method for learned-policy submissions that should be reviewed as planner sweeps. It requires `--policy-spec` and is intentionally excluded from reference-baseline status.
-
-The deterministic synthetic training recipe is in `examples/rl_train_tiny_linear_policy.py`. This baseline is included so learned-model submissions have a tested reference path for weight artifacts, disclosure, adapters, and official CSV generation. It should not be treated as a competitive or certified DAA controller.
 
 ## Promotion Calibration
 
