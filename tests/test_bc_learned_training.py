@@ -40,12 +40,13 @@ def test_behavior_cloned_training_writes_portable_policy_spec(tmp_path: Path) ->
 
     assert report["ok"] is True
     assert report["sample_count"] == 8
-    assert report["teacher_policy"] == "local_avoidance_teacher_v0"
+    assert report["teacher_policy"] == "local_lateral_avoidance_teacher_v0"
     assert report["public_observations_only"] is True
     assert report["validation_matrix"]["ok"] is True
 
     model_payload = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
     assert model_payload["model_id"] == MLP_LEARNED_MODEL_ID
+    assert model_payload["postprocess"]["goal_forward_floor"] is True
     assert model_payload["training"]["source"] == "DAA Microbench RL validation-matrix rollouts"
     assert model_payload["training"]["privileged_global_state"] is False
 
@@ -143,7 +144,7 @@ def test_behavior_cloned_evidence_builds_bundles_and_leaderboard(tmp_path: Path)
     assert (bc_bundle / "policy_spec.json").exists()
     assert (bc_bundle / "policy_artifacts" / "bc_mlp_policy.json").exists()
     manifest = json.loads((bc_bundle / "learned_submission_manifest.json").read_text(encoding="utf-8"))
-    assert manifest["training_disclosure"]["teacher_policy"] == "local_avoidance_teacher_v0"
+    assert manifest["training_disclosure"]["teacher_policy"] == "local_lateral_avoidance_teacher_v0"
     assert manifest["training_disclosure"]["external_data"] == "none"
     assert manifest["review_notes"]["privileged_information"] == "none"
 

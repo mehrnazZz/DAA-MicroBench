@@ -337,7 +337,7 @@ The trainer rolls out a transparent local DAA teacher over the public RL observa
 - `policy_spec.json`: portable `mlp_json` policy spec for `rl-smoke`, `rl-validation-matrix`, `learned_policy_spec`, and learned-submission bundles
 - `bc_training_report.json`: sample counts, lane/seed provenance, fit error, and optional validation-matrix evidence
 
-This is the first built-in learned training path and is meant to make learned-policy evaluation reproducible. It is behavior cloning from a local teacher, not an upper-bound oracle or a certified DAA controller.
+Generated BC artifacts also declare a small inference guardrail: a goal-direction forward-progress floor plus a unit-norm action clamp before normal action-space clipping. This is disclosed in the model JSON and learned-submission manifest. The workflow is behavior cloning from a local teacher, not an upper-bound oracle or a certified DAA controller.
 
 Create a reviewer-facing bundle and learned-policy leaderboard comparison against the frozen tiny/MLP fixtures:
 

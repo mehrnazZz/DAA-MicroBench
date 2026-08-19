@@ -27,7 +27,7 @@ from microbench.tools.baseline_validation_matrix import (
 BC_TRAINING_SCHEMA_VERSION = "0.1"
 BC_EVIDENCE_SCHEMA_VERSION = "0.1"
 BC_POLICY_NAME = "bc_mlp_learned"
-BC_TEACHER_NAME = "local_avoidance_teacher_v0"
+BC_TEACHER_NAME = "local_lateral_avoidance_teacher_v0"
 DEFAULT_BC_LANES = (
     "head_on",
     "crossing",
@@ -60,22 +60,30 @@ def _teacher_action_from_features(features: np.ndarray) -> np.ndarray:
     threat = float(np.clip(x[12], 0.0, 1.0))
     neighbor_frac = float(np.clip(x[13], 0.0, 1.0))
 
-    lateral = np.cross(goal, avoid).astype(np.float32)
-    lateral_norm = float(np.linalg.norm(lateral))
-    if lateral_norm > 1e-6:
-        lateral = lateral / lateral_norm
-    else:
-        lateral = np.zeros(3, dtype=np.float32)
+    avoid_lateral = avoid - float(np.dot(avoid, goal)) * goal
+    if float(np.linalg.norm(avoid_lateral)) < 1e-6 and threat > 0.0:
+        reference = np.asarray([0.0, 1.0, 0.0], dtype=np.float32)
+        if abs(float(np.dot(goal, reference))) > 0.9:
+            reference = np.asarray([0.0, 0.0, 1.0], dtype=np.float32)
+        avoid_lateral = np.cross(reference, goal).astype(np.float32) * threat
+    avoid_lateral = _normalize(avoid_lateral) * min(1.0, float(np.linalg.norm(avoid)))
 
-    goal_gain = 1.0 - 0.55 * threat
-    avoid_gain = 1.25 + 1.65 * threat + 0.35 * neighbor_frac
+    rel_vel_lateral = rel_vel - float(np.dot(rel_vel, goal)) * goal
+    lateral = _normalize(avoid_lateral)
+
+    goal_gain = max(0.35, 1.0 - 0.45 * threat)
+    avoid_gain = 1.10 + 1.40 * threat + 0.30 * neighbor_frac
     action = (
         goal_gain * goal
         - 0.18 * ego_vel
-        + avoid_gain * avoid
-        - 0.10 * rel_vel
-        + 0.18 * threat * lateral
+        + avoid_gain * avoid_lateral
+        - 0.08 * rel_vel_lateral
+        + 0.12 * threat * lateral
     )
+    forward = float(np.dot(action, goal))
+    min_forward = 0.20 + 0.25 * (1.0 - threat)
+    if forward < min_forward:
+        action += (min_forward - forward) * goal
     norm = float(np.linalg.norm(action))
     if norm > 1.0:
         action = action / norm
@@ -222,6 +230,12 @@ def _model_spec(
         "input_features": list(MLP_LEARNED_FEATURE_NAMES),
         "hidden_activation": "tanh",
         "output_activation": "tanh",
+        "postprocess": {
+            "goal_forward_floor": True,
+            "min_forward_base": 0.2,
+            "min_forward_free_boost": 0.25,
+            "normalize_max_norm": True,
+        },
         "layer1_weights": np.asarray(w1).round(8).tolist(),
         "layer1_bias": np.asarray(b1).round(8).tolist(),
         "layer2_weights": np.asarray(w2).round(8).tolist(),
@@ -237,6 +251,7 @@ def _model_spec(
             "training_scenarios": [lane.scenario for lane in lanes],
             "training_seed_override": None if seeds is None else [int(seed_value) for seed_value in seeds],
             "rollout_policy": "teacher_with_optional_clipped_action_noise",
+            "action_post_processing": "goal-direction forward floor plus unit-norm clamp before action-space clipping",
             "max_steps_per_episode": int(max_steps),
             "rollout_noise_std": float(rollout_noise_std),
             "random_feature_seed": int(seed),
@@ -288,7 +303,10 @@ def _manifest_overlay_from_training_report(report: dict[str, Any]) -> dict[str, 
             "environment_steps": int(environment_steps),
             "random_seeds": seeds,
             "observation_normalization": "none; public RL observation features are consumed directly",
-            "action_post_processing": "normalized velocity action clipped by the DAA Microbench action contract",
+            "action_post_processing": (
+                "artifact-declared goal-direction forward floor and unit-norm clamp, "
+                "then normalized velocity action clipped by the DAA Microbench action contract"
+            ),
             "reward_configuration": "not used; supervised behavior cloning from transparent local-avoidance teacher labels",
             "external_data": "none",
             "pretrained_models": "none",

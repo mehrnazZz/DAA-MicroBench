@@ -58,6 +58,14 @@ def observation_to_mlp_features(observation: np.ndarray, *, top_k: int = 8) -> n
     return observation_to_tiny_features(observation, top_k=top_k)
 
 
+def _normalize(v: np.ndarray) -> np.ndarray:
+    arr = np.asarray(v, dtype=np.float32).reshape(3)
+    norm = float(np.linalg.norm(arr))
+    if norm < 1e-9:
+        return np.zeros(3, dtype=np.float32)
+    return (arr / norm).astype(np.float32)
+
+
 @dataclass
 class FrozenMlpPolicyModel:
     spec: dict[str, Any]
@@ -77,6 +85,28 @@ class FrozenMlpPolicyModel:
     @property
     def hidden_dim(self) -> int:
         return int(self.spec["hidden_dim"])
+
+    def _postprocess_action(self, action: np.ndarray, features: np.ndarray) -> np.ndarray:
+        postprocess = self.spec.get("postprocess", {})
+        if not isinstance(postprocess, dict):
+            return np.asarray(action, dtype=np.float32)
+
+        out = np.asarray(action, dtype=np.float32).reshape(3)
+        goal = _normalize(np.asarray(features[0:3], dtype=np.float32))
+        if bool(postprocess.get("goal_forward_floor", False)) and float(np.linalg.norm(goal)) > 1e-9:
+            threat = float(np.clip(features[-2], 0.0, 1.0))
+            base = float(postprocess.get("min_forward_base", 0.2))
+            free_boost = float(postprocess.get("min_forward_free_boost", 0.25))
+            min_forward = base + free_boost * (1.0 - threat)
+            forward = float(np.dot(out, goal))
+            if forward < min_forward:
+                out += (min_forward - forward) * goal
+
+        if bool(postprocess.get("normalize_max_norm", False)):
+            norm = float(np.linalg.norm(out))
+            if norm > 1.0:
+                out = out / norm
+        return np.clip(out, -1.0, 1.0).astype(np.float32)
 
     def action_from_features(self, features: np.ndarray) -> np.ndarray:
         x = np.asarray(features, dtype=np.float32).reshape(-1)
@@ -99,7 +129,7 @@ class FrozenMlpPolicyModel:
             raise ValueError(f"MLP layer2 bias has shape {b2.shape}, expected (3,)")
         hidden = np.tanh(w1 @ x + b1)
         raw = w2 @ hidden + b2
-        return np.tanh(raw).astype(np.float32)
+        return self._postprocess_action(np.tanh(raw), x)
 
     def action_from_planner_input(self, planner_input: PlannerInput, *, max_neighbors: int = 8) -> np.ndarray:
         return self.action_from_features(planner_input_to_mlp_features(planner_input, max_neighbors=max_neighbors))

@@ -55,7 +55,7 @@ python -m microbench.cli train-learned-bc \
   --require-pass
 ```
 
-Its output `runs_bc_mlp_policy/policy_spec.json` can be passed anywhere a learned policy spec is accepted. The generated `bc_training_report.json` records training lanes, seeds, sample counts, teacher policy, fit error, and validation-matrix evidence. The trainer uses only the public RL observation vector and a transparent local-avoidance teacher; disclose it as behavior cloning, not as privileged imitation from simulator truth.
+Its output `runs_bc_mlp_policy/policy_spec.json` can be passed anywhere a learned policy spec is accepted. The generated `bc_training_report.json` records training lanes, seeds, sample counts, teacher policy, fit error, and validation-matrix evidence. The trained artifact declares its inference guardrail, currently a goal-direction forward-progress floor plus unit-norm clamp, so disclose it as behavior cloning with post-processing, not as privileged imitation from simulator truth.
 
 For an end-to-end development comparison, use:
 

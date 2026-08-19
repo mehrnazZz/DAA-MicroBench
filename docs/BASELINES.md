@@ -822,7 +822,7 @@ python -m microbench.cli train-learned-bc \
   --require-pass
 ```
 
-This writes `runs_bc_mlp_policy/policy_spec.json`, which can be used with `learned_policy_spec`, `rl-validation-matrix`, and learned-submission bundles. It clones a transparent local DAA teacher from public RL observations and should be treated as a starter learned baseline, not a certified DAA controller.
+This writes `runs_bc_mlp_policy/policy_spec.json`, which can be used with `learned_policy_spec`, `rl-validation-matrix`, and learned-submission bundles. It clones a transparent local DAA teacher from public RL observations and declares a forward-progress/unit-norm action guardrail. Treat it as a starter learned baseline, not a certified DAA controller.
 
 To package that trained policy and compare it against the frozen learned fixtures:
 
