@@ -31,6 +31,7 @@ python -m microbench.cli learned-submission-bundle --out-dir "${WORK_DIR}/learne
 python -m microbench.cli rl-smoke --out-dir "${WORK_DIR}/rl_tiny_learned" --policy tiny_learned --require-pass --json >"${WORK_DIR}/rl_tiny_learned.json"
 python -m microbench.cli rl-smoke --out-dir "${WORK_DIR}/rl_mlp_learned" --policy mlp_learned --require-pass --json >"${WORK_DIR}/rl_mlp_learned.json"
 python -m microbench.cli rl-calibration --out-dir "${WORK_DIR}/rl_calibration" --require-pass --json >"${WORK_DIR}/rl_calibration.json"
+python -m microbench.cli learned-dataset-export --out-dir "${WORK_DIR}/learned_dataset_export" --lanes head_on --max-steps 2 --shard-size 16 --require-pass --json >"${WORK_DIR}/learned_dataset_export.json"
 python -m microbench.cli train-learned-bc --out-dir "${WORK_DIR}/bc_mlp_policy" --lanes head_on --max-steps 2 --eval-lanes head_on --eval-max-steps 2 --hidden-dim 8 --require-pass --json >"${WORK_DIR}/bc_mlp_policy.json"
 python -m microbench.cli learned-bc-evidence --out-dir "${WORK_DIR}/bc_mlp_evidence" --lanes head_on --max-steps 2 --eval-lanes head_on --eval-max-steps 2 --hidden-dim 8 --bundle-max-steps 2 --max-runs 1 --skip-fixtures --require-pass --json >"${WORK_DIR}/bc_mlp_evidence.json"
 python -m microbench.cli rl-contract --json >"${WORK_DIR}/rl_contract.json"
@@ -39,6 +40,7 @@ python -m microbench.cli learned-submission-bundle --out-dir "${WORK_DIR}/learne
 python -m microbench.cli validate-learned-bundle --bundle "${WORK_DIR}/learned_submission_bundle" --require-pass --json >"${WORK_DIR}/learned_bundle_validation.json"
 python -m microbench.cli review-learned-bundle --bundle "${WORK_DIR}/learned_submission_bundle" --require-pass --json >"${WORK_DIR}/learned_bundle_review.json"
 python -m microbench.cli learned-leaderboard --bundle "${WORK_DIR}/learned_submission_bundle" --bundle "${WORK_DIR}/learned_submission_policy_spec_bundle" --out "${WORK_DIR}/learned_policy_leaderboard.json" --require-pass --json >"${WORK_DIR}/learned_policy_leaderboard.stdout.json"
+python -m microbench.cli learned-diagnostics --bundle "${WORK_DIR}/learned_submission_bundle" --bundle "${WORK_DIR}/learned_submission_policy_spec_bundle" --out "${WORK_DIR}/learned_policy_diagnostics.json" --require-pass --json >"${WORK_DIR}/learned_policy_diagnostics.stdout.json"
 python -m microbench.cli list-suites --json >"${WORK_DIR}/suites.json"
 python -m microbench.cli list-methods --json --include-aliases >"${WORK_DIR}/methods.json"
 

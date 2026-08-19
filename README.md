@@ -121,6 +121,7 @@ python -m microbench.cli rl-smoke --out-dir runs_rl_tiny_learned --policy tiny_l
 python -m microbench.cli rl-smoke --out-dir runs_rl_mlp_learned --policy mlp_learned --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-validation-matrix --out-dir runs_rl_validation_matrix --policy tiny_learned --require-pass
+python -m microbench.cli learned-dataset-export --out-dir runs_learned_dataset --lanes head_on,crossing,urban_obstacle --max-steps 64 --save-replay --require-pass
 python -m microbench.cli train-learned-bc --out-dir runs_bc_mlp_policy --lanes head_on,crossing,urban_obstacle --eval-lanes head_on,crossing --require-pass
 python -m microbench.cli learned-bc-evidence --out-dir runs_bc_mlp_evidence --lanes head_on,crossing,urban_obstacle --max-runs 1 --require-pass
 python -m microbench.cli rl-contract --json
@@ -1097,6 +1098,29 @@ Dataset schema source of truth:
 - implementation: `microbench/dataset/generate.py`
 - manifest: `dataset_manifest.json` stores `k`, `T`, `dt_plan_s`, feature dims, and normalization constants for each dataset folder.
 
+## 11.1) Learned Policy Dataset Export
+
+`learned-dataset-export` writes public RL observation/action samples for imitation learning, offline RL experiments, and replayable learned-policy debugging. It uses the same PettingZoo-style observation/action contract as `rl-smoke` and `rl-validation-matrix`.
+
+```bash
+python -m microbench.cli learned-dataset-export \
+  --out-dir runs_learned_dataset \
+  --lanes head_on,crossing,urban_obstacle \
+  --max-steps 64 \
+  --save-replay \
+  --require-pass
+```
+
+By default the action source is the transparent `bc_teacher` used by `train-learned-bc`. You can also pass a built-in RL policy with `--policy` or an external exported policy with `--policy-spec`.
+
+The output directory contains:
+- `learned_dataset_manifest.json`
+- `learned_dataset_episodes.csv`
+- compressed `shards/shard_*.npz`
+- optional lightweight `replay/*.jsonl` files when `--save-replay` is set
+
+Shard arrays include `observations`, `actions`, `next_observations`, `rewards`, `terminated`, `truncated`, `done`, lane/scenario/seed metadata, collision/near-miss flags, and per-sample clearance.
+
 Recommended scale for training: at least `100k+` samples across multiple scenarios and comm profiles.
 
 ## 12) Performance Expectations and Practical Profiling
@@ -1152,6 +1176,7 @@ python -m microbench.cli rl-smoke --out-dir runs_rl_smoke --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli rl-validation-matrix --out-dir runs_rl_validation_matrix --policy tiny_learned --require-pass
 python -m microbench.cli rl-smoke --out-dir runs_rl_mlp_learned --policy mlp_learned --require-pass
+python -m microbench.cli learned-dataset-export --out-dir runs_learned_dataset --lanes head_on --max-steps 2 --require-pass
 python -m microbench.cli train-learned-bc --out-dir runs_bc_mlp_policy --lanes head_on,crossing,urban_obstacle --eval-lanes head_on,crossing --require-pass
 python -m microbench.cli learned-bc-evidence --out-dir runs_bc_mlp_evidence --lanes head_on,crossing,urban_obstacle --max-runs 1 --require-pass
 python -m microbench.cli rl-contract --json

@@ -27,6 +27,7 @@ Use this checklist before tagging a public alpha, announcing a leaderboard run, 
 - [ ] `python -m microbench.cli rl-smoke --out-dir runs_rl_mlp_learned --policy mlp_learned --require-pass` passes for the frozen MLP learned-policy fixture.
 - [ ] `python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass` passes for compact 3D/degraded RL wrapper exposure.
 - [ ] `python -m microbench.cli rl-validation-matrix --out-dir runs_rl_validation_matrix --policy tiny_learned --require-pass` passes for learned-policy exposure on the canonical validation matrix.
+- [ ] `python -m microbench.cli learned-dataset-export --out-dir runs_learned_dataset --lanes head_on --max-steps 2 --require-pass` writes public observation/action training shards and a learned dataset manifest.
 - [ ] `python -m microbench.cli train-learned-bc --out-dir runs_bc_mlp_policy --lanes head_on,crossing,urban_obstacle --eval-lanes head_on,crossing --require-pass` writes a portable trained `mlp_json` policy spec and validation evidence.
 - [ ] `python -m microbench.cli learned-bc-evidence --out-dir runs_bc_mlp_evidence --lanes head_on,crossing,urban_obstacle --max-runs 1 --require-pass` writes a trained BC bundle and learned leaderboard comparison against frozen fixtures.
 - [ ] `python -m microbench.cli rl-contract --json` prints the current RL interface contract.

@@ -45,6 +45,12 @@ from microbench.rl.learned_diagnostics import (
     build_learned_policy_diagnostics,
     write_learned_policy_diagnostics,
 )
+from microbench.rl.learned_dataset import (
+    LEARNED_DATASET_POLICY_CHOICES,
+    LEARNED_DATASET_SCHEMA_VERSION,
+    LEARNED_DATASET_TEACHER_POLICY,
+    export_learned_policy_dataset,
+)
 from microbench.rl.learned_leaderboard import (
     LEARNED_POLICY_LEADERBOARD_SCHEMA_VERSION,
     build_learned_policy_leaderboard,
@@ -124,6 +130,9 @@ __all__ = [
     "LEARNED_SUBMISSION_SCHEMA_CHECK_VERSION",
     "LEARNED_POLICY_LEADERBOARD_SCHEMA_VERSION",
     "LEARNED_POLICY_DIAGNOSTICS_SCHEMA_VERSION",
+    "LEARNED_DATASET_POLICY_CHOICES",
+    "LEARNED_DATASET_SCHEMA_VERSION",
+    "LEARNED_DATASET_TEACHER_POLICY",
     "ModelPredictPolicyAdapter",
     "MlpLearnedPolicy",
     "OBSERVATION_LAYOUT",
@@ -154,6 +163,7 @@ __all__ = [
     "build_learned_policy_diagnostics",
     "build_behavior_cloned_policy_evidence",
     "check_parallel_env_api",
+    "export_learned_policy_dataset",
     "interface_contract",
     "load_mlp_learned_spec",
     "load_tiny_learned_spec",

@@ -400,6 +400,19 @@ python -m microbench.cli review-learned-bundle \
 
 The reviewer does not rerun simulations. It validates the bundle, computes the documented v0 score from `summary.csv`, reports safety/mission/compute/communication/observation dimensions, and flags limitations such as limited planner sweeps, collision episodes, or planner guardrails.
 
+Export public observation/action samples for learned-policy training or replay debugging:
+
+```bash
+python -m microbench.cli learned-dataset-export \
+  --out-dir runs_learned_dataset \
+  --lanes head_on,crossing,urban_obstacle \
+  --max-steps 64 \
+  --save-replay \
+  --require-pass
+```
+
+This writes `learned_dataset_manifest.json`, `learned_dataset_episodes.csv`, compressed `shards/shard_*.npz`, and optional replay JSONL. Shards include `observations`, `actions`, `next_observations`, rewards, termination flags, lane metadata, and collision/near-miss diagnostics. The default action source is `bc_teacher`; pass `--policy-spec` to export samples from a submitted learned policy.
+
 Compare multiple learned-policy bundles without rerunning simulations:
 
 ```bash

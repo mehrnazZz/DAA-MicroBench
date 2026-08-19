@@ -57,6 +57,19 @@ python -m microbench.cli train-learned-bc \
 
 Its output `runs_bc_mlp_policy/policy_spec.json` can be passed anywhere a learned policy spec is accepted. The generated `bc_training_report.json` records training lanes, seeds, sample counts, teacher policy, fit error, and validation-matrix evidence. The trained artifact declares its inference guardrail, currently a goal-direction forward-progress floor plus unit-norm clamp, so disclose it as behavior cloning with post-processing, not as privileged imitation from simulator truth.
 
+To export reusable public observation/action shards for your own imitation-learning or offline-RL loop:
+
+```bash
+python -m microbench.cli learned-dataset-export \
+  --out-dir runs_learned_dataset \
+  --lanes head_on,crossing,urban_obstacle \
+  --max-steps 64 \
+  --save-replay \
+  --require-pass
+```
+
+By default this uses the same transparent `bc_teacher` as the built-in trainer. Pass `--policy tiny_learned`, `--policy mlp_learned`, or `--policy-spec path/to/policy_spec.json` when you want shards from another policy. The export writes `learned_dataset_manifest.json`, `learned_dataset_episodes.csv`, compressed `shards/shard_*.npz`, and optional `replay/*.jsonl` files. Shards contain `observations`, `actions`, `next_observations`, rewards, termination flags, lane metadata, and collision/near-miss diagnostics under the public RL contract.
+
 For an end-to-end development comparison, use:
 
 ```bash

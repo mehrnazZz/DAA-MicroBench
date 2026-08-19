@@ -23,6 +23,7 @@ from microbench.rl.calibration import run_rl_policy_calibration
 from microbench.rl.bc_training import build_behavior_cloned_policy_evidence, train_behavior_cloned_policy
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import run_rl_freeze_check
+from microbench.rl.learned_dataset import LEARNED_DATASET_POLICY_CHOICES, export_learned_policy_dataset
 from microbench.rl.learned_diagnostics import write_learned_policy_diagnostics
 from microbench.rl.learned_leaderboard import write_learned_policy_leaderboard
 from microbench.rl.policies import POLICY_NAMES
@@ -1278,6 +1279,42 @@ def _rl_validation_matrix(args) -> None:
         raise SystemExit(f"RL validation matrix behavior checks failed: {','.join(failed)}")
 
 
+def _learned_dataset_export(args) -> None:
+    report = export_learned_policy_dataset(
+        out_dir=args.out_dir,
+        policy=str(args.policy),
+        policy_spec=args.policy_spec,
+        lanes=_parse_str_list(args.lanes) if args.lanes else None,
+        seeds=_parse_int_list(args.seeds) if args.seeds else None,
+        duration_s=args.duration_s,
+        n_agents=args.n,
+        max_steps=args.max_steps,
+        shard_size=int(args.shard_size),
+        save_replay=bool(args.save_replay),
+        overwrite=bool(args.overwrite),
+        plan_only=bool(args.plan_only),
+    )
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PLAN" if report["plan_only"] else ("PASS" if report["ok"] else "FAIL")
+        print(
+            f"learned-dataset-export: {status} policy={report['policy']} "
+            f"source={report['action_source']} samples={report['sample_count']} "
+            f"episodes={report['episode_count']}/{report['planned_episode_count']}"
+        )
+        if report.get("manifest"):
+            print(f"  manifest: {report['manifest']}")
+        if report.get("episodes_csv"):
+            print(f"  episodes_csv: {report['episodes_csv']}")
+        print(f"  shards: {len(report.get('shards', []))}")
+
+    if args.require_pass and not report["plan_only"] and not report["ok"]:
+        failed = [check["name"] for check in report["checks"] if not check["ok"]]
+        raise SystemExit(f"learned dataset export failed: {','.join(failed)}")
+
+
 def _train_learned_bc(args) -> None:
     report = train_behavior_cloned_policy(
         out_dir=args.out_dir,
@@ -2416,6 +2453,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fail if behavior-evidence checks fail; useful for policy promotion, not wrapper health",
     )
 
+    p_ldsex = sub.add_parser(
+        "learned-dataset-export",
+        help="Export public RL observation/action samples for learned-policy training",
+    )
+    p_ldsex.add_argument("--out-dir", required=True, help="Fresh output directory for learned dataset artifacts")
+    p_ldsex.add_argument(
+        "--policy",
+        choices=LEARNED_DATASET_POLICY_CHOICES,
+        default="bc_teacher",
+        help="Action source for samples; defaults to the transparent BC teacher",
+    )
+    p_ldsex.add_argument("--policy-spec", default=None, help="Optional JSON/YAML external policy spec; overrides --policy")
+    p_ldsex.add_argument(
+        "--lanes",
+        default=None,
+        help="Comma-separated lane ids; defaults to head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge",
+    )
+    p_ldsex.add_argument("--seeds", default=None, help="Optional seed list/range override; defaults to each lane's canonical seed")
+    p_ldsex.add_argument("--duration-s", type=float, default=None, help="Override all lane durations")
+    p_ldsex.add_argument("--n", type=int, default=None, help="Override agent count for every lane")
+    p_ldsex.add_argument("--max-steps", type=int, default=None, help="Optional cap for each episode")
+    p_ldsex.add_argument("--shard-size", type=int, default=50000, help="Samples per compressed NPZ shard")
+    p_ldsex.add_argument("--save-replay", action="store_true", help="Write lightweight per-step replay JSONL files")
+    p_ldsex.add_argument("--overwrite", action="store_true", help="Overwrite known learned-dataset artifacts in --out-dir")
+    p_ldsex.add_argument("--plan-only", action="store_true", help="Write/print the dataset export plan without running episodes")
+    p_ldsex.add_argument("--json", action="store_true", help="Emit machine-readable dataset report")
+    p_ldsex.add_argument("--require-pass", action="store_true", help="Fail if export checks fail")
+
     p_bc = sub.add_parser(
         "train-learned-bc",
         help="Train a dependency-free behavior-cloned MLP policy from public RL validation-lane observations",
@@ -2756,6 +2821,9 @@ def main() -> None:
         return
     if args.cmd == "rl-validation-matrix":
         _rl_validation_matrix(args)
+        return
+    if args.cmd == "learned-dataset-export":
+        _learned_dataset_export(args)
         return
     if args.cmd == "train-learned-bc":
         _train_learned_bc(args)
