@@ -66,6 +66,26 @@ def _normalize(v: np.ndarray) -> np.ndarray:
     return (arr / norm).astype(np.float32)
 
 
+def _normalized_model_features(features: np.ndarray, spec: dict[str, Any]) -> np.ndarray:
+    payload = spec.get("feature_normalization", {})
+    if not isinstance(payload, dict) or str(payload.get("mode", "none")) == "none":
+        return np.asarray(features, dtype=np.float32)
+    if str(payload.get("mode")) != "standard":
+        raise ValueError(f"Unsupported MLP feature normalization mode {payload.get('mode')!r}")
+    x = np.asarray(features, dtype=np.float32).reshape(-1)
+    mean = np.asarray(payload.get("mean"), dtype=np.float32).reshape(-1)
+    scale = np.asarray(payload.get("scale"), dtype=np.float32).reshape(-1)
+    if mean.shape != x.shape or scale.shape != x.shape:
+        raise ValueError(
+            f"MLP feature normalization shape mismatch: mean={mean.shape}, scale={scale.shape}, features={x.shape}"
+        )
+    normalized = (x - mean) / np.maximum(scale, 1e-6)
+    clip_value = payload.get("clip")
+    if clip_value is not None:
+        normalized = np.clip(normalized, -float(clip_value), float(clip_value))
+    return normalized.astype(np.float32)
+
+
 @dataclass
 class FrozenMlpPolicyModel:
     spec: dict[str, Any]
@@ -110,6 +130,7 @@ class FrozenMlpPolicyModel:
 
     def action_from_features(self, features: np.ndarray) -> np.ndarray:
         x = np.asarray(features, dtype=np.float32).reshape(-1)
+        x_model = _normalized_model_features(x, self.spec)
         w1 = np.asarray(self.spec["layer1_weights"], dtype=np.float32)
         b1 = np.asarray(self.spec["layer1_bias"], dtype=np.float32)
         w2 = np.asarray(self.spec["layer2_weights"], dtype=np.float32)
@@ -127,7 +148,7 @@ class FrozenMlpPolicyModel:
             raise ValueError(f"MLP layer2 weights have shape {w2.shape}, expected {(3, self.hidden_dim)}")
         if b2.shape != (3,):
             raise ValueError(f"MLP layer2 bias has shape {b2.shape}, expected (3,)")
-        hidden = np.tanh(w1 @ x + b1)
+        hidden = np.tanh(w1 @ x_model + b1)
         raw = w2 @ hidden + b2
         return self._postprocess_action(np.tanh(raw), x)
 

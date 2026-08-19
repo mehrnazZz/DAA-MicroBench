@@ -419,12 +419,13 @@ Run a diagnostics-driven hard-lane retraining loop:
 python -m microbench.cli learned-hard-lane-loop \
   --out-dir runs_hard_lane_loop \
   --diagnostics runs_bc_mlp_evidence/learned_policy_diagnostics.json \
+  --mix-lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
   --max-lanes 3 \
   --max-runs 1 \
   --require-pass
 ```
 
-This command selects canonical weak validation lanes from learned diagnostics, exports matching public dataset shards, trains the same portable BC MLP from those shards, packages the trained spec, and writes a fresh learned leaderboard plus diagnostics report.
+This command selects canonical weak validation lanes from learned diagnostics, exports public dataset shards, trains the same portable BC MLP from those shards, packages the trained spec, and writes a fresh learned leaderboard plus diagnostics report. `--mix-lanes` keeps broad replay in the dataset beside the selected hard lanes, and generated BC JSON artifacts store the training feature mean/std transform for deterministic inference.
 
 Compare multiple learned-policy bundles without rerunning simulations:
 

@@ -29,6 +29,7 @@ from microbench.rl.adapters import CallablePolicyAdapter, ModelPredictPolicyAdap
 from microbench.rl.calibration import RL_CALIBRATION_SCHEMA_VERSION, run_rl_policy_calibration
 from microbench.rl.bc_training import (
     BC_EVIDENCE_SCHEMA_VERSION,
+    BC_FEATURE_NORMALIZATION_CHOICES,
     BC_FIXTURE_BUNDLE_CONFIGS,
     BC_POLICY_NAME,
     BC_TEACHER_NAME,
@@ -118,6 +119,7 @@ __all__ = [
     "BC_POLICY_NAME",
     "BC_TEACHER_NAME",
     "BC_EVIDENCE_SCHEMA_VERSION",
+    "BC_FEATURE_NORMALIZATION_CHOICES",
     "BC_FIXTURE_BUNDLE_CONFIGS",
     "BC_TRAINING_SCHEMA_VERSION",
     "DaaParallelEnv",

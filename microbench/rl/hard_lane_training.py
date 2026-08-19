@@ -15,7 +15,9 @@ from microbench.rl.bc_training import (
     BC_POLICY_NAME,
     BC_TEACHER_NAME,
     BC_TRAINING_SCHEMA_VERSION,
+    _apply_feature_normalization,
     _fit_random_feature_mlp,
+    _feature_normalization_payload,
     _model_spec,
     _policy_spec,
 )
@@ -162,6 +164,17 @@ def _match_lane_id(value: Any, lookup: dict[str, str]) -> str | None:
 def _fallback_selection(fallback_lanes: tuple[str, ...] | list[str] | None, max_lanes: int) -> list[str]:
     lanes = [lane.lane_id for lane in selected_validation_lanes(list(fallback_lanes) if fallback_lanes is not None else list(DEFAULT_HARD_LANE_FALLBACK))]
     return lanes[: max(1, int(max_lanes))]
+
+
+def _unique_lanes(*groups: tuple[str, ...] | list[str] | None) -> list[str]:
+    selected: list[str] = []
+    for group in groups:
+        if group is None:
+            continue
+        for lane in selected_validation_lanes(list(group)):
+            if lane.lane_id not in selected:
+                selected.append(lane.lane_id)
+    return selected
 
 
 def select_hard_lanes_from_diagnostics(
@@ -383,6 +396,7 @@ def _manifest_overlay_from_dataset_training_report(report: dict[str, Any]) -> di
     environment_steps = sum(int(row.get("steps", 0) or 0) for row in rows)
     samples = int(report.get("sample_count", 0) or 0)
     source_policy = str(report.get("source_policy") or report.get("teacher_policy") or "dataset_action_labels")
+    normalization = dict(report.get("feature_normalization", {}) or {})
     return {
         "dependencies": {
             "inference_packages": [
@@ -400,7 +414,8 @@ def _manifest_overlay_from_dataset_training_report(report: dict[str, Any]) -> di
             "training_suites": [f"learned_hard_lane_loop:{','.join(lane_ids)}"] if lane_ids else ["learned_hard_lane_loop"],
             "environment_steps": int(environment_steps),
             "random_seeds": seeds,
-            "observation_normalization": "none; public RL observation features are consumed directly",
+            "observation_normalization": normalization.get("description")
+            or "none; public RL observation features are consumed directly",
             "action_post_processing": (
                 "artifact-declared goal-direction forward floor and unit-norm clamp, "
                 "then normalized velocity action clipped by the DAA Microbench action contract"
@@ -436,6 +451,7 @@ def train_behavior_cloned_policy_from_dataset(
     dataset_manifest: str | Path | dict[str, Any],
     hidden_dim: int = 32,
     ridge: float = 1e-4,
+    feature_normalization: str = "standard",
     eval_lanes: tuple[str, ...] | list[str] | None = None,
     eval_max_steps: int | None = 12,
     policy_name: str = BC_POLICY_NAME,
@@ -467,9 +483,11 @@ def train_behavior_cloned_policy_from_dataset(
     features, labels, training_rows, loaded_shards = _load_shard_features_and_labels(report, root=dataset_root)
     selected_lanes = _selected_lanes_from_training_rows(training_rows, report)
     seed_override = sorted({int(row.get("seed", 0) or 0) for row in training_rows})
+    normalization_payload = _feature_normalization_payload(features, mode=str(feature_normalization))
+    fit_features = _apply_feature_normalization(features, normalization_payload)
 
     w1, b1, w2, b2, fit_rmse = _fit_random_feature_mlp(
-        features,
+        fit_features,
         labels,
         seed=int(seed),
         hidden_dim=int(hidden_dim),
@@ -493,6 +511,7 @@ def train_behavior_cloned_policy_from_dataset(
         max_steps=int(max_steps),
         rollout_noise_std=0.0,
         sample_count=int(features.shape[0]),
+        feature_normalization=normalization_payload,
     )
     training_block = model_payload["training"]
     training_block.update(
@@ -530,7 +549,15 @@ def train_behavior_cloned_policy_from_dataset(
         _check("dataset_shards_present", bool(loaded_shards), {"shard_count": len(loaded_shards)}),
         _check("samples_loaded", int(features.shape[0]) > 0, {"samples": int(features.shape[0]), "manifest_samples": manifest_sample_count}),
         _check("sample_count_matches_manifest", manifest_sample_count in {0, int(features.shape[0])}, {"samples": int(features.shape[0]), "manifest_samples": manifest_sample_count}),
-        _check("finite_dataset", finite_dataset, {"feature_shape": list(features.shape), "label_shape": list(labels.shape)}),
+        _check(
+            "finite_dataset",
+            finite_dataset,
+            {
+                "feature_shape": list(features.shape),
+                "label_shape": list(labels.shape),
+                "feature_normalization": normalization_payload.get("mode"),
+            },
+        ),
         _check("fit_rmse_finite", math.isfinite(float(fit_rmse)), {"fit_rmse": round(float(fit_rmse), 8)}),
         _check("policy_spec_written", bool(spec_path.exists() and model_path.exists()), {"policy_spec": str(spec_path), "model_artifact": str(model_path)}),
     ]
@@ -566,6 +593,7 @@ def train_behavior_cloned_policy_from_dataset(
         "feature_dim": int(features.shape[1]),
         "label_dim": int(labels.shape[1]),
         "hidden_dim": int(hidden_dim),
+        "feature_normalization": normalization_payload,
         "fit_rmse": round(float(fit_rmse), 8),
         "training_rows": training_rows,
         "validation_matrix": validation_report,
@@ -581,6 +609,7 @@ def run_learned_hard_lane_loop(
     diagnostics: str | Path | dict[str, Any] | None = None,
     bundles: tuple[str | Path, ...] | list[str | Path] | None = None,
     fallback_lanes: tuple[str, ...] | list[str] | None = None,
+    mix_lanes: tuple[str, ...] | list[str] | None = None,
     max_lanes: int = 3,
     target_policy: str | None = None,
     target_method: str | None = None,
@@ -592,6 +621,7 @@ def run_learned_hard_lane_loop(
     save_replay: bool = False,
     hidden_dim: int = 32,
     ridge: float = 1e-4,
+    feature_normalization: str = "standard",
     eval_lanes: tuple[str, ...] | list[str] | None = None,
     eval_max_steps: int | None = 12,
     policy_name: str = BC_POLICY_NAME,
@@ -636,12 +666,13 @@ def run_learned_hard_lane_loop(
         fill_with_fallback=bool(fill_with_fallback),
     )
     selected_lanes = list(selection["selected_lanes"])
+    dataset_lanes = _unique_lanes(selected_lanes, mix_lanes)
 
     dataset = export_learned_policy_dataset(
         out_dir=out / "hard_lane_dataset",
         policy=str(dataset_policy),
         policy_spec=dataset_policy_spec,
-        lanes=selected_lanes,
+        lanes=dataset_lanes,
         max_steps=dataset_max_steps,
         shard_size=int(dataset_shard_size),
         save_replay=bool(save_replay),
@@ -652,6 +683,7 @@ def run_learned_hard_lane_loop(
         dataset_manifest=str(dataset["manifest"]),
         hidden_dim=int(hidden_dim),
         ridge=float(ridge),
+        feature_normalization=str(feature_normalization),
         eval_lanes=eval_lanes if eval_lanes is not None else selected_lanes,
         eval_max_steps=eval_max_steps,
         policy_name=str(policy_name),
@@ -722,6 +754,8 @@ def run_learned_hard_lane_loop(
         "out_dir": str(out),
         "input_diagnostics": None if input_diagnostics_path is None else str(input_diagnostics_path),
         "selection": selection,
+        "dataset_lanes": dataset_lanes,
+        "mix_lanes": [] if mix_lanes is None else _unique_lanes(mix_lanes),
         "dataset": {
             "manifest": dataset.get("manifest"),
             "policy": dataset.get("policy"),
@@ -737,6 +771,7 @@ def run_learned_hard_lane_loop(
             "sample_count": training.get("sample_count"),
             "fit_rmse": training.get("fit_rmse"),
             "training_source": training.get("training_source"),
+            "feature_normalization": training.get("feature_normalization", {}).get("mode"),
         },
         "manifest_overlay": str(manifest_overlay_path),
         "bundle_paths": {

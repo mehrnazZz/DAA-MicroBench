@@ -110,8 +110,10 @@ def test_dataset_shard_training_writes_portable_policy(tmp_path: Path) -> None:
     assert report["ok"] is True
     assert report["training_source"] == LEARNED_DATASET_BC_TRAINING_SOURCE
     assert report["sample_count"] == 8
+    assert report["feature_normalization"]["mode"] == "standard"
     assert Path(report["policy_spec"]).exists()
     model = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
+    assert model["feature_normalization"]["mode"] == "standard"
     assert model["training"]["source"] == LEARNED_DATASET_BC_TRAINING_SOURCE
     assert model["training"]["source_dataset_manifest"] == dataset["manifest"]
     assert model["training"]["source_policy"] == "local_lateral_avoidance_teacher_v0"
@@ -141,6 +143,7 @@ def test_learned_hard_lane_loop_smoke_without_fixtures(tmp_path: Path) -> None:
         out_dir=tmp_path / "loop",
         diagnostics=diagnostics,
         max_lanes=1,
+        mix_lanes=["crossing"],
         dataset_max_steps=2,
         dataset_shard_size=4,
         hidden_dim=8,
@@ -153,8 +156,11 @@ def test_learned_hard_lane_loop_smoke_without_fixtures(tmp_path: Path) -> None:
 
     assert report["ok"] is True
     assert report["selection"]["selected_lanes"] == ["head_on"]
-    assert report["dataset"]["sample_count"] == 8
+    assert report["dataset_lanes"] == ["head_on", "crossing"]
+    assert report["mix_lanes"] == ["crossing"]
+    assert report["dataset"]["sample_count"] == 20
     assert report["training"]["training_source"] == LEARNED_DATASET_BC_TRAINING_SOURCE
+    assert report["training"]["feature_normalization"] == "standard"
     assert set(report["bundle_paths"]) == {"bc"}
     assert report["leaderboard"]["bundle_count"] == 1
     assert report["diagnostics"]["bundle_count"] == 1
@@ -193,6 +199,8 @@ def test_learned_hard_lane_loop_cli_smoke(tmp_path: Path) -> None:
             str(diagnostics),
             "--max-lanes",
             "1",
+            "--mix-lanes",
+            "crossing",
             "--dataset-max-steps",
             "2",
             "--dataset-shard-size",
@@ -220,6 +228,7 @@ def test_learned_hard_lane_loop_cli_smoke(tmp_path: Path) -> None:
     report = json.loads(proc.stdout)
     assert report["ok"] is True
     assert report["selection"]["selected_lanes"] == ["head_on"]
-    assert report["dataset"]["sample_count"] == 8
+    assert report["dataset_lanes"] == ["head_on", "crossing"]
+    assert report["dataset"]["sample_count"] == 20
     assert (out_dir / "learned_hard_lane_loop.json").exists()
     assert (out_dir / "learned_policy_leaderboard.csv").exists()

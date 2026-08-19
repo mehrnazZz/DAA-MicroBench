@@ -42,12 +42,16 @@ def test_behavior_cloned_training_writes_portable_policy_spec(tmp_path: Path) ->
     assert report["sample_count"] == 8
     assert report["teacher_policy"] == "local_lateral_avoidance_teacher_v0"
     assert report["public_observations_only"] is True
+    assert report["feature_normalization"]["mode"] == "standard"
     assert report["validation_matrix"]["ok"] is True
 
     model_payload = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
     assert model_payload["model_id"] == MLP_LEARNED_MODEL_ID
+    assert model_payload["feature_normalization"]["mode"] == "standard"
+    assert len(model_payload["feature_normalization"]["mean"]) == report["feature_dim"]
     assert model_payload["postprocess"]["goal_forward_floor"] is True
     assert model_payload["training"]["source"] == "DAA Microbench RL validation-matrix rollouts"
+    assert model_payload["training"]["observation_normalization"].startswith("per-feature mean/std")
     assert model_payload["training"]["privileged_global_state"] is False
 
     loaded = load_policy_from_spec(report["policy_spec"], seed=3)
@@ -98,6 +102,8 @@ def test_train_learned_bc_cli_smoke(tmp_path: Path) -> None:
             "8",
             "--rollout-noise-std",
             "0.0",
+            "--feature-normalization",
+            "none",
             "--require-pass",
             "--json",
         ],
@@ -110,6 +116,7 @@ def test_train_learned_bc_cli_smoke(tmp_path: Path) -> None:
     report = json.loads(proc.stdout)
     assert report["ok"] is True
     assert report["sample_count"] == 8
+    assert report["feature_normalization"]["mode"] == "none"
     assert Path(report["policy_spec"]).exists()
     assert Path(report["model_artifact"]).exists()
     assert (out_dir / "bc_training_report.json").exists()
@@ -131,6 +138,7 @@ def test_behavior_cloned_evidence_builds_bundles_and_leaderboard(tmp_path: Path)
 
     assert report["ok"] is True
     assert set(report["bundle_paths"]) == {"bc", "tiny", "mlp"}
+    assert report["training"]["feature_normalization"] == "standard"
     assert report["bundles"]["bc"]["policy"] == "bc_mlp_learned"
     assert report["leaderboard"]["ok"] is True
     assert report["leaderboard"]["bundle_count"] == 3

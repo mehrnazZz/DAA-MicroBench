@@ -39,6 +39,9 @@ BC_FIXTURE_BUNDLE_CONFIGS = (
     {"label": "tiny", "method": "learned_tiny", "policy": "tiny_learned"},
     {"label": "mlp", "method": "learned_mlp", "policy": "mlp_learned"},
 )
+BC_FEATURE_NORMALIZATION_CHOICES = ("standard", "none")
+BC_FEATURE_NORMALIZATION_CLIP = 5.0
+BC_FEATURE_NORMALIZATION_EPS = 1e-6
 
 
 def _normalize(v: np.ndarray) -> np.ndarray:
@@ -95,6 +98,52 @@ def _teacher_action_from_observation(observation: np.ndarray) -> tuple[np.ndarra
     top_k = max(0, (obs.shape[0] - 17) // 9)
     features = observation_to_mlp_features(obs, top_k=top_k)
     return features, _teacher_action_from_features(features)
+
+
+def _feature_normalization_payload(features: np.ndarray, *, mode: str = "standard") -> dict[str, Any]:
+    normalized_mode = str(mode or "standard").strip().lower()
+    if normalized_mode not in BC_FEATURE_NORMALIZATION_CHOICES:
+        raise ValueError(
+            f"Unsupported BC feature normalization {mode!r}; "
+            f"expected one of {','.join(BC_FEATURE_NORMALIZATION_CHOICES)}"
+        )
+    if normalized_mode == "none":
+        return {
+            "mode": "none",
+            "description": "none; public RL observation features are consumed directly",
+        }
+
+    x = np.asarray(features, dtype=np.float32)
+    mean = np.mean(x, axis=0).astype(np.float32)
+    scale = np.std(x, axis=0).astype(np.float32)
+    scale = np.where(scale < BC_FEATURE_NORMALIZATION_EPS, 1.0, scale).astype(np.float32)
+    return {
+        "mode": "standard",
+        "mean": mean.round(8).tolist(),
+        "scale": scale.round(8).tolist(),
+        "clip": float(BC_FEATURE_NORMALIZATION_CLIP),
+        "epsilon": float(BC_FEATURE_NORMALIZATION_EPS),
+        "description": "per-feature mean/std fitted on public training features; inference applies the stored transform",
+    }
+
+
+def _apply_feature_normalization(features: np.ndarray, payload: dict[str, Any] | None) -> np.ndarray:
+    x = np.asarray(features, dtype=np.float32)
+    if not payload or str(payload.get("mode", "none")) == "none":
+        return x
+    if str(payload.get("mode")) != "standard":
+        raise ValueError(f"Unsupported feature normalization mode {payload.get('mode')!r}")
+    mean = np.asarray(payload.get("mean"), dtype=np.float32).reshape(-1)
+    scale = np.asarray(payload.get("scale"), dtype=np.float32).reshape(-1)
+    if mean.shape != (x.shape[1],) or scale.shape != (x.shape[1],):
+        raise ValueError(
+            f"Feature normalization shape mismatch: mean={mean.shape}, scale={scale.shape}, feature_dim={x.shape[1]}"
+        )
+    normalized = (x - mean.reshape(1, -1)) / np.maximum(scale.reshape(1, -1), BC_FEATURE_NORMALIZATION_EPS)
+    clip_value = payload.get("clip")
+    if clip_value is not None:
+        normalized = np.clip(normalized, -float(clip_value), float(clip_value))
+    return normalized.astype(np.float32)
 
 
 def _fit_random_feature_mlp(
@@ -222,7 +271,12 @@ def _model_spec(
     max_steps: int,
     rollout_noise_std: float,
     sample_count: int,
+    feature_normalization: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    normalization_payload = feature_normalization or _feature_normalization_payload(
+        np.zeros((1, len(MLP_LEARNED_FEATURE_NAMES)), dtype=np.float32),
+        mode="none",
+    )
     return {
         "schema_version": LEARNED_BASELINE_SCHEMA_VERSION,
         "model_id": MLP_LEARNED_MODEL_ID,
@@ -231,6 +285,7 @@ def _model_spec(
         "hidden_dim": int(hidden_dim),
         "action_shape": [3],
         "input_features": list(MLP_LEARNED_FEATURE_NAMES),
+        "feature_normalization": normalization_payload,
         "hidden_activation": "tanh",
         "output_activation": "tanh",
         "postprocess": {
@@ -254,6 +309,7 @@ def _model_spec(
             "training_scenarios": [lane.scenario for lane in lanes],
             "training_seed_override": None if seeds is None else [int(seed_value) for seed_value in seeds],
             "rollout_policy": "teacher_with_optional_clipped_action_noise",
+            "observation_normalization": normalization_payload.get("description"),
             "action_post_processing": "goal-direction forward floor plus unit-norm clamp before action-space clipping",
             "max_steps_per_episode": int(max_steps),
             "rollout_noise_std": float(rollout_noise_std),
@@ -288,6 +344,7 @@ def _manifest_overlay_from_training_report(report: dict[str, Any]) -> dict[str, 
     scenario_names = sorted({Path(str(row.get("scenario", ""))).stem for row in rows if row.get("scenario")})
     environment_steps = sum(int(row.get("steps", 0) or 0) for row in rows)
     samples = int(report.get("sample_count", 0) or 0)
+    normalization = dict(report.get("feature_normalization", {}) or {})
     return {
         "dependencies": {
             "inference_packages": [
@@ -305,7 +362,8 @@ def _manifest_overlay_from_training_report(report: dict[str, Any]) -> dict[str, 
             "training_suites": [f"rl_validation_matrix:{','.join(lane_ids)}"] if lane_ids else ["rl_validation_matrix"],
             "environment_steps": int(environment_steps),
             "random_seeds": seeds,
-            "observation_normalization": "none; public RL observation features are consumed directly",
+            "observation_normalization": normalization.get("description")
+            or "none; public RL observation features are consumed directly",
             "action_post_processing": (
                 "artifact-declared goal-direction forward floor and unit-norm clamp, "
                 "then normalized velocity action clipped by the DAA Microbench action contract"
@@ -341,6 +399,7 @@ def train_behavior_cloned_policy(
     hidden_dim: int = 32,
     ridge: float = 1e-4,
     rollout_noise_std: float = 0.03,
+    feature_normalization: str = "standard",
     eval_lanes: tuple[str, ...] | list[str] | None = None,
     eval_max_steps: int | None = 12,
     policy_name: str = BC_POLICY_NAME,
@@ -393,8 +452,10 @@ def train_behavior_cloned_policy(
 
     features = np.vstack(feature_rows).astype(np.float32)
     labels = np.vstack(label_rows).astype(np.float32)
+    normalization_payload = _feature_normalization_payload(features, mode=str(feature_normalization))
+    fit_features = _apply_feature_normalization(features, normalization_payload)
     w1, b1, w2, b2, fit_rmse = _fit_random_feature_mlp(
-        features,
+        fit_features,
         labels,
         seed=int(seed),
         hidden_dim=int(hidden_dim),
@@ -415,6 +476,7 @@ def train_behavior_cloned_policy(
         max_steps=int(max_steps),
         rollout_noise_std=float(rollout_noise_std),
         sample_count=int(features.shape[0]),
+        feature_normalization=normalization_payload,
     )
     spec_payload = _policy_spec(artifact_name=model_path.name, policy_name=str(policy_name))
     _write_json(model_path, model_payload)
@@ -438,7 +500,11 @@ def train_behavior_cloned_policy(
         {
             "name": "finite_dataset",
             "ok": bool(np.all(np.isfinite(features)) and np.all(np.isfinite(labels))),
-            "details": {"feature_shape": list(features.shape), "label_shape": list(labels.shape)},
+            "details": {
+                "feature_shape": list(features.shape),
+                "label_shape": list(labels.shape),
+                "feature_normalization": normalization_payload.get("mode"),
+            },
         },
         {
             "name": "fit_rmse_finite",
@@ -479,6 +545,7 @@ def train_behavior_cloned_policy(
         "feature_dim": int(features.shape[1]),
         "label_dim": int(labels.shape[1]),
         "hidden_dim": int(hidden_dim),
+        "feature_normalization": normalization_payload,
         "fit_rmse": round(float(fit_rmse), 8),
         "training_rows": training_rows,
         "validation_matrix": validation_report,
@@ -497,6 +564,7 @@ def build_behavior_cloned_policy_evidence(
     hidden_dim: int = 32,
     ridge: float = 1e-4,
     rollout_noise_std: float = 0.03,
+    feature_normalization: str = "standard",
     eval_lanes: tuple[str, ...] | list[str] | None = None,
     eval_max_steps: int | None = 12,
     policy_name: str = BC_POLICY_NAME,
@@ -531,6 +599,7 @@ def build_behavior_cloned_policy_evidence(
         hidden_dim=int(hidden_dim),
         ridge=float(ridge),
         rollout_noise_std=float(rollout_noise_std),
+        feature_normalization=str(feature_normalization),
         eval_lanes=eval_lanes,
         eval_max_steps=eval_max_steps,
         policy_name=str(policy_name),
@@ -631,6 +700,7 @@ def build_behavior_cloned_policy_evidence(
             "model_artifact": training.get("model_artifact"),
             "sample_count": training.get("sample_count"),
             "fit_rmse": training.get("fit_rmse"),
+            "feature_normalization": training.get("feature_normalization", {}).get("mode"),
         },
         "manifest_overlay": str(manifest_overlay_path),
         "bundle_paths": {label: str(out / f"{label}_bundle") for label in bundles},
@@ -659,6 +729,7 @@ __all__ = [
     "BC_EVIDENCE_SCHEMA_VERSION",
     "BC_TRAINING_SCHEMA_VERSION",
     "BC_FIXTURE_BUNDLE_CONFIGS",
+    "BC_FEATURE_NORMALIZATION_CHOICES",
     "DEFAULT_BC_LANES",
     "build_behavior_cloned_policy_evidence",
     "train_behavior_cloned_policy",

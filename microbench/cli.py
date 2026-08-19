@@ -20,7 +20,7 @@ from microbench.replay import export_foxglove_comparison_mcap, export_foxglove_m
 from microbench.dataset import generate_dataset, expand_scenarios, expand_list, sanity_check_shard
 from microbench.logging import wandb_logger
 from microbench.rl.calibration import run_rl_policy_calibration
-from microbench.rl.bc_training import build_behavior_cloned_policy_evidence, train_behavior_cloned_policy
+from microbench.rl.bc_training import BC_FEATURE_NORMALIZATION_CHOICES, build_behavior_cloned_policy_evidence, train_behavior_cloned_policy
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import run_rl_freeze_check
 from microbench.rl.hard_lane_training import run_learned_hard_lane_loop
@@ -1325,6 +1325,7 @@ def _train_learned_bc(args) -> None:
         hidden_dim=int(args.hidden_dim),
         ridge=float(args.ridge),
         rollout_noise_std=float(args.rollout_noise_std),
+        feature_normalization=str(args.feature_normalization),
         eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
         eval_max_steps=args.eval_max_steps,
         policy_name=str(args.policy_name),
@@ -1366,6 +1367,7 @@ def _learned_bc_evidence(args) -> None:
         hidden_dim=int(args.hidden_dim),
         ridge=float(args.ridge),
         rollout_noise_std=float(args.rollout_noise_std),
+        feature_normalization=str(args.feature_normalization),
         eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
         eval_max_steps=args.eval_max_steps,
         policy_name=str(args.policy_name),
@@ -1406,6 +1408,7 @@ def _learned_hard_lane_loop(args) -> None:
         diagnostics=args.diagnostics,
         bundles=args.bundle,
         fallback_lanes=_parse_str_list(args.fallback_lanes) if args.fallback_lanes else None,
+        mix_lanes=_parse_str_list(args.mix_lanes) if args.mix_lanes else None,
         max_lanes=int(args.max_lanes),
         target_policy=args.target_policy,
         target_method=args.target_method,
@@ -1417,6 +1420,7 @@ def _learned_hard_lane_loop(args) -> None:
         save_replay=bool(args.save_replay),
         hidden_dim=int(args.hidden_dim),
         ridge=float(args.ridge),
+        feature_normalization=str(args.feature_normalization),
         eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
         eval_max_steps=args.eval_max_steps,
         policy_name=str(args.policy_name),
@@ -1443,6 +1447,8 @@ def _learned_hard_lane_loop(args) -> None:
             f"samples={dataset.get('sample_count')} fit_rmse={training.get('fit_rmse')} "
             f"bundles={leaderboard.get('bundle_count')}"
         )
+        if report.get("dataset_lanes"):
+            print(f"  dataset_lanes: {','.join(report.get('dataset_lanes', []))}")
         print(f"  dataset: {dataset.get('manifest')}")
         print(f"  policy_spec: {training.get('policy_spec')}")
         print(f"  bc_bundle: {report.get('bundle_paths', {}).get('bc')}")
@@ -2551,6 +2557,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_bc.add_argument("--hidden-dim", type=int, default=32, help="Random-feature MLP hidden dimension")
     p_bc.add_argument("--ridge", type=float, default=1e-4, help="Ridge regularization for the output layer fit")
     p_bc.add_argument(
+        "--feature-normalization",
+        choices=BC_FEATURE_NORMALIZATION_CHOICES,
+        default="standard",
+        help="Feature transform stored in the portable MLP artifact",
+    )
+    p_bc.add_argument(
         "--rollout-noise-std",
         type=float,
         default=0.03,
@@ -2583,6 +2595,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_bce.add_argument("--max-steps", type=int, default=64, help="Teacher rollout steps per training lane/seed")
     p_bce.add_argument("--hidden-dim", type=int, default=32, help="Random-feature MLP hidden dimension")
     p_bce.add_argument("--ridge", type=float, default=1e-4, help="Ridge regularization for the output layer fit")
+    p_bce.add_argument(
+        "--feature-normalization",
+        choices=BC_FEATURE_NORMALIZATION_CHOICES,
+        default="standard",
+        help="Feature transform stored in the portable MLP artifact",
+    )
     p_bce.add_argument("--rollout-noise-std", type=float, default=0.03, help="Clipped Gaussian teacher-rollout action noise")
     p_bce.add_argument("--eval-lanes", default=None, help="Comma-separated validation lane ids for the trained spec")
     p_bce.add_argument("--eval-max-steps", type=int, default=12, help="Validation rollout step cap for the trained spec")
@@ -2624,6 +2642,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not fill remaining hard-lane slots with --fallback-lanes after diagnostics selection",
     )
     p_hlt.add_argument(
+        "--mix-lanes",
+        default=None,
+        help="Additional broad validation lanes to include in the training dataset after selected hard lanes",
+    )
+    p_hlt.add_argument(
         "--dataset-policy",
         choices=LEARNED_DATASET_POLICY_CHOICES,
         default="bc_teacher",
@@ -2635,6 +2658,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_hlt.add_argument("--save-replay", action="store_true", help="Write lightweight per-step dataset replay JSONL files")
     p_hlt.add_argument("--hidden-dim", type=int, default=32, help="Random-feature MLP hidden dimension")
     p_hlt.add_argument("--ridge", type=float, default=1e-4, help="Ridge regularization for the output layer fit")
+    p_hlt.add_argument(
+        "--feature-normalization",
+        choices=BC_FEATURE_NORMALIZATION_CHOICES,
+        default="standard",
+        help="Feature transform stored in the portable MLP artifact",
+    )
     p_hlt.add_argument("--eval-lanes", default=None, help="Comma-separated validation lane ids for the trained spec")
     p_hlt.add_argument("--eval-max-steps", type=int, default=12, help="Validation rollout step cap for the trained spec")
     p_hlt.add_argument("--policy-name", default="bc_mlp_hard_lane", help="Policy name written to the trained policy spec")
