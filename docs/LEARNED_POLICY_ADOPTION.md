@@ -57,6 +57,18 @@ python -m microbench.cli train-learned-bc \
 
 Its output `runs_bc_mlp_policy/policy_spec.json` can be passed anywhere a learned policy spec is accepted. The generated `bc_training_report.json` records training lanes, seeds, sample counts, teacher policy, fit error, and validation-matrix evidence. The trainer uses only the public RL observation vector and a transparent local-avoidance teacher; disclose it as behavior cloning, not as privileged imitation from simulator truth.
 
+For an end-to-end development comparison, use:
+
+```bash
+python -m microbench.cli learned-bc-evidence \
+  --out-dir runs_bc_mlp_evidence \
+  --lanes head_on,crossing,urban_obstacle \
+  --max-runs 1 \
+  --require-pass
+```
+
+The evidence command trains the BC policy, generates a manifest overlay with training disclosure, packages the trained spec through `learned-submission-bundle`, packages `learned_tiny` and `learned_mlp` for side-by-side context, and writes a learned leaderboard JSON/CSV. Keep the output directory with any learned-policy claim because the leaderboard rows are derived from those bundles.
+
 ## Health Gates
 
 Smoke-test the wrapper API on 2D and 3D generated scenarios:

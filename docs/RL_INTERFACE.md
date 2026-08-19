@@ -339,6 +339,18 @@ The trainer rolls out a transparent local DAA teacher over the public RL observa
 
 This is the first built-in learned training path and is meant to make learned-policy evaluation reproducible. It is behavior cloning from a local teacher, not an upper-bound oracle or a certified DAA controller.
 
+Create a reviewer-facing bundle and learned-policy leaderboard comparison against the frozen tiny/MLP fixtures:
+
+```bash
+python -m microbench.cli learned-bc-evidence \
+  --out-dir runs_bc_mlp_evidence \
+  --lanes head_on,crossing,urban_obstacle \
+  --max-runs 1 \
+  --require-pass
+```
+
+This command trains the BC policy, writes a disclosure overlay for the trained policy, creates a `learned_policy_spec` bundle for the trained artifact, creates comparable `learned_tiny` and `learned_mlp` bundles, and writes `learned_policy_leaderboard.json` plus CSV. Capped evidence is useful for development review; uncapped suite runs are still needed for final leaderboard claims.
+
 ## Learned Submission Bundle
 
 Use the bundle command when preparing learned-policy artifacts for review:

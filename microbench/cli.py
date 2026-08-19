@@ -20,7 +20,7 @@ from microbench.replay import export_foxglove_comparison_mcap, export_foxglove_m
 from microbench.dataset import generate_dataset, expand_scenarios, expand_list, sanity_check_shard
 from microbench.logging import wandb_logger
 from microbench.rl.calibration import run_rl_policy_calibration
-from microbench.rl.bc_training import train_behavior_cloned_policy
+from microbench.rl.bc_training import build_behavior_cloned_policy_evidence, train_behavior_cloned_policy
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import run_rl_freeze_check
 from microbench.rl.learned_leaderboard import write_learned_policy_leaderboard
@@ -1318,6 +1318,49 @@ def _train_learned_bc(args) -> None:
         raise SystemExit(f"behavior-cloned learned-policy training failed: {','.join(failed)}")
 
 
+def _learned_bc_evidence(args) -> None:
+    report = build_behavior_cloned_policy_evidence(
+        out_dir=args.out_dir,
+        lanes=_parse_str_list(args.lanes) if args.lanes else None,
+        seeds=_parse_int_list(args.seeds) if args.seeds else None,
+        max_steps=int(args.max_steps),
+        hidden_dim=int(args.hidden_dim),
+        ridge=float(args.ridge),
+        rollout_noise_std=float(args.rollout_noise_std),
+        eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
+        eval_max_steps=args.eval_max_steps,
+        policy_name=str(args.policy_name),
+        seed=int(args.seed),
+        bundle_suite=str(args.suite),
+        bundle_n_agents=int(args.n),
+        bundle_seeds=_parse_int_list(args.bundle_seeds) if args.bundle_seeds else None,
+        bundle_max_steps=args.bundle_max_steps,
+        bundle_max_runs=args.max_runs,
+        include_fixture_bundles=not bool(args.skip_fixtures),
+        overwrite=bool(args.overwrite),
+    )
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        training = report.get("training", {})
+        leaderboard = report.get("leaderboard", {})
+        print(
+            f"learned-bc-evidence: {status} policy={args.policy_name} "
+            f"samples={training.get('sample_count')} fit_rmse={training.get('fit_rmse')} "
+            f"bundles={leaderboard.get('bundle_count')}"
+        )
+        print(f"  policy_spec: {training.get('policy_spec')}")
+        print(f"  bc_bundle: {report.get('bundle_paths', {}).get('bc')}")
+        print(f"  leaderboard: {leaderboard.get('leaderboard_path')}")
+        print(f"  csv: {leaderboard.get('leaderboard_csv')}")
+
+    if args.require_pass and not report["ok"]:
+        failed = [check["name"] for check in report["checks"] if not check["ok"]]
+        raise SystemExit(f"learned BC evidence failed: {','.join(failed)}")
+
+
 def _rl_contract(args) -> None:
     report = interface_contract(top_k=int(args.top_k))
     payload = json.dumps(report, indent=2, sort_keys=True)
@@ -2372,6 +2415,35 @@ def build_parser() -> argparse.ArgumentParser:
     p_bc.add_argument("--json", action="store_true", help="Emit machine-readable training report")
     p_bc.add_argument("--require-pass", action="store_true", help="Fail if training or validation gates fail")
 
+    p_bce = sub.add_parser(
+        "learned-bc-evidence",
+        help="Train, bundle, and compare a behavior-cloned learned policy against frozen learned fixtures",
+    )
+    p_bce.add_argument("--out-dir", required=True, help="Output directory for training, bundles, and leaderboard")
+    p_bce.add_argument(
+        "--lanes",
+        default=None,
+        help="Comma-separated training lane ids; defaults to the canonical learned-policy validation lanes",
+    )
+    p_bce.add_argument("--seeds", default=None, help="Optional training seed list/range for every lane")
+    p_bce.add_argument("--max-steps", type=int, default=64, help="Teacher rollout steps per training lane/seed")
+    p_bce.add_argument("--hidden-dim", type=int, default=32, help="Random-feature MLP hidden dimension")
+    p_bce.add_argument("--ridge", type=float, default=1e-4, help="Ridge regularization for the output layer fit")
+    p_bce.add_argument("--rollout-noise-std", type=float, default=0.03, help="Clipped Gaussian teacher-rollout action noise")
+    p_bce.add_argument("--eval-lanes", default=None, help="Comma-separated validation lane ids for the trained spec")
+    p_bce.add_argument("--eval-max-steps", type=int, default=12, help="Validation rollout step cap for the trained spec")
+    p_bce.add_argument("--policy-name", default="bc_mlp_learned", help="Policy name written to the trained policy spec")
+    p_bce.add_argument("--seed", type=int, default=29, help="Random-feature model seed")
+    p_bce.add_argument("--suite", default="official_smoke_generated", help="Generated suite for learned-submission bundles")
+    p_bce.add_argument("--n", type=int, default=4, help="Agent count for learned-submission bundle RL wrapper checks")
+    p_bce.add_argument("--bundle-seeds", default=None, help="Seed list/range for learned-submission bundle checks")
+    p_bce.add_argument("--bundle-max-steps", type=int, default=12, help="Step cap for bundle RL wrapper checks")
+    p_bce.add_argument("--max-runs", type=int, default=1, help="Planner-sweep run cap for each learned bundle")
+    p_bce.add_argument("--skip-fixtures", action="store_true", help="Only bundle the trained BC policy, not tiny/MLP fixtures")
+    p_bce.add_argument("--overwrite", action="store_true", help="Overwrite known evidence artifacts in --out-dir")
+    p_bce.add_argument("--json", action="store_true", help="Emit machine-readable evidence report")
+    p_bce.add_argument("--require-pass", action="store_true", help="Fail if training, bundles, or leaderboard gates fail")
+
     p_rlc = sub.add_parser("rl-contract", help="Print the versioned RL action/observation/reward contract")
     p_rlc.add_argument("--top-k", type=int, default=8, help="Neighbor slots used to compute observation shape")
     p_rlc.add_argument("--out", default=None, help="Optional JSON output path")
@@ -2640,6 +2712,9 @@ def main() -> None:
         return
     if args.cmd == "train-learned-bc":
         _train_learned_bc(args)
+        return
+    if args.cmd == "learned-bc-evidence":
+        _learned_bc_evidence(args)
         return
     if args.cmd == "rl-contract":
         _rl_contract(args)

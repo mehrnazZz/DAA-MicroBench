@@ -58,6 +58,7 @@ python -m microbench.cli rl-smoke --out-dir runs_rl_tiny_learned --policy tiny_l
 python -m microbench.cli rl-smoke --out-dir runs_rl_mlp_learned --policy mlp_learned --require-pass
 python -m microbench.cli rl-calibration --out-dir runs_rl_calibration --require-pass
 python -m microbench.cli train-learned-bc --out-dir runs_bc_mlp_policy --lanes head_on,crossing,urban_obstacle --eval-lanes head_on,crossing --require-pass
+python -m microbench.cli learned-bc-evidence --out-dir runs_bc_mlp_evidence --lanes head_on,crossing,urban_obstacle --max-runs 1 --require-pass
 python -m microbench.cli rl-contract --json
 python -m microbench.cli rl-freeze-check --require-pass --json
 python -m microbench.cli validate-learned-manifest --manifest examples/learned_submission_manifest_template.json --require-pass
@@ -97,6 +98,7 @@ python -m microbench.cli learned-leaderboard --bundle runs_learned_bundle --bund
 - `rl-freeze-check` publishes a machine-readable stable-v1 readiness checklist for the RL interface, but passing it does not make this public alpha a stable v1 release.
 - `tiny_learned` and `mlp_learned` are available as built-in RL smoke policies and map to the same frozen model families as the planner methods `learned_tiny` and `learned_mlp`.
 - `train-learned-bc` is the first built-in learned training workflow: it behavior-clones a transparent local DAA teacher from public RL validation-lane observations and writes a portable `mlp_json` policy spec. Treat it as reproducible learned-policy plumbing and a starter baseline, not as a certified or SOTA learned DAA controller.
+- `learned-bc-evidence` packages a trained BC policy through the learned-submission bundle path and compares it with `learned_tiny`/`learned_mlp` in a learned leaderboard. Capped runs are development evidence; uncapped official suite bundles remain required for stronger claims.
 - `validate-learned-manifest` checks learned-policy disclosure drafts, dependency declarations, and optional artifact hashes before running the heavier learned bundle workflow.
 - Learned-submission JSON Schemas are packaged under `microbench/bundled_config/schemas/` and documented in `docs/LEARNED_SUBMISSION_SCHEMAS.md`; schema `0.1` is still public-alpha, and `learned-submission-schema-check` gates schema packaging, docs coverage, template validity, and overlay guidance.
 - `learned-submission-bundle` creates the standard learned-policy artifact folder, including `learned_submission_manifest.json`, RL contract/freeze/smoke/calibration reports, and official planner CSVs.

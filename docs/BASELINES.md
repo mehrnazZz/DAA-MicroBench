@@ -824,6 +824,18 @@ python -m microbench.cli train-learned-bc \
 
 This writes `runs_bc_mlp_policy/policy_spec.json`, which can be used with `learned_policy_spec`, `rl-validation-matrix`, and learned-submission bundles. It clones a transparent local DAA teacher from public RL observations and should be treated as a starter learned baseline, not a certified DAA controller.
 
+To package that trained policy and compare it against the frozen learned fixtures:
+
+```bash
+python -m microbench.cli learned-bc-evidence \
+  --out-dir runs_bc_mlp_evidence \
+  --lanes head_on,crossing,urban_obstacle \
+  --max-runs 1 \
+  --require-pass
+```
+
+This writes a trained BC bundle, `learned_tiny`/`learned_mlp` comparison bundles, and a learned-policy leaderboard JSON/CSV.
+
 ## Promotion Calibration
 
 `baseline-promotion --require-calibrated` is the current public-alpha gate for experimental baselines. Passing it means the method imports, has docs/tests coverage, supports 2D and 3D, runs the behavior smoke without planner guardrail failures, emits its expected signal/debug contract, and passes compact promotion-calibration acceptance on an 8-second 3D stress lane plus an 8-second degraded fused-sensing lane. For `cbf_qp` and `mpc_local`, it also runs `official_experimental_baselines` and checks that suite acceptance metadata.
