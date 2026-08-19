@@ -82,6 +82,19 @@ python -m microbench.cli learned-bc-evidence \
 
 The evidence command trains the BC policy, generates a manifest overlay with training disclosure, packages the trained spec through `learned-submission-bundle`, packages `learned_tiny` and `learned_mlp` for side-by-side context, and writes learned leaderboard plus diagnostics JSON/CSV/Markdown reports. Keep the output directory with any learned-policy claim because the leaderboard and diagnostic rows are derived from those bundles.
 
+To turn those diagnostic labels into a reproducible retraining slice:
+
+```bash
+python -m microbench.cli learned-hard-lane-loop \
+  --out-dir runs_hard_lane_loop \
+  --diagnostics runs_bc_mlp_evidence/learned_policy_diagnostics.json \
+  --max-lanes 3 \
+  --max-runs 1 \
+  --require-pass
+```
+
+The hard-lane loop selects canonical validation lanes from `unsafe`, `needs_training`, `fast_but_close`, `safe_but_slow`, and limited-evidence diagnostics, exports matching `learned-dataset-export` shards, trains the BC MLP from those shards, packages the trained policy, and writes a fresh learned leaderboard plus diagnostics report. This is a development loop for focused iteration, not a substitute for uncapped final bundles.
+
 ## Health Gates
 
 Smoke-test the wrapper API on 2D and 3D generated scenarios:

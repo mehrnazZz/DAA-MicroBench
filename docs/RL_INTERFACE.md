@@ -413,6 +413,19 @@ python -m microbench.cli learned-dataset-export \
 
 This writes `learned_dataset_manifest.json`, `learned_dataset_episodes.csv`, compressed `shards/shard_*.npz`, and optional replay JSONL. Shards include `observations`, `actions`, `next_observations`, rewards, termination flags, lane metadata, and collision/near-miss diagnostics. The default action source is `bc_teacher`; pass `--policy-spec` to export samples from a submitted learned policy.
 
+Run a diagnostics-driven hard-lane retraining loop:
+
+```bash
+python -m microbench.cli learned-hard-lane-loop \
+  --out-dir runs_hard_lane_loop \
+  --diagnostics runs_bc_mlp_evidence/learned_policy_diagnostics.json \
+  --max-lanes 3 \
+  --max-runs 1 \
+  --require-pass
+```
+
+This command selects canonical weak validation lanes from learned diagnostics, exports matching public dataset shards, trains the same portable BC MLP from those shards, packages the trained spec, and writes a fresh learned leaderboard plus diagnostics report.
+
 Compare multiple learned-policy bundles without rerunning simulations:
 
 ```bash

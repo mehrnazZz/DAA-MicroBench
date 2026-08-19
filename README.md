@@ -124,6 +124,7 @@ python -m microbench.cli rl-validation-matrix --out-dir runs_rl_validation_matri
 python -m microbench.cli learned-dataset-export --out-dir runs_learned_dataset --lanes head_on,crossing,urban_obstacle --max-steps 64 --save-replay --require-pass
 python -m microbench.cli train-learned-bc --out-dir runs_bc_mlp_policy --lanes head_on,crossing,urban_obstacle --eval-lanes head_on,crossing --require-pass
 python -m microbench.cli learned-bc-evidence --out-dir runs_bc_mlp_evidence --lanes head_on,crossing,urban_obstacle --max-runs 1 --require-pass
+python -m microbench.cli learned-hard-lane-loop --out-dir runs_hard_lane_loop --diagnostics runs_learned_diagnostics/learned_policy_diagnostics.json --max-lanes 3 --max-runs 1 --require-pass
 python -m microbench.cli rl-contract --json
 python -m microbench.cli rl-freeze-check --require-pass --json
 python -m microbench.cli validate-learned-manifest --manifest examples/learned_submission_manifest_template.json --require-pass
@@ -1122,6 +1123,21 @@ The output directory contains:
 Shard arrays include `observations`, `actions`, `next_observations`, `rewards`, `terminated`, `truncated`, `done`, lane/scenario/seed metadata, collision/near-miss flags, and per-sample clearance.
 
 Recommended scale for training: at least `100k+` samples across multiple scenarios and comm profiles.
+
+## 11.2) Learned Hard-Lane Loop
+
+`learned-hard-lane-loop` closes the development loop from diagnostics to retraining. It reads `learned-diagnostics` rows or diagnoses one or more bundles, selects canonical hard lanes such as `head_on`, `crossing`, `urban_obstacle`, `communication_delay`, or `high_n_dense_merge`, exports public RL observation/action shards for those lanes, trains the portable BC MLP from the shards, then reruns learned-submission bundle evidence, leaderboard, and diagnostics.
+
+```bash
+python -m microbench.cli learned-hard-lane-loop \
+  --out-dir runs_hard_lane_loop \
+  --diagnostics runs_learned_diagnostics/learned_policy_diagnostics.json \
+  --max-lanes 3 \
+  --max-runs 1 \
+  --require-pass
+```
+
+The top-level `learned_hard_lane_loop.json` records the selected lanes, dataset manifest, training report, policy spec, bundle paths, learned leaderboard, and final diagnostics. Use this for development iteration; final learned-policy claims should still keep the uncapped bundle artifacts and training disclosure.
 
 ## 12) Performance Expectations and Practical Profiling
 

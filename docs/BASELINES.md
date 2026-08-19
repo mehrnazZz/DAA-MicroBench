@@ -836,6 +836,17 @@ python -m microbench.cli learned-bc-evidence \
 
 This writes a trained BC bundle, `learned_tiny`/`learned_mlp` comparison bundles, a learned-policy leaderboard JSON/CSV, and a diagnostics JSON/CSV/Markdown report with labels such as `safe_but_slow`, `fast_but_close`, and `balanced`.
 
+For focused learned-policy iteration, `learned-hard-lane-loop` can consume those diagnostics, select the weakest canonical validation lanes, export matching public observation/action shards, train the BC MLP from the shards, and rerun the bundle/leaderboard/diagnostic evidence:
+
+```bash
+python -m microbench.cli learned-hard-lane-loop \
+  --out-dir runs_hard_lane_loop \
+  --diagnostics runs_bc_mlp_evidence/learned_policy_diagnostics.json \
+  --max-lanes 3 \
+  --max-runs 1 \
+  --require-pass
+```
+
 ## Promotion Calibration
 
 `baseline-promotion --require-calibrated` is the current public-alpha gate for experimental baselines. Passing it means the method imports, has docs/tests coverage, supports 2D and 3D, runs the behavior smoke without planner guardrail failures, emits its expected signal/debug contract, and passes compact promotion-calibration acceptance on an 8-second 3D stress lane plus an 8-second degraded fused-sensing lane. For `cbf_qp` and `mpc_local`, it also runs `official_experimental_baselines` and checks that suite acceptance metadata.

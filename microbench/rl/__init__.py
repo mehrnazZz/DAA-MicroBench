@@ -51,6 +51,15 @@ from microbench.rl.learned_dataset import (
     LEARNED_DATASET_TEACHER_POLICY,
     export_learned_policy_dataset,
 )
+from microbench.rl.hard_lane_training import (
+    DEFAULT_HARD_LANE_FALLBACK,
+    HARD_DIAGNOSTIC_LABELS,
+    LEARNED_DATASET_BC_TRAINING_SOURCE,
+    LEARNED_HARD_LANE_LOOP_SCHEMA_VERSION,
+    run_learned_hard_lane_loop,
+    select_hard_lanes_from_diagnostics,
+    train_behavior_cloned_policy_from_dataset,
+)
 from microbench.rl.learned_leaderboard import (
     LEARNED_POLICY_LEADERBOARD_SCHEMA_VERSION,
     build_learned_policy_leaderboard,
@@ -133,6 +142,10 @@ __all__ = [
     "LEARNED_DATASET_POLICY_CHOICES",
     "LEARNED_DATASET_SCHEMA_VERSION",
     "LEARNED_DATASET_TEACHER_POLICY",
+    "DEFAULT_HARD_LANE_FALLBACK",
+    "HARD_DIAGNOSTIC_LABELS",
+    "LEARNED_DATASET_BC_TRAINING_SOURCE",
+    "LEARNED_HARD_LANE_LOOP_SCHEMA_VERSION",
     "ModelPredictPolicyAdapter",
     "MlpLearnedPolicy",
     "OBSERVATION_LAYOUT",
@@ -187,6 +200,7 @@ __all__ = [
     "rollout_parallel_env",
     "run_parallel_policy_rollouts",
     "run_learned_policy_submission_bundle",
+    "run_learned_hard_lane_loop",
     "run_learned_submission_schema_check",
     "run_rl_freeze_check",
     "run_rl_policy_calibration",
@@ -197,7 +211,9 @@ __all__ = [
     "validate_with_schema_subset",
     "write_learned_policy_leaderboard",
     "write_learned_policy_diagnostics",
+    "select_hard_lanes_from_diagnostics",
     "single_agent_env",
     "tiny_learned_model_path",
     "train_behavior_cloned_policy",
+    "train_behavior_cloned_policy_from_dataset",
 ]

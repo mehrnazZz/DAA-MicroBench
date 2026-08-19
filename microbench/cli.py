@@ -23,6 +23,7 @@ from microbench.rl.calibration import run_rl_policy_calibration
 from microbench.rl.bc_training import build_behavior_cloned_policy_evidence, train_behavior_cloned_policy
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import run_rl_freeze_check
+from microbench.rl.hard_lane_training import run_learned_hard_lane_loop
 from microbench.rl.learned_dataset import LEARNED_DATASET_POLICY_CHOICES, export_learned_policy_dataset
 from microbench.rl.learned_diagnostics import write_learned_policy_diagnostics
 from microbench.rl.learned_leaderboard import write_learned_policy_leaderboard
@@ -1399,6 +1400,57 @@ def _learned_bc_evidence(args) -> None:
         raise SystemExit(f"learned BC evidence failed: {','.join(failed)}")
 
 
+def _learned_hard_lane_loop(args) -> None:
+    report = run_learned_hard_lane_loop(
+        out_dir=args.out_dir,
+        diagnostics=args.diagnostics,
+        bundles=args.bundle,
+        fallback_lanes=_parse_str_list(args.fallback_lanes) if args.fallback_lanes else None,
+        max_lanes=int(args.max_lanes),
+        dataset_policy=str(args.dataset_policy),
+        dataset_policy_spec=args.dataset_policy_spec,
+        dataset_max_steps=args.dataset_max_steps,
+        dataset_shard_size=int(args.dataset_shard_size),
+        save_replay=bool(args.save_replay),
+        hidden_dim=int(args.hidden_dim),
+        ridge=float(args.ridge),
+        eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
+        eval_max_steps=args.eval_max_steps,
+        policy_name=str(args.policy_name),
+        seed=int(args.seed),
+        bundle_suite=str(args.suite),
+        bundle_n_agents=int(args.n),
+        bundle_seeds=_parse_int_list(args.bundle_seeds) if args.bundle_seeds else None,
+        bundle_max_steps=args.bundle_max_steps,
+        bundle_max_runs=args.max_runs,
+        include_fixture_bundles=not bool(args.skip_fixtures),
+        overwrite=bool(args.overwrite),
+    )
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        selection = report.get("selection", {})
+        training = report.get("training", {})
+        dataset = report.get("dataset", {})
+        leaderboard = report.get("leaderboard", {})
+        print(
+            f"learned-hard-lane-loop: {status} lanes={','.join(selection.get('selected_lanes', []))} "
+            f"samples={dataset.get('sample_count')} fit_rmse={training.get('fit_rmse')} "
+            f"bundles={leaderboard.get('bundle_count')}"
+        )
+        print(f"  dataset: {dataset.get('manifest')}")
+        print(f"  policy_spec: {training.get('policy_spec')}")
+        print(f"  bc_bundle: {report.get('bundle_paths', {}).get('bc')}")
+        print(f"  leaderboard: {leaderboard.get('leaderboard_path')}")
+        print(f"  diagnostics: {report.get('diagnostics', {}).get('diagnostics_path')}")
+
+    if args.require_pass and not report["ok"]:
+        failed = [check["name"] for check in report["checks"] if not check["ok"]]
+        raise SystemExit(f"learned hard-lane loop failed: {','.join(failed)}")
+
+
 def _rl_contract(args) -> None:
     report = interface_contract(top_k=int(args.top_k))
     payload = json.dumps(report, indent=2, sort_keys=True)
@@ -2543,6 +2595,50 @@ def build_parser() -> argparse.ArgumentParser:
     p_bce.add_argument("--json", action="store_true", help="Emit machine-readable evidence report")
     p_bce.add_argument("--require-pass", action="store_true", help="Fail if training, bundles, or leaderboard gates fail")
 
+    p_hlt = sub.add_parser(
+        "learned-hard-lane-loop",
+        help="Diagnose weak learned-policy lanes, export shards, retrain from them, and rerun evidence",
+    )
+    p_hlt.add_argument("--out-dir", required=True, help="Output directory for diagnostics, dataset, training, bundles, and reports")
+    p_hlt.add_argument("--diagnostics", default=None, help="Existing learned_policy_diagnostics.json used to select hard lanes")
+    p_hlt.add_argument(
+        "--bundle",
+        action="append",
+        default=None,
+        help="Existing learned-submission bundle to diagnose before lane selection; repeat for multiple bundles",
+    )
+    p_hlt.add_argument(
+        "--fallback-lanes",
+        default="head_on,crossing,urban_obstacle",
+        help="Fallback lane ids when diagnostics do not identify a canonical hard lane",
+    )
+    p_hlt.add_argument("--max-lanes", type=int, default=3, help="Maximum selected hard lanes to retrain on")
+    p_hlt.add_argument(
+        "--dataset-policy",
+        choices=LEARNED_DATASET_POLICY_CHOICES,
+        default="bc_teacher",
+        help="Action source for hard-lane dataset shards",
+    )
+    p_hlt.add_argument("--dataset-policy-spec", default=None, help="Optional JSON/YAML policy spec for hard-lane dataset actions")
+    p_hlt.add_argument("--dataset-max-steps", type=int, default=64, help="Step cap for each hard-lane dataset episode")
+    p_hlt.add_argument("--dataset-shard-size", type=int, default=50000, help="Samples per compressed dataset shard")
+    p_hlt.add_argument("--save-replay", action="store_true", help="Write lightweight per-step dataset replay JSONL files")
+    p_hlt.add_argument("--hidden-dim", type=int, default=32, help="Random-feature MLP hidden dimension")
+    p_hlt.add_argument("--ridge", type=float, default=1e-4, help="Ridge regularization for the output layer fit")
+    p_hlt.add_argument("--eval-lanes", default=None, help="Comma-separated validation lane ids for the trained spec")
+    p_hlt.add_argument("--eval-max-steps", type=int, default=12, help="Validation rollout step cap for the trained spec")
+    p_hlt.add_argument("--policy-name", default="bc_mlp_hard_lane", help="Policy name written to the trained policy spec")
+    p_hlt.add_argument("--seed", type=int, default=29, help="Random-feature model seed")
+    p_hlt.add_argument("--suite", default="official_smoke_generated", help="Generated suite for learned-submission bundles")
+    p_hlt.add_argument("--n", type=int, default=4, help="Agent count for learned-submission bundle RL wrapper checks")
+    p_hlt.add_argument("--bundle-seeds", default=None, help="Seed list/range for learned-submission bundle checks")
+    p_hlt.add_argument("--bundle-max-steps", type=int, default=12, help="Step cap for bundle RL wrapper checks")
+    p_hlt.add_argument("--max-runs", type=int, default=1, help="Planner-sweep run cap for each learned bundle")
+    p_hlt.add_argument("--skip-fixtures", action="store_true", help="Only bundle the retrained BC policy, not tiny/MLP fixtures")
+    p_hlt.add_argument("--overwrite", action="store_true", help="Overwrite known hard-lane loop artifacts in --out-dir")
+    p_hlt.add_argument("--json", action="store_true", help="Emit machine-readable hard-lane loop report")
+    p_hlt.add_argument("--require-pass", action="store_true", help="Fail if dataset, training, bundles, or reports fail")
+
     p_rlc = sub.add_parser("rl-contract", help="Print the versioned RL action/observation/reward contract")
     p_rlc.add_argument("--top-k", type=int, default=8, help="Neighbor slots used to compute observation shape")
     p_rlc.add_argument("--out", default=None, help="Optional JSON output path")
@@ -2830,6 +2926,9 @@ def main() -> None:
         return
     if args.cmd == "learned-bc-evidence":
         _learned_bc_evidence(args)
+        return
+    if args.cmd == "learned-hard-lane-loop":
+        _learned_hard_lane_loop(args)
         return
     if args.cmd == "rl-contract":
         _rl_contract(args)
