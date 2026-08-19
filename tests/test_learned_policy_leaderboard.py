@@ -34,6 +34,10 @@ def _fake_review(*, method: str, policy: str, score: float, recommendation: str 
                 "collision_episode_rate_mean": 0.0,
                 "min_sep_min_m": 0.5,
                 "min_sep_p05_min_m": 0.6,
+                "min_sep_min_row_m": 0.45,
+                "min_sep_p05_row_min_m": 0.55,
+                "min_sep_min_summary_mean_min_m": 0.5,
+                "min_sep_p05_summary_mean_min_m": 0.6,
             },
             "mission": {
                 "completion_rate_mean": 1.0,
@@ -93,12 +97,15 @@ def test_learned_policy_leaderboard_ranks_reviewable_rows(tmp_path: Path, monkey
     assert [row["development_rank"] for row in report["rows"]] == [1, 2, 3]
     assert report["rows"][1]["leaderboard_candidate"] is False
     assert report["rows"][1]["limitations"] == "limited_planner_sweep"
+    assert report["rows"][1]["min_sep_min_row_m"] == 0.45
+    assert report["rows"][1]["min_sep_min_summary_mean_min_m"] == 0.5
 
     out = tmp_path / "learned_policy_leaderboard.json"
     written = write_learned_policy_leaderboard(bundles=["tiny", "mlp"], out=out)
     assert written["leaderboard_path"] == str(out)
     assert Path(written["leaderboard_csv"]).exists()
     assert "score_v0_mean" in Path(written["leaderboard_csv"]).read_text(encoding="utf-8")
+    assert "min_sep_min_row_m" in Path(written["leaderboard_csv"]).read_text(encoding="utf-8")
 
 
 def test_learned_policy_leaderboard_cli_compares_bundles(tmp_path: Path) -> None:

@@ -1381,12 +1381,29 @@ def review_learned_policy_submission_bundle(*, bundle: str | Path) -> dict[str, 
         recommendation = "leaderboard_candidate"
 
     safety = {
+        "score_v0_uses_summary_clearance": True,
         "collision_episode_count": total_collision_episodes,
         "collision_episode_rate_mean": _round_or_none(_mean(_values(summary_rows, "collision_episode_rate"))),
         "collision_episode_rate_max": _round_or_none(max(_values(summary_rows, "collision_episode_rate")) if _values(summary_rows, "collision_episode_rate") else None),
         "near_miss_episode_rate_mean": _round_or_none(_mean(_values(summary_rows, "near_miss_episode_rate"))),
-        "min_sep_p05_min_m": _round_or_none(min(_values(summary_rows, "min_sep_p05_mean")) if _values(summary_rows, "min_sep_p05_mean") else None),
-        "min_sep_min_m": _round_or_none(min(_values(summary_rows, "min_sep_min_mean")) if _values(summary_rows, "min_sep_min_mean") else None),
+        "min_sep_min_m": _round_or_none(
+            min(_values(results_rows, "min_sep_min_m"))
+            if _values(results_rows, "min_sep_min_m")
+            else (min(_values(summary_rows, "min_sep_min_mean")) if _values(summary_rows, "min_sep_min_mean") else None)
+        ),
+        "min_sep_p05_min_m": _round_or_none(
+            min(_values(results_rows, "min_sep_p05_m"))
+            if _values(results_rows, "min_sep_p05_m")
+            else (min(_values(summary_rows, "min_sep_p05_mean")) if _values(summary_rows, "min_sep_p05_mean") else None)
+        ),
+        "min_sep_min_row_m": _round_or_none(min(_values(results_rows, "min_sep_min_m")) if _values(results_rows, "min_sep_min_m") else None),
+        "min_sep_p05_row_min_m": _round_or_none(min(_values(results_rows, "min_sep_p05_m")) if _values(results_rows, "min_sep_p05_m") else None),
+        "min_sep_min_summary_mean_min_m": _round_or_none(
+            min(_values(summary_rows, "min_sep_min_mean")) if _values(summary_rows, "min_sep_min_mean") else None
+        ),
+        "min_sep_p05_summary_mean_min_m": _round_or_none(
+            min(_values(summary_rows, "min_sep_p05_mean")) if _values(summary_rows, "min_sep_p05_mean") else None
+        ),
     }
     mission = {
         "completion_rate_mean": _round_or_none(_mean(_values(summary_rows, "completion_rate_mean"))),

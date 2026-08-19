@@ -38,6 +38,10 @@ LEARNED_POLICY_DIAGNOSTIC_FIELDS = (
     "near_miss_signals",
     "min_sep_min_m",
     "min_sep_p05_min_m",
+    "min_sep_min_row_m",
+    "min_sep_p05_row_min_m",
+    "min_sep_min_summary_mean_min_m",
+    "min_sep_p05_summary_mean_min_m",
     "completion_rate_mean",
     "completion_rate_min",
     "final_goal_dist_mean_max_m",
@@ -374,6 +378,10 @@ def _review_to_diagnostic_row(*, bundle: str | Path, review: dict[str, Any], err
         "near_miss_signals": near_miss_signals,
         "min_sep_min_m": _round_or_none(min_sep_min_m),
         "min_sep_p05_min_m": _round_or_none(min_sep_p05_min_m),
+        "min_sep_min_row_m": _round_or_none(safety.get("min_sep_min_row_m")),
+        "min_sep_p05_row_min_m": _round_or_none(safety.get("min_sep_p05_row_min_m")),
+        "min_sep_min_summary_mean_min_m": _round_or_none(safety.get("min_sep_min_summary_mean_min_m")),
+        "min_sep_p05_summary_mean_min_m": _round_or_none(safety.get("min_sep_p05_summary_mean_min_m")),
         "completion_rate_mean": _round_or_none(completion_rate_mean),
         "completion_rate_min": _round_or_none(completion_rate_min),
         "final_goal_dist_mean_max_m": planner_diag.get("final_goal_dist_mean_max_m"),
@@ -580,4 +588,3 @@ def write_learned_policy_diagnostics(
     report["diagnostics_markdown"] = str(md_path)
     out_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return report
-

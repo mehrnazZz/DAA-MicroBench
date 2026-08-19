@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 import subprocess
@@ -53,12 +54,17 @@ def _tiny_policy_spec(tmp_path: Path) -> Path:
     return path
 
 
+def _csv_values(path: Path, field: str) -> list[float]:
+    with path.open("r", newline="", encoding="utf-8") as f:
+        return [float(row[field]) for row in csv.DictReader(f)]
+
+
 def test_learned_policy_submission_bundle_helper_writes_expected_artifacts(tmp_path: Path) -> None:
     report = run_learned_policy_submission_bundle(
         out_dir=tmp_path / "bundle",
         method="learned_tiny",
         policy="tiny_learned",
-        max_runs=1,
+        max_runs=2,
         max_steps=3,
     )
 
@@ -66,7 +72,7 @@ def test_learned_policy_submission_bundle_helper_writes_expected_artifacts(tmp_p
     assert report["ok"] is True
     assert report["method"] == "learned_tiny"
     assert report["policy"] == "tiny_learned"
-    assert report["planner_sweep"]["run_count"] == 1
+    assert report["planner_sweep"]["run_count"] == 2
     assert report["acceptance"]["ok"] is True
     assert report["artifacts"]["learned_submission_manifest"] == "learned_submission_manifest.json"
     assert report["artifacts"]["rl_validation_matrix"] == "rl_validation_matrix.json"
@@ -111,6 +117,15 @@ def test_learned_policy_submission_bundle_helper_writes_expected_artifacts(tmp_p
     assert _check(review, "learned_bundle_review_schema_valid")["ok"] is True
     assert review["score_v0"]["mean"] is not None
     assert review["dimensions"]["safety"]["collision_episode_count"] == 0
+    results_csv = bundle_root / "planner_sweep" / "results.csv"
+    summary_csv = bundle_root / "planner_sweep" / "summary.csv"
+    result_min_sep = min(_csv_values(results_csv, "min_sep_min_m"))
+    result_p05_sep = min(_csv_values(results_csv, "min_sep_p05_m"))
+    summary_min_sep = min(_csv_values(summary_csv, "min_sep_min_mean"))
+    assert review["dimensions"]["safety"]["min_sep_min_m"] == round(result_min_sep, 6)
+    assert review["dimensions"]["safety"]["min_sep_min_row_m"] == round(result_min_sep, 6)
+    assert review["dimensions"]["safety"]["min_sep_p05_row_min_m"] == round(result_p05_sep, 6)
+    assert review["dimensions"]["safety"]["min_sep_min_summary_mean_min_m"] == round(summary_min_sep, 6)
     assert review["dimensions"]["rl_validation_matrix"]["ok"] is True
     assert review["dimensions"]["rl_validation_matrix"]["run_count"] == 5
     assert review["dimensions"]["rl_validation_matrix"]["episode_row_count"] == 5

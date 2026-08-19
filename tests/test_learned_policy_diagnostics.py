@@ -84,6 +84,10 @@ def _fake_review(
                 "near_miss_episode_rate_mean": 1.0 if near_miss_ticks else 0.0,
                 "min_sep_min_m": min_sep,
                 "min_sep_p05_min_m": p05,
+                "min_sep_min_row_m": min_sep,
+                "min_sep_p05_row_min_m": p05,
+                "min_sep_min_summary_mean_min_m": min_sep + 0.25,
+                "min_sep_p05_summary_mean_min_m": p05 + 0.25,
             },
             "mission": {
                 "completion_rate_mean": completion,
@@ -159,6 +163,8 @@ def test_learned_policy_diagnostics_labels_tradeoffs(tmp_path: Path, monkeypatch
     assert by_policy["safe_slow_policy"]["diagnostic_label"] == "safe_but_slow"
     assert by_policy["close_policy"]["diagnostic_label"] == "fast_but_close"
     assert by_policy["unsafe_policy"]["diagnostic_label"] == "unsafe"
+    assert by_policy["close_policy"]["min_sep_min_row_m"] == 0.4
+    assert by_policy["close_policy"]["min_sep_min_summary_mean_min_m"] == 0.65
     assert report["summary"]["safety_leader"] == "safe_slow_policy"
     assert by_policy["safe_slow_policy"]["worst_scenario"] == "slow_scenario"
     assert "Increase horizon/progress weighting" in by_policy["safe_slow_policy"]["next_action"]

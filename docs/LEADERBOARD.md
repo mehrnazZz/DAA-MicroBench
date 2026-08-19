@@ -146,6 +146,7 @@ See [BASELINES.md](BASELINES.md) for canonical baseline roles, aliases, and limi
 For learned-policy bundles, use `python -m microbench.cli review-learned-bundle --bundle <bundle> --json` to generate a machine-readable summary of the safety, mission, compute, communication, observation, and v0-score dimensions used during manual review.
 Use `python -m microbench.cli learned-leaderboard --bundle <bundle-a> --bundle <bundle-b> --out runs_learned_leaderboard/learned_policy_leaderboard.json` to compare multiple learned-policy bundles without rerunning simulations; the JSON/CSV table combines planner CSV score fields with RL validation-matrix lane evidence.
 Use `python -m microbench.cli learned-diagnostics --bundle <bundle-a> --bundle <bundle-b> --out runs_learned_diagnostics/learned_policy_diagnostics.json` to add JSON/CSV/Markdown labels that explain whether a learned policy is unsafe, safe-but-slow, fast-but-close, balanced, or still needs training.
+Learned-policy review tables report both true row-level clearance fields (`min_sep_min_row_m`, `min_sep_p05_row_min_m`) and summary-derived fields (`min_sep_min_summary_mean_min_m`, `min_sep_p05_summary_mean_min_m`). The v0 score remains based on summary CSV fields for continuity.
 
 For built-in baselines, use:
 

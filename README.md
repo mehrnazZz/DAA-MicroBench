@@ -124,7 +124,7 @@ python -m microbench.cli rl-validation-matrix --out-dir runs_rl_validation_matri
 python -m microbench.cli learned-dataset-export --out-dir runs_learned_dataset --lanes head_on,crossing,urban_obstacle --max-steps 64 --save-replay --require-pass
 python -m microbench.cli train-learned-bc --out-dir runs_bc_mlp_policy --lanes head_on,crossing,urban_obstacle --eval-lanes head_on,crossing --require-pass
 python -m microbench.cli learned-bc-evidence --out-dir runs_bc_mlp_evidence --lanes head_on,crossing,urban_obstacle --max-runs 1 --require-pass
-python -m microbench.cli learned-hard-lane-loop --out-dir runs_hard_lane_loop --diagnostics runs_learned_diagnostics/learned_policy_diagnostics.json --max-lanes 3 --max-runs 1 --require-pass
+python -m microbench.cli learned-hard-lane-loop --out-dir runs_hard_lane_loop --diagnostics runs_learned_diagnostics/learned_policy_diagnostics.json --target-policy learned_bc --target-method learned_bc --max-lanes 3 --fallback-lanes 2 --max-runs 1 --require-pass
 python -m microbench.cli rl-contract --json
 python -m microbench.cli rl-freeze-check --require-pass --json
 python -m microbench.cli validate-learned-manifest --manifest examples/learned_submission_manifest_template.json --require-pass
