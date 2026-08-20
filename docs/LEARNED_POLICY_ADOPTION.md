@@ -111,10 +111,15 @@ python -m microbench.cli learned-closed-loop-finetune \
   --generations 4 \
   --population-size 12 \
   --train-max-steps 24 \
-  --require-pass
+  --holdout-profile broad_3d_stress \
+  --holdout-scenarios sphere_swap_3d_medium,dense_swarm_3d_hard,merge_3d_hard,sensor_volume_3d_hard,noncooperative_intruder_3d_hard \
+  --holdout-seeds 0:2 \
+  --holdout-comm ideal_50hz,degraded_20hz \
+  --require-pass \
+  --require-promotion
 ```
 
-The fine-tuner evaluates candidates inside `DaaParallelEnv`, records every candidate rollout in CSV, and writes a new portable `mlp_json` policy only after applying collision, clearance, and near-miss guardrails. Use `--trainable-parameters output_head` for conservative audits and `all_layers` for stronger learned-baseline development. Treat this as the benchmark-native closed-loop training spine for stronger learned baselines; it is still public-alpha infrastructure.
+The fine-tuner evaluates candidates inside `DaaParallelEnv`, records every candidate rollout in CSV, and writes a new portable `mlp_json` policy only after applying collision, clearance, and near-miss guardrails. Use `--trainable-parameters output_head` for conservative audits and `all_layers` for stronger learned-baseline development. `--require-promotion` adds broad 3D holdout non-regression before the report marks the result as a promotion candidate. Treat this as the benchmark-native closed-loop training spine for stronger learned baselines; it is still public-alpha infrastructure.
 
 ## Health Gates
 

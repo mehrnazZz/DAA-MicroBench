@@ -861,10 +861,15 @@ python -m microbench.cli learned-closed-loop-finetune \
   --generations 4 \
   --population-size 12 \
   --train-max-steps 24 \
-  --require-pass
+  --holdout-profile broad_3d_stress \
+  --holdout-scenarios sphere_swap_3d_medium,dense_swarm_3d_hard,merge_3d_hard,sensor_volume_3d_hard,noncooperative_intruder_3d_hard \
+  --holdout-seeds 0:2 \
+  --holdout-comm ideal_50hz,degraded_20hz \
+  --require-pass \
+  --require-promotion
 ```
 
-This is benchmark-native closed-loop learned-policy infrastructure. It is not yet a claim that the shipped learned baseline is SOTA.
+This is benchmark-native closed-loop learned-policy infrastructure. `--require-promotion` requires the tuned policy to avoid safety, clearance, and `score_v0` regression against the base policy on the selected broad 3D holdout rows. It is not yet a claim that the shipped learned baseline is SOTA.
 
 ## Promotion Calibration
 

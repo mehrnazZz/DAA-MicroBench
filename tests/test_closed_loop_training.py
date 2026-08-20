@@ -78,6 +78,50 @@ def test_closed_loop_finetune_writes_guarded_policy_spec(tmp_path: Path) -> None
     assert np.all(np.isfinite(action))
 
 
+def test_closed_loop_finetune_broad_3d_holdout_promotion_gate(tmp_path: Path) -> None:
+    base_spec = _base_policy_spec(tmp_path)
+
+    report = fine_tune_closed_loop_policy(
+        out_dir=tmp_path / "closed_loop_holdout",
+        base_policy_spec=base_spec,
+        lanes=["head_on"],
+        train_max_steps=2,
+        generations=0,
+        population_size=1,
+        trainable_parameters="all_layers",
+        eval_lanes=["head_on"],
+        eval_max_steps=2,
+        holdout_profile="broad_3d_stress",
+        holdout_scenarios=["sphere_swap_3d_medium"],
+        holdout_seeds=[0],
+        holdout_comm_profiles=["ideal_50hz"],
+        holdout_n_agents=3,
+        holdout_max_runs=1,
+        run_validation=False,
+    )
+
+    assert report["ok"] is True
+    assert report["behavior_pass"] is True
+    assert report["promotion_candidate"] is True
+    assert report["promotion_status"] == "candidate"
+    assert report["holdout"]["profile"] == "broad_3d_stress"
+    assert report["holdout"]["expected_runs_per_policy"] == 1
+    assert report["holdout"]["base"]["collision_episodes"] == 0
+    assert report["holdout"]["tuned"]["collision_episodes"] == 0
+    assert Path(report["holdout"]["comparison_csv"]).exists()
+    assert Path(report["holdout"]["base"]["results_csv"]).exists()
+    assert Path(report["holdout"]["tuned"]["summary_csv"]).exists()
+    assert {check["name"] for check in report["checks"]} >= {
+        "holdout_runs_completed",
+        "holdout_no_collision_regression",
+        "holdout_score_not_worse",
+    }
+
+    model = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
+    assert model["training"]["holdout"]["profile"] == "broad_3d_stress"
+    assert model["training"]["holdout_result"]["promotion_candidate"] is True
+
+
 def test_closed_loop_finetune_cli_smoke(tmp_path: Path) -> None:
     base_spec = _base_policy_spec(tmp_path)
     out_dir = tmp_path / "closed_loop_cli"

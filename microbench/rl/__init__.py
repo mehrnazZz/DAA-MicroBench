@@ -39,6 +39,9 @@ from microbench.rl.bc_training import (
     train_behavior_cloned_policy,
 )
 from microbench.rl.closed_loop_training import (
+    CLOSED_LOOP_BROAD_3D_HOLDOUT_SCENARIOS,
+    CLOSED_LOOP_HOLDOUT_PROFILE_CHOICES,
+    CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE,
     CLOSED_LOOP_POLICY_NAME,
     CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES,
     CLOSED_LOOP_TRAINING_SCHEMA_VERSION,

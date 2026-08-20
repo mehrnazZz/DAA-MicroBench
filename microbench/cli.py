@@ -22,6 +22,9 @@ from microbench.logging import wandb_logger
 from microbench.rl.calibration import run_rl_policy_calibration
 from microbench.rl.bc_training import BC_FEATURE_NORMALIZATION_CHOICES, build_behavior_cloned_policy_evidence, train_behavior_cloned_policy
 from microbench.rl.closed_loop_training import (
+    CLOSED_LOOP_BROAD_3D_HOLDOUT_SCENARIOS,
+    CLOSED_LOOP_HOLDOUT_PROFILE_CHOICES,
+    CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE,
     CLOSED_LOOP_POLICY_NAME,
     CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES,
     fine_tune_closed_loop_policy,
@@ -1519,6 +1522,15 @@ def _learned_closed_loop_finetune(args) -> None:
         allow_near_miss_regression=bool(args.allow_near_miss_regression),
         eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
         eval_max_steps=args.eval_max_steps,
+        holdout_profile=str(args.holdout_profile),
+        holdout_scenarios=_parse_str_list(args.holdout_scenarios) if args.holdout_scenarios else None,
+        holdout_seeds=_parse_int_list(args.holdout_seeds) if args.holdout_seeds else None,
+        holdout_comm_profiles=_parse_str_list(args.holdout_comm) if args.holdout_comm else None,
+        holdout_n_agents=int(args.holdout_n),
+        holdout_max_runs=args.holdout_max_runs,
+        holdout_score_tolerance=float(args.holdout_score_tolerance),
+        allow_holdout_safety_regression=bool(args.allow_holdout_safety_regression),
+        allow_holdout_score_regression=bool(args.allow_holdout_score_regression),
         policy_name=str(args.policy_name),
         seed=int(args.seed),
         overwrite=bool(args.overwrite),
@@ -1530,20 +1542,26 @@ def _learned_closed_loop_finetune(args) -> None:
     else:
         status = "PASS" if report["ok"] else "FAIL"
         behavior = "PASS" if report.get("behavior_pass") else "REVIEW"
+        promotion = "YES" if report.get("promotion_candidate") else "NO"
         best = report.get("best_metrics", {})
         print(
             f"learned-closed-loop-finetune: {status} behavior={behavior} "
-            f"policy={report['policy_name']} candidates={report['candidate_count']} "
+            f"promotion_candidate={promotion} policy={report['policy_name']} candidates={report['candidate_count']} "
             f"accepted={report['accepted_generation_count']} best={report['best_candidate_id']} "
             f"score={best.get('score')}"
         )
         print(f"  policy_spec: {report['policy_spec']}")
         print(f"  model_artifact: {report['model_artifact']}")
         print(f"  candidate_summary: {report['candidate_summary_csv']}")
+        if report.get("holdout"):
+            print(f"  holdout_comparison: {report['holdout']['comparison_csv']}")
 
     if args.require_pass and not report["ok"]:
         failed = [check["name"] for check in report["checks"] if not check["ok"] and check.get("severity") == "gate"]
         raise SystemExit(f"learned closed-loop fine-tune failed: {','.join(failed)}")
+    if args.require_promotion and not report.get("promotion_candidate"):
+        failed = [check["name"] for check in report["checks"] if not check["ok"]]
+        raise SystemExit(f"learned closed-loop fine-tune is not a promotion candidate: {','.join(failed)}")
 
 
 def _rl_contract(args) -> None:
@@ -2868,12 +2886,44 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_clft.add_argument("--eval-lanes", default=None, help="Comma-separated validation lane ids for the final tuned spec")
     p_clft.add_argument("--eval-max-steps", type=int, default=12, help="Validation rollout step cap for the final tuned spec")
+    p_clft.add_argument(
+        "--holdout-profile",
+        choices=CLOSED_LOOP_HOLDOUT_PROFILE_CHOICES,
+        default="none",
+        help="Optional post-training holdout sweep used to decide promotion-candidate status",
+    )
+    p_clft.add_argument(
+        "--holdout-scenarios",
+        default=",".join(CLOSED_LOOP_BROAD_3D_HOLDOUT_SCENARIOS),
+        help="Comma-separated broad 3D holdout scenario ids when --holdout-profile is broad_3d_stress",
+    )
+    p_clft.add_argument("--holdout-seeds", default="0:2", help="Seed list/range for holdout runs")
+    p_clft.add_argument("--holdout-comm", default="ideal_50hz,degraded_20hz", help="Comma-separated holdout communication profiles")
+    p_clft.add_argument("--holdout-n", type=int, default=6, help="Agent count for holdout runs")
+    p_clft.add_argument("--holdout-max-runs", type=int, default=None, help="Optional cap for compact holdout smoke runs")
+    p_clft.add_argument(
+        "--holdout-score-tolerance",
+        type=float,
+        default=CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE,
+        help="Allowed tuned-minus-base score_v0 delta before promotion_candidate fails",
+    )
+    p_clft.add_argument(
+        "--allow-holdout-safety-regression",
+        action="store_true",
+        help="Do not block promotion_candidate on holdout collision, near-miss, or clearance regressions",
+    )
+    p_clft.add_argument(
+        "--allow-holdout-score-regression",
+        action="store_true",
+        help="Do not block promotion_candidate on holdout score_v0 regression",
+    )
     p_clft.add_argument("--policy-name", default=CLOSED_LOOP_POLICY_NAME, help="Policy name written to policy_spec.json")
     p_clft.add_argument("--seed", type=int, default=37, help="Closed-loop candidate-search seed")
     p_clft.add_argument("--overwrite", action="store_true", help="Overwrite existing fine-tuning outputs")
     p_clft.add_argument("--skip-validation", action="store_true", help="Skip post-training RL validation matrix")
     p_clft.add_argument("--json", action="store_true", help="Emit machine-readable fine-tuning report")
     p_clft.add_argument("--require-pass", action="store_true", help="Fail if fine-tuning gates fail")
+    p_clft.add_argument("--require-promotion", action="store_true", help="Fail unless the tuned policy passes promotion-candidate gates")
 
     p_rlc = sub.add_parser("rl-contract", help="Print the versioned RL action/observation/reward contract")
     p_rlc.add_argument("--top-k", type=int, default=8, help="Neighbor slots used to compute observation shape")

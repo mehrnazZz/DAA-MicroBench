@@ -440,10 +440,15 @@ python -m microbench.cli learned-closed-loop-finetune \
   --generations 4 \
   --population-size 12 \
   --train-max-steps 24 \
-  --require-pass
+  --holdout-profile broad_3d_stress \
+  --holdout-scenarios sphere_swap_3d_medium,dense_swarm_3d_hard,merge_3d_hard,sensor_volume_3d_hard,noncooperative_intruder_3d_hard \
+  --holdout-seeds 0:2 \
+  --holdout-comm ideal_50hz,degraded_20hz \
+  --require-pass \
+  --require-promotion
 ```
 
-This evaluates perturbed MLP parameters through the same parallel RL wrapper, accepts only non-regressing candidates under collision, clearance, and near-miss guardrails, and writes candidate rollout CSVs plus a new `mlp_json` policy spec.
+This evaluates perturbed MLP parameters through the same parallel RL wrapper, accepts only non-regressing candidates under collision, clearance, and near-miss guardrails, writes candidate rollout CSVs plus a new `mlp_json` policy spec, and can compare the final policy against its base on a broad 3D holdout before marking it as a promotion candidate.
 
 Compare multiple learned-policy bundles without rerunning simulations:
 

@@ -23,16 +23,30 @@ from microbench.rl.envs import DaaParallelEnv
 from microbench.rl.policy_spec import RL_POLICY_SPEC_SCHEMA_VERSION, load_policy_spec, resolve_policy_artifact_path
 from microbench.rl.rollout import RL_ROLLOUT_FIELDS, rollout_parallel_env
 from microbench.rl.validation_matrix import run_rl_validation_matrix
+from microbench.metrics import append_result, write_summary
+from microbench.runner import run_episode
+from microbench.scenarios import materialize_official_suite
+from microbench.tools.baseline_report import score_v0
 from microbench.tools.baseline_validation_matrix import (
     ValidationLane,
     prepare_validation_lane_scenarios,
     selected_validation_lanes,
 )
+from microbench.types import RunSpec
 
 
 CLOSED_LOOP_TRAINING_SCHEMA_VERSION = "0.1"
 CLOSED_LOOP_POLICY_NAME = "closed_loop_mlp_learned"
 CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES = ("output_head", "all_layers")
+CLOSED_LOOP_HOLDOUT_PROFILE_CHOICES = ("none", "broad_3d_stress")
+CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE = 1.0
+CLOSED_LOOP_BROAD_3D_HOLDOUT_SCENARIOS = (
+    "sphere_swap_3d_medium",
+    "dense_swarm_3d_hard",
+    "merge_3d_hard",
+    "sensor_volume_3d_hard",
+    "noncooperative_intruder_3d_hard",
+)
 CLOSED_LOOP_OBJECTIVE_DEFAULTS = {
     "collision_tick_penalty": 120.0,
     "near_miss_tick_penalty": 12.0,
@@ -68,6 +82,21 @@ CLOSED_LOOP_EPISODE_FIELDS = (
     "accepted",
     "feasible",
     *RL_ROLLOUT_FIELDS,
+)
+CLOSED_LOOP_HOLDOUT_COMPARISON_FIELDS = (
+    "label",
+    "run_count",
+    "scenario_count",
+    "collision_episodes",
+    "near_miss_episodes",
+    "completion_rate_mean",
+    "min_sep_min_row_m",
+    "min_sep_p05_row_min_m",
+    "score_v0_mean",
+    "score_v0_worst",
+    "planner_ms_p95_max",
+    "results_csv",
+    "summary_csv",
 )
 
 
@@ -109,6 +138,304 @@ def _write_csv(path: Path, rows: list[dict[str, Any]], fields: tuple[str, ...]) 
         for row in rows:
             writer.writerow({field: row.get(field, "") for field in fields})
     return path
+
+
+def _read_csv_rows(path: Path) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
+    with path.open("r", newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
+def _finite_float(value: Any) -> float | None:
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(out):
+        return None
+    return out
+
+
+def _finite_values(rows: list[dict[str, Any]], key: str) -> list[float]:
+    values: list[float] = []
+    for row in rows:
+        value = _finite_float(row.get(key))
+        if value is not None:
+            values.append(value)
+    return values
+
+
+def _mean_or_none(values: list[float], *, digits: int = 6) -> float | None:
+    if not values:
+        return None
+    return round(float(sum(values) / len(values)), digits)
+
+
+def _min_or_none(values: list[float], *, digits: int = 6) -> float | None:
+    if not values:
+        return None
+    return round(float(min(values)), digits)
+
+
+def _max_or_none(values: list[float], *, digits: int = 6) -> float | None:
+    if not values:
+        return None
+    return round(float(max(values)), digits)
+
+
+def _holdout_profile(value: str) -> str:
+    normalized = str(value).strip()
+    if normalized not in CLOSED_LOOP_HOLDOUT_PROFILE_CHOICES:
+        raise ValueError("holdout_profile must be one of " + ",".join(CLOSED_LOOP_HOLDOUT_PROFILE_CHOICES))
+    return normalized
+
+
+def _holdout_str_list(values: tuple[str, ...] | list[str] | None, default: tuple[str, ...]) -> list[str]:
+    return [str(value).strip() for value in (default if values is None else values) if str(value).strip()]
+
+
+def _holdout_int_list(values: tuple[int, ...] | list[int] | None, default: tuple[int, ...]) -> list[int]:
+    return [int(value) for value in (default if values is None else values)]
+
+
+def _materialize_holdout_scenarios(out_dir: Path, scenario_ids: list[str]) -> dict[str, Path]:
+    generated = materialize_official_suite("official_3d_stress", out_dir, overwrite=True)
+    by_id = {path.stem: path for path in generated["scenario_paths"]}
+    missing = sorted(set(scenario_ids) - set(by_id))
+    if missing:
+        raise ValueError(f"unknown broad 3D holdout scenario(s): {','.join(missing)}")
+    return {scenario_id: by_id[scenario_id] for scenario_id in scenario_ids}
+
+
+def _holdout_agent_methods(scenario_id: str, n_agents: int) -> list[str] | None:
+    if scenario_id != "noncooperative_intruder_3d_hard":
+        return None
+    return ["baseline_goal"] + ["learned_policy_spec"] * max(0, int(n_agents) - 1)
+
+
+def _holdout_run_specs(
+    *,
+    run_dir: Path,
+    policy_spec: str | Path,
+    scenario_paths: dict[str, Path],
+    scenario_ids: list[str],
+    seeds: list[int],
+    comm_profiles: list[str],
+    n_agents: int,
+    max_runs: int | None,
+) -> list[RunSpec]:
+    specs: list[RunSpec] = []
+    for scenario_id in scenario_ids:
+        for comm_profile in comm_profiles:
+            for seed in seeds:
+                specs.append(
+                    RunSpec(
+                        scenario_path=str(scenario_paths[scenario_id]),
+                        method="learned_policy_spec",
+                        n_agents=int(n_agents),
+                        seed=int(seed),
+                        comm_profile=str(comm_profile),
+                        out_dir=str(run_dir),
+                        save_trace=False,
+                        agent_methods=_holdout_agent_methods(scenario_id, int(n_agents)),
+                        policy_spec=str(policy_spec),
+                    )
+                )
+    if max_runs is None:
+        return specs
+    return specs[: max(0, int(max_runs))]
+
+
+def _holdout_summary(label: str, run_dir: Path) -> dict[str, Any]:
+    results_csv = run_dir / "results.csv"
+    summary_csv = run_dir / "summary.csv"
+    result_rows = _read_csv_rows(results_csv)
+    summary_rows = _read_csv_rows(summary_csv)
+    scored_rows: list[dict[str, Any]] = []
+    scores: list[float] = []
+    for row in summary_rows:
+        projected = dict(row)
+        score = score_v0(projected)
+        projected["score_v0"] = score
+        scored_rows.append(projected)
+        if score is not None:
+            scores.append(float(score))
+    collision_episodes = sum(int(_finite_float(row.get("collision_episode")) or 0) for row in result_rows)
+    near_miss_episodes = sum(int(_finite_float(row.get("near_miss_episode")) or 0) for row in result_rows)
+    return {
+        "label": str(label),
+        "run_count": int(len(result_rows)),
+        "summary_row_count": int(len(summary_rows)),
+        "scenario_count": len({str(row.get("scenario", "")) for row in result_rows if str(row.get("scenario", ""))}),
+        "comm_profiles": sorted({str(row.get("comm_profile", "")) for row in result_rows if str(row.get("comm_profile", ""))}),
+        "n_agents": sorted({int(float(row["N"])) for row in result_rows if _finite_float(row.get("N")) is not None}),
+        "collision_episodes": int(collision_episodes),
+        "near_miss_episodes": int(near_miss_episodes),
+        "completion_rate_mean": _mean_or_none(_finite_values(result_rows, "completion_rate")),
+        "min_sep_min_row_m": _min_or_none(_finite_values(result_rows, "min_sep_min_m")),
+        "min_sep_p05_row_min_m": _min_or_none(_finite_values(result_rows, "min_sep_p05_m")),
+        "score_v0_mean": _mean_or_none(scores),
+        "score_v0_worst": _max_or_none(scores),
+        "planner_ms_p95_max": _max_or_none(_finite_values(result_rows, "planner_ms_per_tick_per_agent_p95")),
+        "results_csv": str(results_csv),
+        "summary_csv": str(summary_csv),
+        "scored_summary_rows": scored_rows,
+    }
+
+
+def _comparison_delta(tuned: Any, base: Any) -> float | None:
+    tuned_f = _finite_float(tuned)
+    base_f = _finite_float(base)
+    if tuned_f is None or base_f is None:
+        return None
+    return round(float(tuned_f - base_f), 6)
+
+
+def _run_holdout_policy(label: str, run_dir: Path, specs: list[RunSpec]) -> dict[str, Any]:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    for spec in specs:
+        append_result(run_dir, run_episode(spec))
+    write_summary(run_dir)
+    return _holdout_summary(label, run_dir)
+
+
+def _run_broad_3d_holdout(
+    *,
+    out_dir: Path,
+    base_policy_spec: str | Path,
+    tuned_policy_spec: str | Path,
+    scenarios: list[str],
+    seeds: list[int],
+    comm_profiles: list[str],
+    n_agents: int,
+    max_runs: int | None,
+    score_tolerance: float,
+    allow_safety_regression: bool,
+    allow_score_regression: bool,
+) -> dict[str, Any]:
+    if int(n_agents) < 2:
+        raise ValueError("holdout_n_agents must be >= 2")
+    if not scenarios:
+        raise ValueError("holdout_scenarios must not be empty when holdout is enabled")
+    if not seeds:
+        raise ValueError("holdout_seeds must not be empty when holdout is enabled")
+    if not comm_profiles:
+        raise ValueError("holdout_comm_profiles must not be empty when holdout is enabled")
+    if float(score_tolerance) < 0.0 or not math.isfinite(float(score_tolerance)):
+        raise ValueError("holdout score_tolerance must be finite and >= 0")
+
+    scenario_dir = out_dir / "_closed_loop_holdout_scenarios" / "official_3d_stress"
+    scenario_paths = _materialize_holdout_scenarios(scenario_dir, scenarios)
+    base_dir = out_dir / "base"
+    tuned_dir = out_dir / "tuned"
+    base_specs = _holdout_run_specs(
+        run_dir=base_dir,
+        policy_spec=base_policy_spec,
+        scenario_paths=scenario_paths,
+        scenario_ids=scenarios,
+        seeds=seeds,
+        comm_profiles=comm_profiles,
+        n_agents=int(n_agents),
+        max_runs=max_runs,
+    )
+    tuned_specs = _holdout_run_specs(
+        run_dir=tuned_dir,
+        policy_spec=tuned_policy_spec,
+        scenario_paths=scenario_paths,
+        scenario_ids=scenarios,
+        seeds=seeds,
+        comm_profiles=comm_profiles,
+        n_agents=int(n_agents),
+        max_runs=max_runs,
+    )
+    expected_runs = len(base_specs)
+    base_summary = _run_holdout_policy("base", base_dir, base_specs)
+    tuned_summary = _run_holdout_policy("tuned", tuned_dir, tuned_specs)
+
+    comparison_csv = _write_csv(
+        out_dir / "comparison_summary.csv",
+        [base_summary, tuned_summary],
+        CLOSED_LOOP_HOLDOUT_COMPARISON_FIELDS,
+    )
+    no_collision_regression = int(tuned_summary["collision_episodes"]) <= int(base_summary["collision_episodes"])
+    no_near_miss_regression = int(tuned_summary["near_miss_episodes"]) <= int(base_summary["near_miss_episodes"])
+    base_min_sep = _finite_float(base_summary.get("min_sep_min_row_m"))
+    tuned_min_sep = _finite_float(tuned_summary.get("min_sep_min_row_m"))
+    clearance_not_worse = base_min_sep is not None and tuned_min_sep is not None and tuned_min_sep >= base_min_sep - 1e-9
+    base_score = _finite_float(base_summary.get("score_v0_mean"))
+    tuned_score = _finite_float(tuned_summary.get("score_v0_mean"))
+    score_not_worse = base_score is not None and tuned_score is not None and tuned_score <= base_score + float(score_tolerance)
+    checks = [
+        _check(
+            "holdout_runs_completed",
+            expected_runs > 0 and base_summary["run_count"] == expected_runs and tuned_summary["run_count"] == expected_runs,
+            {"expected_runs_per_policy": expected_runs, "base_runs": base_summary["run_count"], "tuned_runs": tuned_summary["run_count"]},
+        ),
+        _check(
+            "holdout_no_collision_regression",
+            bool(no_collision_regression or allow_safety_regression),
+            {
+                "base_collision_episodes": base_summary["collision_episodes"],
+                "tuned_collision_episodes": tuned_summary["collision_episodes"],
+                "allow_safety_regression": bool(allow_safety_regression),
+            },
+            severity="behavior",
+        ),
+        _check(
+            "holdout_no_near_miss_regression",
+            bool(no_near_miss_regression or allow_safety_regression),
+            {
+                "base_near_miss_episodes": base_summary["near_miss_episodes"],
+                "tuned_near_miss_episodes": tuned_summary["near_miss_episodes"],
+                "allow_safety_regression": bool(allow_safety_regression),
+            },
+            severity="behavior",
+        ),
+        _check(
+            "holdout_clearance_not_worse",
+            bool(clearance_not_worse or allow_safety_regression),
+            {
+                "base_min_sep_min_row_m": base_summary.get("min_sep_min_row_m"),
+                "tuned_min_sep_min_row_m": tuned_summary.get("min_sep_min_row_m"),
+                "delta_m": _comparison_delta(tuned_summary.get("min_sep_min_row_m"), base_summary.get("min_sep_min_row_m")),
+                "allow_safety_regression": bool(allow_safety_regression),
+            },
+            severity="behavior",
+        ),
+        _check(
+            "holdout_score_not_worse",
+            bool(score_not_worse or allow_score_regression),
+            {
+                "base_score_v0_mean": base_summary.get("score_v0_mean"),
+                "tuned_score_v0_mean": tuned_summary.get("score_v0_mean"),
+                "delta": _comparison_delta(tuned_summary.get("score_v0_mean"), base_summary.get("score_v0_mean")),
+                "tolerance": float(score_tolerance),
+                "allow_score_regression": bool(allow_score_regression),
+            },
+            severity="behavior",
+        ),
+    ]
+    promotion_candidate = all(check["ok"] for check in checks)
+    report = {
+        "profile": "broad_3d_stress",
+        "suite": "official_3d_stress",
+        "scenarios": list(scenarios),
+        "seeds": [int(seed) for seed in seeds],
+        "comm_profiles": list(comm_profiles),
+        "n_agents": int(n_agents),
+        "max_runs": None if max_runs is None else int(max_runs),
+        "score_tolerance": float(score_tolerance),
+        "expected_runs_per_policy": int(expected_runs),
+        "base": base_summary,
+        "tuned": tuned_summary,
+        "comparison_csv": str(comparison_csv),
+        "checks": checks,
+        "promotion_candidate": bool(promotion_candidate),
+        "promotion_note": "Tuned policy must not regress base policy safety, clearance, or score_v0 on the selected broad 3D holdout rows.",
+    }
+    _write_json(out_dir / "comparison_report.json", report)
+    return report
 
 
 def _copy_with_output_head(spec: dict[str, Any], vector: np.ndarray) -> dict[str, Any]:
@@ -409,6 +736,7 @@ def _training_disclosure(
     candidate_count: int,
     accepted_count: int,
     trainable_parameters: str,
+    holdout_config: dict[str, Any],
 ) -> dict[str, Any]:
     updated = (
         "MLP output layer weights and bias only; feature extractor and normalization are inherited"
@@ -433,6 +761,7 @@ def _training_disclosure(
         "optimizer": "bounded evolutionary MLP parameter search",
         "trainable_parameters": str(trainable_parameters),
         "updated_parameters": updated,
+        "holdout": holdout_config,
         "external_data": "none",
         "pretrained_models": "base DAA Microbench mlp_json policy spec",
         "hardware": "local CPU",
@@ -463,6 +792,15 @@ def fine_tune_closed_loop_policy(
     allow_near_miss_regression: bool = False,
     eval_lanes: tuple[str, ...] | list[str] | None = None,
     eval_max_steps: int | None = 12,
+    holdout_profile: str = "none",
+    holdout_scenarios: tuple[str, ...] | list[str] | None = None,
+    holdout_seeds: tuple[int, ...] | list[int] | None = None,
+    holdout_comm_profiles: tuple[str, ...] | list[str] | None = None,
+    holdout_n_agents: int = 6,
+    holdout_max_runs: int | None = None,
+    holdout_score_tolerance: float = CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE,
+    allow_holdout_safety_regression: bool = False,
+    allow_holdout_score_regression: bool = False,
     policy_name: str = CLOSED_LOOP_POLICY_NAME,
     seed: int = 37,
     overwrite: bool = False,
@@ -477,10 +815,13 @@ def fine_tune_closed_loop_policy(
     candidate_csv = out / "candidate_summary.csv"
     episode_csv = out / "candidate_episodes.csv"
     validation_dir = out / "rl_validation_matrix"
+    holdout_dir = out / "broad_3d_holdout"
     if not bool(overwrite):
         existing = [path for path in (model_path, spec_path, report_path, candidate_csv, episode_csv) if path.exists()]
         if validation_dir.exists():
             existing.append(validation_dir)
+        if holdout_dir.exists():
+            existing.append(holdout_dir)
         if existing:
             raise RuntimeError(f"closed-loop fine-tuning output already exists: {', '.join(str(path) for path in existing)}")
     elif out.exists():
@@ -489,6 +830,8 @@ def fine_tune_closed_loop_policy(
                 path.unlink()
         if validation_dir.exists():
             shutil.rmtree(validation_dir)
+        if holdout_dir.exists():
+            shutil.rmtree(holdout_dir)
     out.mkdir(parents=True, exist_ok=True)
 
     if int(generations) < 0:
@@ -499,8 +842,27 @@ def fine_tune_closed_loop_policy(
         raise ValueError("sigma must be finite and >= 0")
     if float(sigma_decay) <= 0.0 or not math.isfinite(float(sigma_decay)):
         raise ValueError("sigma_decay must be finite and > 0")
+    if holdout_max_runs is not None and int(holdout_max_runs) < 0:
+        raise ValueError("holdout_max_runs must be >= 0 when provided")
+    if float(holdout_score_tolerance) < 0.0 or not math.isfinite(float(holdout_score_tolerance)):
+        raise ValueError("holdout_score_tolerance must be finite and >= 0")
 
     trainable_parameters = _trainable_parameters(trainable_parameters)
+    holdout_profile = _holdout_profile(holdout_profile)
+    selected_holdout_scenarios = _holdout_str_list(holdout_scenarios, CLOSED_LOOP_BROAD_3D_HOLDOUT_SCENARIOS)
+    selected_holdout_seeds = _holdout_int_list(holdout_seeds, (0, 1, 2))
+    selected_holdout_comm_profiles = _holdout_str_list(holdout_comm_profiles, ("ideal_50hz", "degraded_20hz"))
+    holdout_config = {
+        "profile": str(holdout_profile),
+        "scenarios": selected_holdout_scenarios if holdout_profile != "none" else [],
+        "seeds": selected_holdout_seeds if holdout_profile != "none" else [],
+        "comm_profiles": selected_holdout_comm_profiles if holdout_profile != "none" else [],
+        "n_agents": int(holdout_n_agents),
+        "max_runs": None if holdout_max_runs is None else int(holdout_max_runs),
+        "score_tolerance": float(holdout_score_tolerance),
+        "allow_safety_regression": bool(allow_holdout_safety_regression),
+        "allow_score_regression": bool(allow_holdout_score_regression),
+    }
     base_spec, base_artifact, wrapper_spec = _load_base_mlp_spec(base_policy_spec)
     selected = selected_validation_lanes(list(lanes) if lanes is not None else None)
     seed_override = None if seeds is None else [int(value) for value in seeds]
@@ -624,6 +986,7 @@ def fine_tune_closed_loop_policy(
         candidate_count=len(candidate_rows),
         accepted_count=accepted_count,
         trainable_parameters=trainable_parameters,
+        holdout_config=holdout_config,
     )
     training.update(
         {
@@ -650,6 +1013,31 @@ def fine_tune_closed_loop_policy(
             lanes=list(eval_lanes) if eval_lanes is not None else [lane.lane_id for lane in selected],
             max_steps=eval_max_steps,
         )
+
+    holdout_report = None
+    if holdout_profile == "broad_3d_stress":
+        holdout_report = _run_broad_3d_holdout(
+            out_dir=holdout_dir,
+            base_policy_spec=base_policy_spec,
+            tuned_policy_spec=spec_path,
+            scenarios=selected_holdout_scenarios,
+            seeds=selected_holdout_seeds,
+            comm_profiles=selected_holdout_comm_profiles,
+            n_agents=int(holdout_n_agents),
+            max_runs=holdout_max_runs,
+            score_tolerance=float(holdout_score_tolerance),
+            allow_safety_regression=bool(allow_holdout_safety_regression),
+            allow_score_regression=bool(allow_holdout_score_regression),
+        )
+        final_spec["training"]["holdout_result"] = {
+            "profile": holdout_report["profile"],
+            "promotion_candidate": bool(holdout_report["promotion_candidate"]),
+            "comparison_csv": holdout_report["comparison_csv"],
+            "comparison_report": str(holdout_dir / "comparison_report.json"),
+            "base": {k: v for k, v in holdout_report["base"].items() if k != "scored_summary_rows"},
+            "tuned": {k: v for k, v in holdout_report["tuned"].items() if k != "scored_summary_rows"},
+        }
+        _write_json(model_path, final_spec)
 
     no_collision_regression = int(best_metrics["collision_ticks"]) <= int(base_metrics["collision_ticks"])
     no_near_miss_regression = int(best_metrics["near_miss_ticks"]) <= int(base_metrics["near_miss_ticks"])
@@ -690,13 +1078,23 @@ def fine_tune_closed_loop_policy(
                 {"run_count": validation_report.get("run_count"), "behavior_pass": validation_report.get("behavior_pass")},
             )
         )
+    if holdout_report is not None:
+        checks.extend(holdout_report["checks"])
 
     gate_pass = all(check["ok"] for check in checks if check["severity"] == "gate")
     behavior_pass = all(check["ok"] for check in checks if check["severity"] == "behavior")
+    promotion_candidate = bool(
+        gate_pass
+        and behavior_pass
+        and holdout_report is not None
+        and bool(holdout_report.get("promotion_candidate"))
+    )
     report = {
         "schema_version": CLOSED_LOOP_TRAINING_SCHEMA_VERSION,
         "ok": bool(gate_pass),
         "behavior_pass": bool(behavior_pass),
+        "promotion_candidate": bool(promotion_candidate),
+        "promotion_status": "candidate" if promotion_candidate else ("not_evaluated_without_holdout" if holdout_report is None else "review_required"),
         "policy_name": str(policy_name),
         "out_dir": str(out),
         "base_policy_spec": str(base_policy_spec),
@@ -722,6 +1120,7 @@ def fine_tune_closed_loop_policy(
         "base_metrics": base_metrics,
         "best_metrics": best_metrics,
         "validation_matrix": validation_report,
+        "holdout": holdout_report,
         "checks": checks,
     }
     _write_json(report_path, report)
@@ -730,7 +1129,10 @@ def fine_tune_closed_loop_policy(
 
 __all__ = [
     "CLOSED_LOOP_CANDIDATE_FIELDS",
+    "CLOSED_LOOP_BROAD_3D_HOLDOUT_SCENARIOS",
     "CLOSED_LOOP_EPISODE_FIELDS",
+    "CLOSED_LOOP_HOLDOUT_PROFILE_CHOICES",
+    "CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE",
     "CLOSED_LOOP_OBJECTIVE_DEFAULTS",
     "CLOSED_LOOP_POLICY_NAME",
     "CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES",
