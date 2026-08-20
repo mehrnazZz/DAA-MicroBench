@@ -47,10 +47,13 @@ from microbench.rl.learned_diagnostics import (
     write_learned_policy_diagnostics,
 )
 from microbench.rl.learned_dataset import (
+    LEARNED_DATASET_EXTRA_LANE_IDS,
+    LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID,
     LEARNED_DATASET_POLICY_CHOICES,
     LEARNED_DATASET_SCHEMA_VERSION,
     LEARNED_DATASET_TEACHER_POLICY,
     export_learned_policy_dataset,
+    selected_learned_dataset_lanes,
 )
 from microbench.rl.hard_lane_training import (
     BC_SAMPLE_WEIGHTING_CHOICES,
@@ -144,6 +147,8 @@ __all__ = [
     "LEARNED_POLICY_LEADERBOARD_SCHEMA_VERSION",
     "LEARNED_POLICY_DIAGNOSTICS_SCHEMA_VERSION",
     "LEARNED_DATASET_POLICY_CHOICES",
+    "LEARNED_DATASET_EXTRA_LANE_IDS",
+    "LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID",
     "LEARNED_DATASET_SCHEMA_VERSION",
     "LEARNED_DATASET_TEACHER_POLICY",
     "DEFAULT_HARD_LANE_FALLBACK",
@@ -181,6 +186,7 @@ __all__ = [
     "build_behavior_cloned_policy_evidence",
     "check_parallel_env_api",
     "export_learned_policy_dataset",
+    "selected_learned_dataset_lanes",
     "interface_contract",
     "load_mlp_learned_spec",
     "load_tiny_learned_spec",

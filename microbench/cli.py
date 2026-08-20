@@ -32,7 +32,11 @@ from microbench.rl.hard_lane_training import (
     DEFAULT_SAMPLE_WEIGHT_CLEARANCE_THRESHOLD_M,
     run_learned_hard_lane_loop,
 )
-from microbench.rl.learned_dataset import LEARNED_DATASET_POLICY_CHOICES, export_learned_policy_dataset
+from microbench.rl.learned_dataset import (
+    LEARNED_DATASET_EXTRA_LANE_IDS,
+    LEARNED_DATASET_POLICY_CHOICES,
+    export_learned_policy_dataset,
+)
 from microbench.rl.learned_diagnostics import write_learned_policy_diagnostics
 from microbench.rl.learned_leaderboard import write_learned_policy_leaderboard
 from microbench.rl.policies import POLICY_NAMES
@@ -2545,7 +2549,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_ldsex.add_argument(
         "--lanes",
         default=None,
-        help="Comma-separated lane ids; defaults to head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge",
+        help=(
+            "Comma-separated lane ids; defaults to head_on,crossing,urban_obstacle,communication_delay,"
+            "high_n_dense_merge. Extra training-only lane(s): " + ",".join(LEARNED_DATASET_EXTRA_LANE_IDS)
+        ),
     )
     p_ldsex.add_argument("--seeds", default=None, help="Optional seed list/range override; defaults to each lane's canonical seed")
     p_ldsex.add_argument("--duration-s", type=float, default=None, help="Override all lane durations")
@@ -2660,7 +2667,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_hlt.add_argument(
         "--mix-lanes",
         default=None,
-        help="Additional broad validation lanes to include in the training dataset after selected hard lanes",
+        help=(
+            "Additional lanes to include in the training dataset after selected hard lanes; "
+            "supports training-only lane(s): " + ",".join(LEARNED_DATASET_EXTRA_LANE_IDS)
+        ),
     )
     p_hlt.add_argument(
         "--dataset-policy",

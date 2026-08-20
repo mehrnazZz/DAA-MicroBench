@@ -124,7 +124,7 @@ python -m microbench.cli rl-validation-matrix --out-dir runs_rl_validation_matri
 python -m microbench.cli learned-dataset-export --out-dir runs_learned_dataset --lanes head_on,crossing,urban_obstacle --max-steps 64 --save-replay --require-pass
 python -m microbench.cli train-learned-bc --out-dir runs_bc_mlp_policy --lanes head_on,crossing,urban_obstacle --eval-lanes head_on,crossing --require-pass
 python -m microbench.cli learned-bc-evidence --out-dir runs_bc_mlp_evidence --lanes head_on,crossing,urban_obstacle --max-runs 1 --require-pass
-python -m microbench.cli learned-hard-lane-loop --out-dir runs_hard_lane_loop --diagnostics runs_learned_diagnostics/learned_policy_diagnostics.json --target-policy bc_mlp_learned --target-method learned_policy_spec --fallback-lanes urban_obstacle,communication_delay,high_n_dense_merge --mix-lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge --sample-weighting safety --max-lanes 3 --max-runs 1 --require-pass
+python -m microbench.cli learned-hard-lane-loop --out-dir runs_hard_lane_loop --diagnostics runs_learned_diagnostics/learned_policy_diagnostics.json --target-policy bc_mlp_learned --target-method learned_policy_spec --fallback-lanes urban_obstacle,communication_delay,high_n_dense_merge --mix-lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge,dense_swarm_hard_negative --sample-weighting safety --max-lanes 3 --max-runs 1 --require-pass
 python -m microbench.cli rl-contract --json
 python -m microbench.cli rl-freeze-check --require-pass --json
 python -m microbench.cli validate-learned-manifest --manifest examples/learned_submission_manifest_template.json --require-pass
@@ -1126,7 +1126,7 @@ Recommended scale for training: at least `100k+` samples across multiple scenari
 
 ## 11.2) Learned Hard-Lane Loop
 
-`learned-hard-lane-loop` closes the development loop from diagnostics to retraining. It reads `learned-diagnostics` rows or diagnoses one or more bundles, selects canonical hard lanes such as `head_on`, `crossing`, `urban_obstacle`, `communication_delay`, or `high_n_dense_merge`, exports public RL observation/action shards, trains the portable BC MLP from the shards, then reruns learned-submission bundle evidence, leaderboard, and diagnostics. Use `--mix-lanes` to add broad replay lanes beside the selected hard lanes so a focused fix does not overfit one scenario family.
+`learned-hard-lane-loop` closes the development loop from diagnostics to retraining. It reads `learned-diagnostics` rows or diagnoses one or more bundles, selects canonical hard lanes such as `head_on`, `crossing`, `urban_obstacle`, `communication_delay`, or `high_n_dense_merge`, exports public RL observation/action shards, trains the portable BC MLP from the shards, then reruns learned-submission bundle evidence, leaderboard, and diagnostics. Use `--mix-lanes` to add broad replay lanes beside the selected hard lanes so a focused fix does not overfit one scenario family. For dense-swarm learned-policy hard-negative mining, explicitly add the training-only lane `dense_swarm_hard_negative`.
 
 ```bash
 python -m microbench.cli learned-hard-lane-loop \
@@ -1134,7 +1134,7 @@ python -m microbench.cli learned-hard-lane-loop \
   --diagnostics runs_learned_diagnostics/learned_policy_diagnostics.json \
   --target-policy bc_mlp_learned \
   --fallback-lanes urban_obstacle,communication_delay,high_n_dense_merge \
-  --mix-lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
+  --mix-lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge,dense_swarm_hard_negative \
   --sample-weighting safety \
   --max-lanes 3 \
   --max-runs 1 \

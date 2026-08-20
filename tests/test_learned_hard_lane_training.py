@@ -8,6 +8,7 @@ import sys
 import numpy as np
 
 from microbench.rl import (
+    LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID,
     LEARNED_DATASET_BC_TRAINING_SOURCE,
     LEARNED_HARD_LANE_LOOP_SCHEMA_VERSION,
     run_learned_hard_lane_loop,
@@ -196,7 +197,7 @@ def test_learned_hard_lane_loop_smoke_without_fixtures(tmp_path: Path) -> None:
         out_dir=tmp_path / "loop",
         diagnostics=diagnostics,
         max_lanes=1,
-        mix_lanes=["crossing"],
+        mix_lanes=["crossing", LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID],
         dataset_max_steps=2,
         dataset_shard_size=4,
         hidden_dim=8,
@@ -210,9 +211,9 @@ def test_learned_hard_lane_loop_smoke_without_fixtures(tmp_path: Path) -> None:
 
     assert report["ok"] is True
     assert report["selection"]["selected_lanes"] == ["head_on"]
-    assert report["dataset_lanes"] == ["head_on", "crossing"]
-    assert report["mix_lanes"] == ["crossing"]
-    assert report["dataset"]["sample_count"] == 20
+    assert report["dataset_lanes"] == ["head_on", "crossing", LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID]
+    assert report["mix_lanes"] == ["crossing", LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID]
+    assert report["dataset"]["sample_count"] == 44
     assert report["training"]["training_source"] == LEARNED_DATASET_BC_TRAINING_SOURCE
     assert report["training"]["feature_normalization"] == "standard"
     assert report["training"]["sample_weighting"] == "safety"

@@ -30,6 +30,25 @@ from microbench.tools.baseline_validation_matrix import (
 LEARNED_DATASET_SCHEMA_VERSION = "0.1"
 LEARNED_DATASET_TEACHER_POLICY = "bc_teacher"
 LEARNED_DATASET_POLICY_CHOICES = (LEARNED_DATASET_TEACHER_POLICY, *POLICY_NAMES)
+LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID = "dense_swarm_hard_negative"
+LEARNED_DATASET_EXTRA_LANES = (
+    ValidationLane(
+        lane_id=LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID,
+        category="high_n_dense_merge",
+        suite="official_3d_stress",
+        scenario="dense_swarm_3d_hard",
+        comm_profile="degraded_20hz",
+        n_agents=12,
+        seed=0,
+        duration_s=18.0,
+        purpose=(
+            "Learned-policy hard-negative training lane for dense 3D swarm interactions; "
+            "not part of the default validation matrix."
+        ),
+        expected_failure_modes=("dense_center_conflict", "late_lateral_yield", "stale_intent", "throughput_collapse"),
+    ),
+)
+LEARNED_DATASET_EXTRA_LANE_IDS = tuple(lane.lane_id for lane in LEARNED_DATASET_EXTRA_LANES)
 
 LEARNED_DATASET_EPISODE_FIELDS = (
     "episode_id",
@@ -99,6 +118,33 @@ def _with_overrides(
             payload["n_agents"] = int(n_agents)
         out.append(ValidationLane(**payload))
     return out
+
+
+def _learned_dataset_lane_map() -> dict[str, ValidationLane]:
+    lanes = [*selected_validation_lanes(None), *LEARNED_DATASET_EXTRA_LANES]
+    return {lane.lane_id: lane for lane in lanes}
+
+
+def selected_learned_dataset_lanes(lanes: tuple[str, ...] | list[str] | None = None) -> list[ValidationLane]:
+    """Return learned-dataset lanes, including explicit hard-negative training lanes.
+
+    The default remains the canonical validation-matrix lanes. Extra lanes must
+    be requested explicitly so normal wrapper validation stays compact.
+    """
+
+    if lanes is None:
+        return selected_validation_lanes(None)
+    lane_ids = [str(lane_id).strip() for lane_id in lanes if str(lane_id).strip()]
+    by_id = _learned_dataset_lane_map()
+    unknown = sorted(set(lane_ids) - set(by_id))
+    if unknown:
+        raise ValueError(
+            "Unknown learned dataset lane(s): "
+            + ",".join(unknown)
+            + "; expected validation lanes or "
+            + ",".join(LEARNED_DATASET_EXTRA_LANE_IDS)
+        )
+    return [by_id[lane_id] for lane_id in lane_ids]
 
 
 def _seed_list_for_lane(lane: ValidationLane, seeds: list[int] | None) -> list[int]:
@@ -431,7 +477,7 @@ def export_learned_policy_dataset(
     out.mkdir(parents=True, exist_ok=True)
 
     selected = _with_overrides(
-        selected_validation_lanes(lanes),
+        selected_learned_dataset_lanes(lanes),
         duration_s=duration_s,
         n_agents=n_agents,
     )
@@ -470,6 +516,7 @@ def export_learned_policy_dataset(
             "policy": policy_name,
             "policy_spec": policy_spec_summary,
             "lanes": [asdict(lane) for lane in selected],
+            "extra_lane_ids": list(LEARNED_DATASET_EXTRA_LANE_IDS),
             "planned_episode_count": len(planned),
             "episode_count": 0,
             "sample_count": 0,
@@ -539,6 +586,7 @@ def export_learned_policy_dataset(
         "public_observations_only": True,
         "privileged_global_state": False,
         "lanes": [asdict(lane) for lane in selected],
+        "extra_lane_ids": list(LEARNED_DATASET_EXTRA_LANE_IDS),
         "planned_episode_count": len(planned),
         "episode_count": len(episode_rows),
         "sample_count": sample_count,
@@ -557,4 +605,3 @@ def export_learned_policy_dataset(
     }
     _write_json(manifest_path, report)
     return report
-

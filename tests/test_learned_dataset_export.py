@@ -8,9 +8,11 @@ import sys
 import numpy as np
 
 from microbench.rl import (
+    LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID,
     LEARNED_DATASET_SCHEMA_VERSION,
     LEARNED_DATASET_TEACHER_POLICY,
     export_learned_policy_dataset,
+    selected_learned_dataset_lanes,
 )
 
 
@@ -81,6 +83,27 @@ def test_learned_dataset_export_plan_only(tmp_path: Path) -> None:
     assert report["sample_count"] == 0
     assert {entry["lane_id"] for entry in report["matrix"]} == {"head_on", "crossing"}
     assert Path(tmp_path / "learned_dataset_plan" / "learned_dataset_manifest.json").exists()
+
+
+def test_learned_dataset_export_supports_dense_swarm_hard_negative_lane(tmp_path: Path) -> None:
+    default_lane_ids = {lane.lane_id for lane in selected_learned_dataset_lanes(None)}
+    assert LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID not in default_lane_ids
+
+    lanes = selected_learned_dataset_lanes([LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID])
+    assert [lane.lane_id for lane in lanes] == [LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID]
+    assert lanes[0].scenario == "dense_swarm_3d_hard"
+    assert lanes[0].comm_profile == "degraded_20hz"
+
+    report = export_learned_policy_dataset(
+        out_dir=tmp_path / "dense_plan",
+        lanes=[LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID],
+        plan_only=True,
+    )
+
+    assert report["plan_only"] is True
+    assert report["planned_episode_count"] == 1
+    assert report["matrix"][0]["scenario"] == "dense_swarm_3d_hard"
+    assert LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID in report["extra_lane_ids"]
 
 
 def test_learned_dataset_export_cli_smoke(tmp_path: Path) -> None:

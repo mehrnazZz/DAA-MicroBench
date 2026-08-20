@@ -25,6 +25,7 @@ from microbench.rl.learned_dataset import (
     LEARNED_DATASET_SCHEMA_VERSION,
     LEARNED_DATASET_TEACHER_POLICY,
     export_learned_policy_dataset,
+    selected_learned_dataset_lanes,
 )
 from microbench.rl.learned_diagnostics import write_learned_policy_diagnostics
 from microbench.rl.learned_leaderboard import write_learned_policy_leaderboard
@@ -189,7 +190,7 @@ def _unique_lanes(*groups: tuple[str, ...] | list[str] | None) -> list[str]:
     for group in groups:
         if group is None:
             continue
-        for lane in selected_validation_lanes(list(group)):
+        for lane in selected_learned_dataset_lanes(list(group)):
             if lane.lane_id not in selected:
                 selected.append(lane.lane_id)
     return selected
@@ -515,7 +516,13 @@ def _selected_lanes_from_training_rows(training_rows: list[dict[str, Any]], repo
         lane_id = str(row.get("lane_id") or "")
         if lane_id and lane_id not in lane_ids:
             lane_ids.append(lane_id)
-    return selected_validation_lanes(lane_ids)
+    return selected_learned_dataset_lanes(lane_ids)
+
+
+def _canonical_eval_lane_ids(lanes: list[ValidationLane]) -> list[str]:
+    canonical = {lane.lane_id for lane in selected_validation_lanes(None)}
+    selected = [lane.lane_id for lane in lanes if lane.lane_id in canonical]
+    return selected or ["head_on"]
 
 
 def _manifest_overlay_from_dataset_training_report(report: dict[str, Any]) -> dict[str, Any]:
@@ -686,7 +693,7 @@ def train_behavior_cloned_policy_from_dataset(
         validation_report = run_rl_validation_matrix(
             out_dir=validation_dir,
             policy_spec=spec_path,
-            lanes=list(eval_lanes) if eval_lanes is not None else [lane.lane_id for lane in selected_lanes],
+            lanes=list(eval_lanes) if eval_lanes is not None else _canonical_eval_lane_ids(selected_lanes),
             max_steps=eval_max_steps,
         )
 
