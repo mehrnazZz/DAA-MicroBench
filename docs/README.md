@@ -222,6 +222,7 @@ python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --re
 python -m microbench.cli learned-leaderboard --bundle runs_learned_bundle --bundle runs_external_learned_bundle --out runs_learned_leaderboard/learned_policy_leaderboard.json --require-pass
 python -m microbench.cli learned-diagnostics --bundle runs_learned_bundle --bundle runs_external_learned_bundle --out runs_learned_diagnostics/learned_policy_diagnostics.json --require-pass
 python -m microbench.cli learned-hard-lane-loop --out-dir runs_hard_lane_loop --diagnostics runs_learned_diagnostics/learned_policy_diagnostics.json --max-lanes 1 --mix-lanes crossing,dense_swarm_hard_negative --sample-weighting safety --sample-selection hard_negative_windows --dataset-max-steps 2 --skip-fixtures --max-runs 1 --require-pass
+python -m microbench.cli learned-closed-loop-finetune --out-dir runs_closed_loop_finetune --base-policy-spec runs_bc_mlp_policy/policy_spec.json --lanes head_on --train-max-steps 2 --generations 1 --population-size 1 --sigma 0.01 --eval-lanes head_on --eval-max-steps 2 --require-pass
 ```
 
 Check the current result-schema fixture:

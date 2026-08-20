@@ -850,6 +850,21 @@ python -m microbench.cli learned-hard-lane-loop \
   --require-pass
 ```
 
+For rollout-aware learned-policy iteration, `learned-closed-loop-finetune` starts from an existing portable `mlp_json` policy spec, evaluates perturbed MLP output heads through the PettingZoo-style environment, and accepts only candidates that improve the configured closed-loop objective without collision, clearance, or near-miss guardrail regression.
+
+```bash
+python -m microbench.cli learned-closed-loop-finetune \
+  --out-dir runs_closed_loop_finetune \
+  --base-policy-spec runs_bc_mlp_policy/policy_spec.json \
+  --lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
+  --generations 4 \
+  --population-size 12 \
+  --train-max-steps 24 \
+  --require-pass
+```
+
+This is benchmark-native closed-loop learned-policy infrastructure. It is not yet a claim that the shipped learned baseline is SOTA.
+
 ## Promotion Calibration
 
 `baseline-promotion --require-calibrated` is the current public-alpha gate for experimental baselines. Passing it means the method imports, has docs/tests coverage, supports 2D and 3D, runs the behavior smoke without planner guardrail failures, emits its expected signal/debug contract, and passes compact promotion-calibration acceptance on an 8-second 3D stress lane plus an 8-second degraded fused-sensing lane. For `cbf_qp` and `mpc_local`, it also runs `official_experimental_baselines` and checks that suite acceptance metadata.

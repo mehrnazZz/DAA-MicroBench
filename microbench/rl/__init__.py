@@ -38,6 +38,11 @@ from microbench.rl.bc_training import (
     build_behavior_cloned_policy_evidence,
     train_behavior_cloned_policy,
 )
+from microbench.rl.closed_loop_training import (
+    CLOSED_LOOP_POLICY_NAME,
+    CLOSED_LOOP_TRAINING_SCHEMA_VERSION,
+    fine_tune_closed_loop_policy,
+)
 from microbench.rl.compliance import check_parallel_env_api
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import RL_FREEZE_CHECK_SCHEMA_VERSION, run_rl_freeze_check
@@ -132,6 +137,8 @@ __all__ = [
     "BC_FEATURE_NORMALIZATION_CHOICES",
     "BC_FIXTURE_BUNDLE_CONFIGS",
     "BC_TRAINING_SCHEMA_VERSION",
+    "CLOSED_LOOP_POLICY_NAME",
+    "CLOSED_LOOP_TRAINING_SCHEMA_VERSION",
     "DaaParallelEnv",
     "DaaSingleAgentEnv",
     "DEFAULT_BC_LANES",
@@ -194,6 +201,7 @@ __all__ = [
     "build_behavior_cloned_policy_evidence",
     "check_parallel_env_api",
     "export_learned_policy_dataset",
+    "fine_tune_closed_loop_policy",
     "selected_learned_dataset_lanes",
     "interface_contract",
     "load_mlp_learned_spec",

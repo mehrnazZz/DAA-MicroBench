@@ -21,6 +21,7 @@ from microbench.dataset import generate_dataset, expand_scenarios, expand_list, 
 from microbench.logging import wandb_logger
 from microbench.rl.calibration import run_rl_policy_calibration
 from microbench.rl.bc_training import BC_FEATURE_NORMALIZATION_CHOICES, build_behavior_cloned_policy_evidence, train_behavior_cloned_policy
+from microbench.rl.closed_loop_training import CLOSED_LOOP_POLICY_NAME, fine_tune_closed_loop_policy
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import run_rl_freeze_check
 from microbench.rl.hard_lane_training import (
@@ -1490,6 +1491,56 @@ def _learned_hard_lane_loop(args) -> None:
         raise SystemExit(f"learned hard-lane loop failed: {','.join(failed)}")
 
 
+def _learned_closed_loop_finetune(args) -> None:
+    report = fine_tune_closed_loop_policy(
+        out_dir=args.out_dir,
+        base_policy_spec=args.base_policy_spec,
+        lanes=_parse_str_list(args.lanes) if args.lanes else None,
+        seeds=_parse_int_list(args.seeds) if args.seeds else None,
+        train_max_steps=args.train_max_steps,
+        generations=int(args.generations),
+        population_size=int(args.population_size),
+        sigma=float(args.sigma),
+        sigma_decay=float(args.sigma_decay),
+        min_delta=float(args.min_delta),
+        collision_tick_penalty=float(args.collision_tick_penalty),
+        near_miss_tick_penalty=float(args.near_miss_tick_penalty),
+        clearance_penalty=float(args.clearance_penalty),
+        mission_penalty=float(args.mission_penalty),
+        reward_weight=float(args.reward_weight),
+        min_clearance_m=float(args.min_clearance_m),
+        max_collision_ticks=int(args.max_collision_ticks),
+        max_near_miss_ticks=None if args.max_near_miss_ticks is None else int(args.max_near_miss_ticks),
+        allow_near_miss_regression=bool(args.allow_near_miss_regression),
+        eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
+        eval_max_steps=args.eval_max_steps,
+        policy_name=str(args.policy_name),
+        seed=int(args.seed),
+        overwrite=bool(args.overwrite),
+        run_validation=not bool(args.skip_validation),
+    )
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        behavior = "PASS" if report.get("behavior_pass") else "REVIEW"
+        best = report.get("best_metrics", {})
+        print(
+            f"learned-closed-loop-finetune: {status} behavior={behavior} "
+            f"policy={report['policy_name']} candidates={report['candidate_count']} "
+            f"accepted={report['accepted_generation_count']} best={report['best_candidate_id']} "
+            f"score={best.get('score')}"
+        )
+        print(f"  policy_spec: {report['policy_spec']}")
+        print(f"  model_artifact: {report['model_artifact']}")
+        print(f"  candidate_summary: {report['candidate_summary_csv']}")
+
+    if args.require_pass and not report["ok"]:
+        failed = [check["name"] for check in report["checks"] if not check["ok"] and check.get("severity") == "gate"]
+        raise SystemExit(f"learned closed-loop fine-tune failed: {','.join(failed)}")
+
+
 def _rl_contract(args) -> None:
     report = interface_contract(top_k=int(args.top_k))
     payload = json.dumps(report, indent=2, sort_keys=True)
@@ -2773,6 +2824,46 @@ def build_parser() -> argparse.ArgumentParser:
     p_hlt.add_argument("--json", action="store_true", help="Emit machine-readable hard-lane loop report")
     p_hlt.add_argument("--require-pass", action="store_true", help="Fail if dataset, training, bundles, or reports fail")
 
+    p_clft = sub.add_parser(
+        "learned-closed-loop-finetune",
+        help="Fine-tune a portable MLP learned policy through closed-loop RL rollouts",
+    )
+    p_clft.add_argument("--out-dir", required=True, help="Output directory for model, policy spec, rollout rows, and report")
+    p_clft.add_argument("--base-policy-spec", required=True, help="Existing mlp_json policy_spec.json used as the starting policy")
+    p_clft.add_argument(
+        "--lanes",
+        default=None,
+        help="Comma-separated validation lane ids used for closed-loop training; defaults to the canonical validation lanes",
+    )
+    p_clft.add_argument("--seeds", default=None, help="Optional seed list/range for every training lane")
+    p_clft.add_argument("--train-max-steps", type=int, default=12, help="Rollout step cap during candidate evaluation")
+    p_clft.add_argument("--generations", type=int, default=2, help="Number of evolutionary search generations")
+    p_clft.add_argument("--population-size", type=int, default=8, help="Candidate perturbations evaluated per generation")
+    p_clft.add_argument("--sigma", type=float, default=0.03, help="Gaussian perturbation scale for MLP output-head weights")
+    p_clft.add_argument("--sigma-decay", type=float, default=0.5, help="Sigma multiplier after a generation with no accepted candidate")
+    p_clft.add_argument("--min-delta", type=float, default=1e-6, help="Minimum score improvement required to accept a candidate")
+    p_clft.add_argument("--collision-tick-penalty", type=float, default=120.0, help="Closed-loop objective penalty per collision tick")
+    p_clft.add_argument("--near-miss-tick-penalty", type=float, default=12.0, help="Closed-loop objective penalty per near-miss tick")
+    p_clft.add_argument("--clearance-penalty", type=float, default=20.0, help="Closed-loop objective penalty per meter below clearance floor")
+    p_clft.add_argument("--mission-penalty", type=float, default=60.0, help="Closed-loop objective penalty for incomplete missions")
+    p_clft.add_argument("--reward-weight", type=float, default=0.0, help="Optional bonus weight on environment rollout reward")
+    p_clft.add_argument("--min-clearance-m", type=float, default=0.0, help="Hard minimum final clearance for accepted candidates")
+    p_clft.add_argument("--max-collision-ticks", type=int, default=0, help="Hard collision-tick cap for accepted candidates")
+    p_clft.add_argument("--max-near-miss-ticks", type=int, default=None, help="Optional hard near-miss tick cap for accepted candidates")
+    p_clft.add_argument(
+        "--allow-near-miss-regression",
+        action="store_true",
+        help="Allow accepted candidates to exceed the base policy near-miss count",
+    )
+    p_clft.add_argument("--eval-lanes", default=None, help="Comma-separated validation lane ids for the final tuned spec")
+    p_clft.add_argument("--eval-max-steps", type=int, default=12, help="Validation rollout step cap for the final tuned spec")
+    p_clft.add_argument("--policy-name", default=CLOSED_LOOP_POLICY_NAME, help="Policy name written to policy_spec.json")
+    p_clft.add_argument("--seed", type=int, default=37, help="Closed-loop candidate-search seed")
+    p_clft.add_argument("--overwrite", action="store_true", help="Overwrite existing fine-tuning outputs")
+    p_clft.add_argument("--skip-validation", action="store_true", help="Skip post-training RL validation matrix")
+    p_clft.add_argument("--json", action="store_true", help="Emit machine-readable fine-tuning report")
+    p_clft.add_argument("--require-pass", action="store_true", help="Fail if fine-tuning gates fail")
+
     p_rlc = sub.add_parser("rl-contract", help="Print the versioned RL action/observation/reward contract")
     p_rlc.add_argument("--top-k", type=int, default=8, help="Neighbor slots used to compute observation shape")
     p_rlc.add_argument("--out", default=None, help="Optional JSON output path")
@@ -3063,6 +3154,9 @@ def main() -> None:
         return
     if args.cmd == "learned-hard-lane-loop":
         _learned_hard_lane_loop(args)
+        return
+    if args.cmd == "learned-closed-loop-finetune":
+        _learned_closed_loop_finetune(args)
         return
     if args.cmd == "rl-contract":
         _rl_contract(args)

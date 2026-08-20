@@ -100,6 +100,21 @@ python -m microbench.cli learned-hard-lane-loop \
 
 The hard-lane loop selects canonical validation lanes from `unsafe`, `needs_training`, `fast_but_close`, `safe_but_slow`, and limited-evidence diagnostics, exports `learned-dataset-export` shards, trains the BC MLP from those shards, packages the trained policy, and writes a fresh learned leaderboard plus diagnostics report. Use `--target-policy` when the diagnostics file contains comparison fixtures but you only want to retrain one policy; `--fallback-lanes` can fill the remaining hard-lane budget with richer 3D/degraded lanes, `--mix-lanes` adds broad replay lanes so focused retraining does not erase general behavior, and `--sample-weighting safety` emphasizes collision, near-miss, and low-clearance samples in the supervised fit. Add `dense_swarm_hard_negative` to `--mix-lanes` only when you intentionally want the generated dense 3D swarm hard-negative training lane; it is not part of the default validation matrix. Use `--sample-selection hard_negative_windows` with that lane to keep only its hard-event or closest-approach temporal windows. New BC artifacts store per-feature mean/std normalization plus the sample-weighting and sample-selection recipes by default.
 
+For a closed-loop learned-policy iteration path, start from any portable `mlp_json` policy and run:
+
+```bash
+python -m microbench.cli learned-closed-loop-finetune \
+  --out-dir runs_closed_loop_finetune \
+  --base-policy-spec runs_bc_mlp_policy/policy_spec.json \
+  --lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
+  --generations 4 \
+  --population-size 12 \
+  --train-max-steps 24 \
+  --require-pass
+```
+
+The fine-tuner evaluates candidates inside `DaaParallelEnv`, records every candidate rollout in CSV, and writes a new portable `mlp_json` policy only after applying collision, clearance, and near-miss guardrails. Treat this as the benchmark-native closed-loop training spine for stronger learned baselines; it is still public-alpha infrastructure.
+
 ## Health Gates
 
 Smoke-test the wrapper API on 2D and 3D generated scenarios:

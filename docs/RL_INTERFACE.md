@@ -429,6 +429,21 @@ python -m microbench.cli learned-hard-lane-loop \
 
 This command selects canonical weak validation lanes from learned diagnostics, exports public dataset shards, trains the same portable BC MLP from those shards, packages the trained spec, and writes a fresh learned leaderboard plus diagnostics report. `--mix-lanes` keeps broad replay in the dataset beside the selected hard lanes, `dense_swarm_hard_negative` adds an explicit dense 3D swarm hard-negative training lane when requested, `--sample-weighting safety` emphasizes collision, near-miss, and low-clearance samples, `--sample-selection hard_negative_windows` trims configured hard-negative lanes to hard-event or closest-approach windows, and generated BC JSON artifacts store the training feature mean/std transform plus weighting and selection recipes for deterministic inference.
 
+Run a closed-loop fine-tune over an existing portable MLP policy:
+
+```bash
+python -m microbench.cli learned-closed-loop-finetune \
+  --out-dir runs_closed_loop_finetune \
+  --base-policy-spec runs_bc_mlp_policy/policy_spec.json \
+  --lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
+  --generations 4 \
+  --population-size 12 \
+  --train-max-steps 24 \
+  --require-pass
+```
+
+This evaluates perturbed MLP output heads through the same parallel RL wrapper, accepts only non-regressing candidates under collision, clearance, and near-miss guardrails, and writes candidate rollout CSVs plus a new `mlp_json` policy spec.
+
 Compare multiple learned-policy bundles without rerunning simulations:
 
 ```bash
