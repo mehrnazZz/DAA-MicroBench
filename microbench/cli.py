@@ -24,11 +24,15 @@ from microbench.rl.bc_training import BC_FEATURE_NORMALIZATION_CHOICES, build_be
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import run_rl_freeze_check
 from microbench.rl.hard_lane_training import (
+    BC_SAMPLE_SELECTION_CHOICES,
     BC_SAMPLE_WEIGHTING_CHOICES,
     DEFAULT_COLLISION_SAMPLE_WEIGHT,
     DEFAULT_LOW_CLEARANCE_SAMPLE_WEIGHT,
     DEFAULT_MAX_SAMPLE_WEIGHT,
     DEFAULT_NEAR_MISS_SAMPLE_WEIGHT,
+    DEFAULT_SAMPLE_SELECTION_CLEARANCE_THRESHOLD_M,
+    DEFAULT_SAMPLE_SELECTION_CONTEXT_STEPS,
+    DEFAULT_SAMPLE_SELECTION_HARD_LANE_IDS,
     DEFAULT_SAMPLE_WEIGHT_CLEARANCE_THRESHOLD_M,
     run_learned_hard_lane_loop,
 )
@@ -1439,6 +1443,10 @@ def _learned_hard_lane_loop(args) -> None:
         low_clearance_sample_weight=float(args.low_clearance_sample_weight),
         sample_weight_clearance_threshold_m=float(args.sample_weight_clearance_threshold_m),
         max_sample_weight=float(args.max_sample_weight),
+        sample_selection=str(args.sample_selection),
+        sample_selection_hard_lanes=_parse_str_list(args.sample_selection_hard_lanes) if args.sample_selection_hard_lanes else None,
+        sample_selection_clearance_threshold_m=float(args.sample_selection_clearance_threshold_m),
+        sample_selection_context_steps=int(args.sample_selection_context_steps),
         eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
         eval_max_steps=args.eval_max_steps,
         policy_name=str(args.policy_name),
@@ -1469,6 +1477,8 @@ def _learned_hard_lane_loop(args) -> None:
             print(f"  dataset_lanes: {','.join(report.get('dataset_lanes', []))}")
         if training.get("sample_weighting"):
             print(f"  sample_weighting: {training.get('sample_weighting')}")
+        if training.get("sample_selection"):
+            print(f"  sample_selection: {training.get('sample_selection')}")
         print(f"  dataset: {dataset.get('manifest')}")
         print(f"  policy_spec: {training.get('policy_spec')}")
         print(f"  bc_bundle: {report.get('bundle_paths', {}).get('bc')}")
@@ -2725,6 +2735,29 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_MAX_SAMPLE_WEIGHT,
         help="Maximum raw sample weight before mean normalization",
+    )
+    p_hlt.add_argument(
+        "--sample-selection",
+        choices=BC_SAMPLE_SELECTION_CHOICES,
+        default="all",
+        help="Optional supervised sample selector before fitting",
+    )
+    p_hlt.add_argument(
+        "--sample-selection-hard-lanes",
+        default=",".join(DEFAULT_SAMPLE_SELECTION_HARD_LANE_IDS),
+        help="Comma-separated lane ids filtered by hard-negative sample selection",
+    )
+    p_hlt.add_argument(
+        "--sample-selection-clearance-threshold-m",
+        type=float,
+        default=DEFAULT_SAMPLE_SELECTION_CLEARANCE_THRESHOLD_M,
+        help="Clearance threshold used by hard-negative sample selection",
+    )
+    p_hlt.add_argument(
+        "--sample-selection-context-steps",
+        type=int,
+        default=DEFAULT_SAMPLE_SELECTION_CONTEXT_STEPS,
+        help="Steps before/after hard-negative events retained by sample selection",
     )
     p_hlt.add_argument("--eval-lanes", default=None, help="Comma-separated validation lane ids for the trained spec")
     p_hlt.add_argument("--eval-max-steps", type=int, default=12, help="Validation rollout step cap for the trained spec")

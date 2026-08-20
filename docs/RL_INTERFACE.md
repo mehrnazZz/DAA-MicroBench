@@ -421,12 +421,13 @@ python -m microbench.cli learned-hard-lane-loop \
   --diagnostics runs_bc_mlp_evidence/learned_policy_diagnostics.json \
   --mix-lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge,dense_swarm_hard_negative \
   --sample-weighting safety \
+  --sample-selection hard_negative_windows \
   --max-lanes 3 \
   --max-runs 1 \
   --require-pass
 ```
 
-This command selects canonical weak validation lanes from learned diagnostics, exports public dataset shards, trains the same portable BC MLP from those shards, packages the trained spec, and writes a fresh learned leaderboard plus diagnostics report. `--mix-lanes` keeps broad replay in the dataset beside the selected hard lanes, `dense_swarm_hard_negative` adds an explicit dense 3D swarm hard-negative training lane when requested, `--sample-weighting safety` emphasizes collision, near-miss, and low-clearance samples, and generated BC JSON artifacts store the training feature mean/std transform plus weighting recipe for deterministic inference.
+This command selects canonical weak validation lanes from learned diagnostics, exports public dataset shards, trains the same portable BC MLP from those shards, packages the trained spec, and writes a fresh learned leaderboard plus diagnostics report. `--mix-lanes` keeps broad replay in the dataset beside the selected hard lanes, `dense_swarm_hard_negative` adds an explicit dense 3D swarm hard-negative training lane when requested, `--sample-weighting safety` emphasizes collision, near-miss, and low-clearance samples, `--sample-selection hard_negative_windows` trims configured hard-negative lanes to hard-event or closest-approach windows, and generated BC JSON artifacts store the training feature mean/std transform plus weighting and selection recipes for deterministic inference.
 
 Compare multiple learned-policy bundles without rerunning simulations:
 

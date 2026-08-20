@@ -15,7 +15,12 @@ from microbench.rl import (
     select_hard_lanes_from_diagnostics,
     train_behavior_cloned_policy_from_dataset,
 )
-from microbench.rl.hard_lane_training import _sample_weighting_config, _sample_weights_from_diagnostics
+from microbench.rl.hard_lane_training import (
+    _sample_mask_from_diagnostics,
+    _sample_selection_config,
+    _sample_weighting_config,
+    _sample_weights_from_diagnostics,
+)
 from microbench.rl.learned_dataset import export_learned_policy_dataset
 
 
@@ -115,6 +120,41 @@ def test_safety_sample_weighting_prioritizes_close_or_unsafe_samples() -> None:
     assert float(weights[1]) > float(weights[0])
 
 
+def test_hard_negative_sample_selection_keeps_event_windows_and_regular_lanes() -> None:
+    config = _sample_selection_config(
+        mode="hard_negative_windows",
+        hard_lane_ids=[LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID],
+        clearance_threshold_m=1.5,
+        context_steps=1,
+    )
+    mask, summary = _sample_mask_from_diagnostics(
+        {
+            "collision": np.asarray([False, False, False, False, False], dtype=bool),
+            "near_miss": np.asarray([False, True, False, False, False], dtype=bool),
+            "min_sep_m": np.asarray([3.0, 0.8, 2.7, 2.9, 3.0], dtype=np.float32),
+            "lane_id": np.asarray(
+                [
+                    LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID,
+                    LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID,
+                    LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID,
+                    LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID,
+                    "head_on",
+                ]
+            ),
+            "episode_id": np.asarray([7, 7, 7, 7, 8], dtype=np.int32),
+            "step": np.asarray([1, 2, 3, 8, 0], dtype=np.int32),
+        },
+        config=config,
+    )
+
+    assert mask.tolist() == [True, True, True, False, True]
+    assert summary["mode"] == "hard_negative_windows"
+    assert summary["hard_lane_input_count"] == 4
+    assert summary["hard_lane_selected_count"] == 3
+    assert summary["hard_event_count"] == 1
+    assert summary["non_hard_selected_count"] == 1
+
+
 def test_dataset_shard_training_writes_portable_policy(tmp_path: Path) -> None:
     dataset = export_learned_policy_dataset(
         out_dir=tmp_path / "dataset",
@@ -135,12 +175,14 @@ def test_dataset_shard_training_writes_portable_policy(tmp_path: Path) -> None:
     assert report["training_source"] == LEARNED_DATASET_BC_TRAINING_SOURCE
     assert report["sample_count"] == 8
     assert report["feature_normalization"]["mode"] == "standard"
+    assert report["sample_selection"]["mode"] == "all"
     assert report["sample_weighting"]["mode"] == "none"
     assert report["sample_weighting"]["weight_mean"] == 1.0
     assert Path(report["policy_spec"]).exists()
     model = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
     assert model["feature_normalization"]["mode"] == "standard"
     assert model["training"]["source"] == LEARNED_DATASET_BC_TRAINING_SOURCE
+    assert model["training"]["sample_selection"]["mode"] == "all"
     assert model["training"]["sample_weighting"]["mode"] == "none"
     assert model["training"]["source_dataset_manifest"] == dataset["manifest"]
     assert model["training"]["source_policy"] == "local_lateral_avoidance_teacher_v0"
@@ -171,6 +213,36 @@ def test_dataset_shard_training_records_safety_sample_weighting(tmp_path: Path) 
     assert next(check for check in report["checks"] if check["name"] == "sample_weights_finite")["ok"] is True
     model = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
     assert model["training"]["sample_weighting"]["mode"] == "safety"
+
+
+def test_dataset_shard_training_records_hard_negative_sample_selection(tmp_path: Path) -> None:
+    dataset = export_learned_policy_dataset(
+        out_dir=tmp_path / "dataset",
+        lanes=["head_on", LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID],
+        max_steps=3,
+        shard_size=8,
+    )
+
+    report = train_behavior_cloned_policy_from_dataset(
+        out_dir=tmp_path / "training",
+        dataset_manifest=dataset["manifest"],
+        hidden_dim=8,
+        eval_lanes=["head_on"],
+        eval_max_steps=2,
+        sample_selection="hard_negative_windows",
+        sample_selection_clearance_threshold_m=0.01,
+        sample_selection_context_steps=0,
+    )
+
+    assert report["ok"] is True
+    assert report["loaded_sample_count"] == dataset["sample_count"]
+    assert report["sample_count"] < report["loaded_sample_count"]
+    assert report["sample_selection"]["mode"] == "hard_negative_windows"
+    assert report["sample_selection"]["closest_fallback_episode_count"] >= 1
+    assert report["sample_selection"]["hard_lane_selected_count"] > 0
+    assert next(check for check in report["checks"] if check["name"] == "samples_selected")["ok"] is True
+    model = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
+    assert model["training"]["sample_selection"]["mode"] == "hard_negative_windows"
 
 
 def test_learned_hard_lane_loop_smoke_without_fixtures(tmp_path: Path) -> None:
@@ -216,6 +288,7 @@ def test_learned_hard_lane_loop_smoke_without_fixtures(tmp_path: Path) -> None:
     assert report["dataset"]["sample_count"] == 44
     assert report["training"]["training_source"] == LEARNED_DATASET_BC_TRAINING_SOURCE
     assert report["training"]["feature_normalization"] == "standard"
+    assert report["training"]["sample_selection"] == "all"
     assert report["training"]["sample_weighting"] == "safety"
     assert set(report["bundle_paths"]) == {"bc"}
     assert report["leaderboard"]["bundle_count"] == 1
@@ -265,6 +338,8 @@ def test_learned_hard_lane_loop_cli_smoke(tmp_path: Path) -> None:
             "8",
             "--sample-weighting",
             "safety",
+            "--sample-selection",
+            "hard_negative_windows",
             "--eval-lanes",
             "head_on",
             "--eval-max-steps",
@@ -288,6 +363,7 @@ def test_learned_hard_lane_loop_cli_smoke(tmp_path: Path) -> None:
     assert report["selection"]["selected_lanes"] == ["head_on"]
     assert report["dataset_lanes"] == ["head_on", "crossing"]
     assert report["dataset"]["sample_count"] == 20
+    assert report["training"]["sample_selection"] == "hard_negative_windows"
     assert report["training"]["sample_weighting"] == "safety"
     assert (out_dir / "learned_hard_lane_loop.json").exists()
     assert (out_dir / "learned_policy_leaderboard.csv").exists()

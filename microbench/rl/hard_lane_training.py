@@ -22,6 +22,7 @@ from microbench.rl.bc_training import (
     _policy_spec,
 )
 from microbench.rl.learned_dataset import (
+    LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID,
     LEARNED_DATASET_SCHEMA_VERSION,
     LEARNED_DATASET_TEACHER_POLICY,
     export_learned_policy_dataset,
@@ -43,6 +44,10 @@ DEFAULT_NEAR_MISS_SAMPLE_WEIGHT = 4.0
 DEFAULT_LOW_CLEARANCE_SAMPLE_WEIGHT = 3.0
 DEFAULT_SAMPLE_WEIGHT_CLEARANCE_THRESHOLD_M = 1.5
 DEFAULT_MAX_SAMPLE_WEIGHT = 10.0
+BC_SAMPLE_SELECTION_CHOICES = ("all", "hard_negative_windows")
+DEFAULT_SAMPLE_SELECTION_HARD_LANE_IDS = (LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID,)
+DEFAULT_SAMPLE_SELECTION_CLEARANCE_THRESHOLD_M = 2.5
+DEFAULT_SAMPLE_SELECTION_CONTEXT_STEPS = 2
 HARD_DIAGNOSTIC_LABELS = (
     "unsafe",
     "needs_training",
@@ -286,6 +291,182 @@ def _sample_weights_from_diagnostics(
     return normalized.astype(np.float32), summary
 
 
+def _sample_selection_config(
+    *,
+    mode: str,
+    hard_lane_ids: tuple[str, ...] | list[str] | None = None,
+    clearance_threshold_m: float = DEFAULT_SAMPLE_SELECTION_CLEARANCE_THRESHOLD_M,
+    context_steps: int = DEFAULT_SAMPLE_SELECTION_CONTEXT_STEPS,
+) -> dict[str, Any]:
+    clean_mode = str(mode or "all").strip().lower()
+    if clean_mode == "none":
+        clean_mode = "all"
+    if clean_mode not in BC_SAMPLE_SELECTION_CHOICES:
+        raise ValueError(f"Unsupported BC sample selection {mode!r}; expected one of {','.join(BC_SAMPLE_SELECTION_CHOICES)}")
+    if clean_mode == "all":
+        return {
+            "mode": "all",
+            "description": "all loaded shard samples are used for supervised fitting",
+            "applied": False,
+        }
+    threshold = float(clearance_threshold_m)
+    if not math.isfinite(threshold) or threshold <= 0.0:
+        raise ValueError("BC hard-negative sample-selection clearance threshold must be finite and > 0.0")
+    context = int(context_steps)
+    if context < 0:
+        raise ValueError("BC hard-negative sample-selection context steps must be >= 0")
+    selected_ids: list[str] = []
+    for lane_id in hard_lane_ids or DEFAULT_SAMPLE_SELECTION_HARD_LANE_IDS:
+        clean = str(lane_id or "").strip()
+        if clean and clean not in selected_ids:
+            selected_ids.append(clean)
+    if not selected_ids:
+        raise ValueError("BC hard-negative sample selection requires at least one hard lane id")
+    return {
+        "mode": "hard_negative_windows",
+        "description": (
+            "all non-hard lanes are kept, while configured hard-negative lanes keep only collision, near-miss, "
+            "low-clearance, or closest-approach temporal windows"
+        ),
+        "applied": True,
+        "hard_lane_ids": selected_ids,
+        "clearance_threshold_m": threshold,
+        "context_steps": context,
+    }
+
+
+def _array_from_diagnostics(
+    diagnostics: dict[str, np.ndarray],
+    name: str,
+    *,
+    n: int,
+    dtype: Any,
+    default: Any,
+) -> np.ndarray:
+    if name in diagnostics:
+        values = np.asarray(diagnostics[name], dtype=dtype).reshape(-1)
+    else:
+        values = np.full((n,), default, dtype=dtype)
+    if int(values.shape[0]) != int(n):
+        raise ValueError(f"diagnostic field {name!r} must have {n} rows, got {values.shape[0]}")
+    return values
+
+
+def _sample_selection_summary_rows(
+    *,
+    lane_ids: np.ndarray,
+    min_sep: np.ndarray,
+    hard_events: np.ndarray,
+    keep: np.ndarray,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    seen: list[str] = []
+    for raw_lane in lane_ids.astype(str):
+        lane = str(raw_lane)
+        if lane not in seen:
+            seen.append(lane)
+    for lane in seen:
+        lane_mask = lane_ids.astype(str) == lane
+        lane_sep = min_sep[lane_mask]
+        finite = lane_sep[np.isfinite(lane_sep)]
+        rows.append(
+            {
+                "lane_id": lane,
+                "input_sample_count": int(np.sum(lane_mask)),
+                "selected_sample_count": int(np.sum(keep & lane_mask)),
+                "hard_event_count": int(np.sum(hard_events & lane_mask)),
+                "min_sep_min_m": _round_or_none(float(np.min(finite)) if finite.size else None),
+            }
+        )
+    return rows
+
+
+def _sample_mask_from_diagnostics(
+    diagnostics: dict[str, np.ndarray],
+    *,
+    config: dict[str, Any],
+) -> tuple[np.ndarray, dict[str, Any]]:
+    collisions = np.asarray(diagnostics.get("collision", np.zeros((0,), dtype=bool)), dtype=bool).reshape(-1)
+    n = int(collisions.shape[0])
+    near_misses = _array_from_diagnostics(diagnostics, "near_miss", n=n, dtype=bool, default=False)
+    min_sep = _array_from_diagnostics(diagnostics, "min_sep_m", n=n, dtype=np.float32, default=np.nan)
+    lane_ids = _array_from_diagnostics(diagnostics, "lane_id", n=n, dtype=str, default="")
+    episode_ids = _array_from_diagnostics(diagnostics, "episode_id", n=n, dtype=np.int32, default=0)
+    steps = _array_from_diagnostics(diagnostics, "step", n=n, dtype=np.int32, default=0)
+
+    if str(config.get("mode", "all")) == "all":
+        keep = np.ones((n,), dtype=bool)
+        hard_events = np.zeros((n,), dtype=bool)
+        summary = {
+            **config,
+            "input_sample_count": n,
+            "selected_sample_count": n,
+            "dropped_sample_count": 0,
+            "selected_fraction": _round_or_none(1.0 if n else 0.0),
+            "hard_lane_input_count": 0,
+            "hard_lane_selected_count": 0,
+            "hard_event_count": 0,
+            "closest_fallback_episode_count": 0,
+            "non_hard_selected_count": n,
+            "per_lane": _sample_selection_summary_rows(lane_ids=lane_ids, min_sep=min_sep, hard_events=hard_events, keep=keep),
+        }
+        return keep, summary
+
+    hard_lane_ids = {str(value) for value in config.get("hard_lane_ids", [])}
+    threshold = float(config.get("clearance_threshold_m", DEFAULT_SAMPLE_SELECTION_CLEARANCE_THRESHOLD_M))
+    context = int(config.get("context_steps", DEFAULT_SAMPLE_SELECTION_CONTEXT_STEPS))
+    hard_lane_mask = np.asarray([str(lane_id) in hard_lane_ids for lane_id in lane_ids], dtype=bool)
+    finite_sep = np.isfinite(min_sep)
+    hard_events = hard_lane_mask & (collisions | near_misses | (finite_sep & (min_sep <= threshold)))
+    keep = ~hard_lane_mask
+
+    event_steps_by_key: dict[tuple[str, int], list[int]] = {}
+    for lane, episode, step in zip(lane_ids[hard_events], episode_ids[hard_events], steps[hard_events]):
+        key = (str(lane), int(episode))
+        event_steps_by_key.setdefault(key, []).append(int(step))
+
+    closest_fallback_episode_count = 0
+    hard_keys: list[tuple[str, int]] = []
+    for lane, episode in zip(lane_ids[hard_lane_mask], episode_ids[hard_lane_mask]):
+        key = (str(lane), int(episode))
+        if key not in hard_keys:
+            hard_keys.append(key)
+    for key in hard_keys:
+        lane, episode = key
+        if key in event_steps_by_key:
+            continue
+        episode_mask = (lane_ids.astype(str) == lane) & (episode_ids == int(episode))
+        finite_episode = np.where(episode_mask & finite_sep)[0]
+        if finite_episode.size == 0:
+            continue
+        closest_idx = int(finite_episode[int(np.argmin(min_sep[finite_episode]))])
+        event_steps_by_key[key] = [int(steps[closest_idx])]
+        closest_fallback_episode_count += 1
+
+    for (lane, episode), event_steps in event_steps_by_key.items():
+        episode_mask = (lane_ids.astype(str) == lane) & (episode_ids == int(episode))
+        window = np.zeros((n,), dtype=bool)
+        for event_step in event_steps:
+            window |= episode_mask & (np.abs(steps - int(event_step)) <= context)
+        keep |= window
+
+    selected = int(np.sum(keep))
+    summary = {
+        **config,
+        "input_sample_count": n,
+        "selected_sample_count": selected,
+        "dropped_sample_count": int(n - selected),
+        "selected_fraction": _round_or_none(float(selected / max(1, n))),
+        "hard_lane_input_count": int(np.sum(hard_lane_mask)),
+        "hard_lane_selected_count": int(np.sum(keep & hard_lane_mask)),
+        "hard_event_count": int(np.sum(hard_events)),
+        "closest_fallback_episode_count": int(closest_fallback_episode_count),
+        "non_hard_selected_count": int(np.sum(keep & ~hard_lane_mask)),
+        "per_lane": _sample_selection_summary_rows(lane_ids=lane_ids, min_sep=min_sep, hard_events=hard_events, keep=keep),
+    }
+    return keep, summary
+
+
 def select_hard_lanes_from_diagnostics(
     diagnostics: str | Path | dict[str, Any] | None = None,
     *,
@@ -445,6 +626,15 @@ def _load_shard_features_and_labels(
     collision_rows: list[bool] = []
     near_miss_rows: list[bool] = []
     min_sep_rows: list[float] = []
+    episode_id_rows: list[int] = []
+    step_rows: list[int] = []
+    agent_id_rows: list[int] = []
+    lane_id_rows: list[str] = []
+    category_rows: list[str] = []
+    scenario_rows: list[str] = []
+    seed_rows: list[int] = []
+    n_agent_rows: list[int] = []
+    comm_profile_rows: list[str] = []
 
     for raw_shard in report.get("shards", []) or []:
         shard = _resolve_output_path(raw_shard, root=root)
@@ -461,7 +651,11 @@ def _load_shard_features_and_labels(
             seeds = np.asarray(data["seed"], dtype=np.int32)
             n_agents = np.asarray(data["n_agents"], dtype=np.int32)
             comm_profiles = np.asarray(data["comm_profile"]).astype(str)
+            episode_ids = (
+                np.asarray(data["episode_id"], dtype=np.int32) if "episode_id" in data.files else np.zeros((actions.shape[0],), dtype=np.int32)
+            )
             steps = np.asarray(data["step"], dtype=np.int32) if "step" in data.files else np.zeros((actions.shape[0],), dtype=np.int32)
+            agent_ids = np.asarray(data["agent_id"], dtype=np.int32) if "agent_id" in data.files else np.arange(actions.shape[0], dtype=np.int32)
             collisions = np.asarray(data["collision"], dtype=bool) if "collision" in data.files else np.zeros((actions.shape[0],), dtype=bool)
             near_misses = np.asarray(data["near_miss"], dtype=bool) if "near_miss" in data.files else np.zeros((actions.shape[0],), dtype=bool)
             min_seps = (
@@ -479,6 +673,15 @@ def _load_shard_features_and_labels(
                 collision_rows.append(bool(collisions[idx]))
                 near_miss_rows.append(bool(near_misses[idx]))
                 min_sep_rows.append(float(min_seps[idx]))
+                episode_id_rows.append(int(episode_ids[idx]))
+                step_rows.append(int(steps[idx]))
+                agent_id_rows.append(int(agent_ids[idx]))
+                lane_id_rows.append(str(lane_ids[idx]))
+                category_rows.append(str(categories[idx]))
+                scenario_rows.append(str(scenarios[idx]))
+                seed_rows.append(int(seeds[idx]))
+                n_agent_rows.append(int(n_agents[idx]))
+                comm_profile_rows.append(str(comm_profiles[idx]))
                 shard_rows.append(
                     {
                         "lane_id": lane_ids[idx],
@@ -487,7 +690,9 @@ def _load_shard_features_and_labels(
                         "seed": int(seeds[idx]),
                         "n_agents": int(n_agents[idx]),
                         "comm_profile": comm_profiles[idx],
+                        "episode_id": int(episode_ids[idx]),
                         "step": int(steps[idx]),
+                        "agent_id": int(agent_ids[idx]),
                     }
                 )
         loaded_shards.append(shard)
@@ -497,12 +702,21 @@ def _load_shard_features_and_labels(
     return (
         np.vstack(feature_rows).astype(np.float32),
         np.vstack(label_rows).astype(np.float32),
-        _dataset_training_rows(shard_rows),
+        shard_rows,
         loaded_shards,
         {
             "collision": np.asarray(collision_rows, dtype=bool),
             "near_miss": np.asarray(near_miss_rows, dtype=bool),
             "min_sep_m": np.asarray(min_sep_rows, dtype=np.float32),
+            "episode_id": np.asarray(episode_id_rows, dtype=np.int32),
+            "step": np.asarray(step_rows, dtype=np.int32),
+            "agent_id": np.asarray(agent_id_rows, dtype=np.int32),
+            "lane_id": np.asarray(lane_id_rows, dtype="U64"),
+            "category": np.asarray(category_rows, dtype="U64"),
+            "scenario": np.asarray(scenario_rows, dtype="U128"),
+            "seed": np.asarray(seed_rows, dtype=np.int32),
+            "n_agents": np.asarray(n_agent_rows, dtype=np.int32),
+            "comm_profile": np.asarray(comm_profile_rows, dtype="U64"),
         },
     )
 
@@ -535,6 +749,7 @@ def _manifest_overlay_from_dataset_training_report(report: dict[str, Any]) -> di
     source_policy = str(report.get("source_policy") or report.get("teacher_policy") or "dataset_action_labels")
     normalization = dict(report.get("feature_normalization", {}) or {})
     sample_weighting = dict(report.get("sample_weighting", {}) or {})
+    sample_selection = dict(report.get("sample_selection", {}) or {})
     return {
         "dependencies": {
             "inference_packages": [
@@ -560,6 +775,7 @@ def _manifest_overlay_from_dataset_training_report(report: dict[str, Any]) -> di
             ),
             "reward_configuration": "not used; supervised behavior cloning from dataset action labels",
             "sample_weighting": sample_weighting.get("description") or sample_weighting.get("mode") or "uniform sample weights",
+            "sample_selection": sample_selection.get("description") or sample_selection.get("mode") or "all loaded samples",
             "external_data": "none; input labels came from DAA Microbench learned-dataset-export shards",
             "pretrained_models": "none",
             "hardware": "local CPU",
@@ -597,6 +813,10 @@ def train_behavior_cloned_policy_from_dataset(
     low_clearance_sample_weight: float = DEFAULT_LOW_CLEARANCE_SAMPLE_WEIGHT,
     sample_weight_clearance_threshold_m: float = DEFAULT_SAMPLE_WEIGHT_CLEARANCE_THRESHOLD_M,
     max_sample_weight: float = DEFAULT_MAX_SAMPLE_WEIGHT,
+    sample_selection: str = "all",
+    sample_selection_hard_lanes: tuple[str, ...] | list[str] | None = None,
+    sample_selection_clearance_threshold_m: float = DEFAULT_SAMPLE_SELECTION_CLEARANCE_THRESHOLD_M,
+    sample_selection_context_steps: int = DEFAULT_SAMPLE_SELECTION_CONTEXT_STEPS,
     eval_lanes: tuple[str, ...] | list[str] | None = None,
     eval_max_steps: int | None = 12,
     policy_name: str = BC_POLICY_NAME,
@@ -625,7 +845,27 @@ def train_behavior_cloned_policy_from_dataset(
         shutil.rmtree(validation_dir)
 
     report, manifest_path, dataset_root = _load_dataset_manifest(dataset_manifest)
-    features, labels, training_rows, loaded_shards, sample_diagnostics = _load_shard_features_and_labels(report, root=dataset_root)
+    features, labels, sample_rows, loaded_shards, sample_diagnostics = _load_shard_features_and_labels(report, root=dataset_root)
+    loaded_sample_count = int(features.shape[0])
+    sample_selection_config = _sample_selection_config(
+        mode=str(sample_selection),
+        hard_lane_ids=sample_selection_hard_lanes,
+        clearance_threshold_m=float(sample_selection_clearance_threshold_m),
+        context_steps=int(sample_selection_context_steps),
+    )
+    sample_mask, sample_selection_summary = _sample_mask_from_diagnostics(sample_diagnostics, config=sample_selection_config)
+    if int(sample_mask.shape[0]) != loaded_sample_count:
+        raise RuntimeError("sample selection mask did not match loaded dataset size")
+    features = features[sample_mask]
+    labels = labels[sample_mask]
+    sample_rows = [row for row, keep in zip(sample_rows, sample_mask) if bool(keep)]
+    sample_diagnostics = {
+        key: np.asarray(value)[sample_mask] if np.asarray(value).shape[:1] == sample_mask.shape else value
+        for key, value in sample_diagnostics.items()
+    }
+    if int(features.shape[0]) <= 0:
+        raise RuntimeError("BC sample selection removed all training samples")
+    training_rows = _dataset_training_rows(sample_rows)
     selected_lanes = _selected_lanes_from_training_rows(training_rows, report)
     seed_override = sorted({int(row.get("seed", 0) or 0) for row in training_rows})
     normalization_payload = _feature_normalization_payload(features, mode=str(feature_normalization))
@@ -681,6 +921,7 @@ def train_behavior_cloned_policy_from_dataset(
             "source_dataset_shards": [str(path) for path in loaded_shards],
             "rollout_policy": "dataset_action_labels",
             "rollout_noise_std": 0.0,
+            "sample_selection": sample_selection_summary,
             "sample_weighting": sample_weight_summary,
         }
     )
@@ -703,8 +944,18 @@ def train_behavior_cloned_policy_from_dataset(
         _check("dataset_schema_supported", report.get("schema_version") == LEARNED_DATASET_SCHEMA_VERSION, {"schema_version": report.get("schema_version")}),
         _check("dataset_export_ok", bool(report.get("ok")), {"manifest": None if manifest_path is None else str(manifest_path)}),
         _check("dataset_shards_present", bool(loaded_shards), {"shard_count": len(loaded_shards)}),
-        _check("samples_loaded", int(features.shape[0]) > 0, {"samples": int(features.shape[0]), "manifest_samples": manifest_sample_count}),
-        _check("sample_count_matches_manifest", manifest_sample_count in {0, int(features.shape[0])}, {"samples": int(features.shape[0]), "manifest_samples": manifest_sample_count}),
+        _check("samples_loaded", loaded_sample_count > 0, {"loaded_samples": loaded_sample_count, "manifest_samples": manifest_sample_count}),
+        _check("samples_selected", int(features.shape[0]) > 0, {"selected_samples": int(features.shape[0]), "loaded_samples": loaded_sample_count}),
+        _check(
+            "sample_count_matches_manifest",
+            manifest_sample_count in {0, loaded_sample_count},
+            {
+                "selected_samples": int(features.shape[0]),
+                "loaded_samples": loaded_sample_count,
+                "manifest_samples": manifest_sample_count,
+                "sample_selection": sample_selection_summary.get("mode"),
+            },
+        ),
         _check(
             "finite_dataset",
             finite_dataset,
@@ -712,6 +963,7 @@ def train_behavior_cloned_policy_from_dataset(
                 "feature_shape": list(features.shape),
                 "label_shape": list(labels.shape),
                 "feature_normalization": normalization_payload.get("mode"),
+                "sample_selection": sample_selection_summary.get("mode"),
                 "sample_weighting": sample_weight_summary.get("mode"),
             },
         ),
@@ -756,10 +1008,12 @@ def train_behavior_cloned_policy_from_dataset(
         "policy_spec": str(spec_path),
         "training_report": str(report_path),
         "sample_count": int(features.shape[0]),
+        "loaded_sample_count": loaded_sample_count,
         "feature_dim": int(features.shape[1]),
         "label_dim": int(labels.shape[1]),
         "hidden_dim": int(hidden_dim),
         "feature_normalization": normalization_payload,
+        "sample_selection": sample_selection_summary,
         "sample_weighting": sample_weight_summary,
         "fit_rmse": round(float(fit_rmse), 8),
         "training_rows": training_rows,
@@ -795,6 +1049,10 @@ def run_learned_hard_lane_loop(
     low_clearance_sample_weight: float = DEFAULT_LOW_CLEARANCE_SAMPLE_WEIGHT,
     sample_weight_clearance_threshold_m: float = DEFAULT_SAMPLE_WEIGHT_CLEARANCE_THRESHOLD_M,
     max_sample_weight: float = DEFAULT_MAX_SAMPLE_WEIGHT,
+    sample_selection: str = "all",
+    sample_selection_hard_lanes: tuple[str, ...] | list[str] | None = None,
+    sample_selection_clearance_threshold_m: float = DEFAULT_SAMPLE_SELECTION_CLEARANCE_THRESHOLD_M,
+    sample_selection_context_steps: int = DEFAULT_SAMPLE_SELECTION_CONTEXT_STEPS,
     eval_lanes: tuple[str, ...] | list[str] | None = None,
     eval_max_steps: int | None = 12,
     policy_name: str = BC_POLICY_NAME,
@@ -863,6 +1121,10 @@ def run_learned_hard_lane_loop(
         low_clearance_sample_weight=float(low_clearance_sample_weight),
         sample_weight_clearance_threshold_m=float(sample_weight_clearance_threshold_m),
         max_sample_weight=float(max_sample_weight),
+        sample_selection=str(sample_selection),
+        sample_selection_hard_lanes=sample_selection_hard_lanes,
+        sample_selection_clearance_threshold_m=float(sample_selection_clearance_threshold_m),
+        sample_selection_context_steps=int(sample_selection_context_steps),
         eval_lanes=eval_lanes if eval_lanes is not None else selected_lanes,
         eval_max_steps=eval_max_steps,
         policy_name=str(policy_name),
@@ -951,6 +1213,7 @@ def run_learned_hard_lane_loop(
             "fit_rmse": training.get("fit_rmse"),
             "training_source": training.get("training_source"),
             "feature_normalization": training.get("feature_normalization", {}).get("mode"),
+            "sample_selection": training.get("sample_selection", {}).get("mode"),
             "sample_weighting": training.get("sample_weighting", {}).get("mode"),
         },
         "manifest_overlay": str(manifest_overlay_path),
@@ -978,7 +1241,11 @@ def run_learned_hard_lane_loop(
 
 
 __all__ = [
+    "BC_SAMPLE_SELECTION_CHOICES",
     "BC_SAMPLE_WEIGHTING_CHOICES",
+    "DEFAULT_SAMPLE_SELECTION_CLEARANCE_THRESHOLD_M",
+    "DEFAULT_SAMPLE_SELECTION_CONTEXT_STEPS",
+    "DEFAULT_SAMPLE_SELECTION_HARD_LANE_IDS",
     "DEFAULT_HARD_LANE_FALLBACK",
     "HARD_DIAGNOSTIC_LABELS",
     "LEARNED_DATASET_BC_TRAINING_SOURCE",
