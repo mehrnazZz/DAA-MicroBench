@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from microbench.rl.learned_leaderboard import LEARNED_POLICY_LEADERBOARD_SCHEMA_VERSION
+from microbench.rl.learned_lineage import LEARNED_POLICY_LINEAGE_FIELDS, classify_learned_policy_lineage
 from microbench.rl.submission_bundle import (
     LEARNED_SUBMISSION_BUNDLE_REVIEW_SCHEMA_VERSION,
     review_learned_policy_submission_bundle,
@@ -23,6 +24,7 @@ LEARNED_POLICY_DIAGNOSTIC_FIELDS = (
     "bundle",
     "method",
     "policy",
+    *LEARNED_POLICY_LINEAGE_FIELDS,
     "suite",
     "diagnostic_label",
     "primary_failure",
@@ -320,6 +322,7 @@ def _review_to_diagnostic_row(*, bundle: str | Path, review: dict[str, Any], err
     rl_rows = _read_csv_rows(_artifact_path(review, "rl_validation_matrix_episodes"))
     planner_diag = _worst_planner_row(planner_rows)
     rl_diag = _worst_rl_row(rl_rows)
+    lineage = classify_learned_policy_lineage(bundle=bundle, review=review)
 
     collision_count = int(safety.get("collision_episode_count", 0) or 0)
     rl_collision_ticks = int(rl_validation.get("collision_ticks", 0) or 0)
@@ -366,6 +369,7 @@ def _review_to_diagnostic_row(*, bundle: str | Path, review: dict[str, Any], err
         "bundle": str(bundle),
         "method": review.get("method"),
         "policy": review.get("policy"),
+        **{field: lineage.get(field) for field in LEARNED_POLICY_LINEAGE_FIELDS},
         "suite": review.get("suite"),
         "diagnostic_label": label,
         "primary_failure": primary_failure,
@@ -505,7 +509,8 @@ def build_learned_policy_diagnostics(*, bundles: list[str | Path] | tuple[str | 
         ),
         "label_note": (
             "Labels flag policy behavior patterns: unsafe, safe_but_slow, fast_but_close, "
-            "needs_training, balanced_limited_evidence, balanced, or artifact_issue."
+            "needs_training, balanced_limited_evidence, balanced, or artifact_issue. "
+            "Lineage labels separately identify BC-only, hard-lane BC, and closed-loop holdout-passed artifacts."
         ),
         "columns": list(LEARNED_POLICY_DIAGNOSTIC_FIELDS),
         "rows": rows,
@@ -550,15 +555,16 @@ def _write_markdown(path: Path, report: dict[str, Any]) -> None:
         [
             "## Rows",
             "",
-            "| rank | policy | label | primary failure | completion | min sep | next action |",
-            "| --- | --- | --- | --- | --- | --- | --- |",
+            "| rank | policy | lineage | label | primary failure | completion | min sep | next action |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
     )
     for row in report.get("rows", []):
         lines.append(
-            "| {rank} | {policy} | {label} | {failure} | {completion} | {min_sep} | {next_action} |".format(
+            "| {rank} | {policy} | {lineage} | {label} | {failure} | {completion} | {min_sep} | {next_action} |".format(
                 rank=row.get("diagnostic_rank"),
                 policy=row.get("policy"),
+                lineage=row.get("lineage_label"),
                 label=row.get("diagnostic_label"),
                 failure=row.get("primary_failure"),
                 completion=row.get("completion_rate_mean"),

@@ -264,7 +264,7 @@ python -m microbench.cli learned-diagnostics \
   --require-pass
 ```
 
-The leaderboard command writes JSON plus a sibling CSV and combines planner `summary.csv` score fields with RL validation-matrix lane evidence. It also reports true row-level clearance (`min_sep_min_row_m`, `min_sep_p05_row_min_m`) next to summary-derived clearance (`min_sep_min_summary_mean_min_m`, `min_sep_p05_summary_mean_min_m`) so a single close or colliding run is visible during review. The diagnostics command writes JSON/CSV/Markdown labels such as `safe_but_slow`, `fast_but_close`, and `balanced`, including the weakest scenario/lane and next suggested action. Treat both as reviewer evidence; final learned-policy claims should still include the underlying bundle artifacts.
+The leaderboard command writes JSON plus a sibling CSV and combines planner `summary.csv` score fields with RL validation-matrix lane evidence. It also reports true row-level clearance (`min_sep_min_m`, `min_sep_p05_min_m`, `min_sep_min_row_m`, `min_sep_p05_row_min_m`) next to summary-derived clearance (`min_sep_min_summary_mean_min_m`, `min_sep_p05_summary_mean_min_m`) so a single close or colliding run is visible during review. The diagnostics command writes JSON/CSV/Markdown labels such as `safe_but_slow`, `fast_but_close`, and `balanced`, including the weakest scenario/lane and next suggested action. Both tables include `lineage_label`, `training_lineage`, and `promotion_stage`, so `bc_only`, `hard_lane_bc`, `closed_loop_holdout_passed`, frozen fixture, and external/unknown policies are not mixed without context. Treat both as reviewer evidence; final learned-policy claims should still include the underlying bundle artifacts.
 
 ## Submission Manifest Checklist
 

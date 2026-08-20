@@ -40,6 +40,7 @@ def _fake_review(
     collisions: int = 0,
     near_miss_ticks: int = 0,
     final_goal: float = 1.0,
+    training: dict | None = None,
 ) -> dict:
     planner_results = _write_csv(
         tmp_path / name / "planner_results.csv",
@@ -70,6 +71,14 @@ def _fake_review(
             }
         ],
     )
+    artifacts = {
+        "planner_results": str(planner_results),
+        "rl_validation_matrix_episodes": str(rl_rows),
+    }
+    if training is not None:
+        policy_artifact = tmp_path / name / "policy_artifact.json"
+        policy_artifact.write_text(json.dumps({"model_id": "mlp_learned_v0", "training": training}) + "\n", encoding="utf-8")
+        artifacts["policy_artifact"] = str(policy_artifact)
     return {
         "ok": True,
         "recommendation": "leaderboard_candidate",
@@ -110,10 +119,7 @@ def _fake_review(
             },
         },
         "validation": {
-            "artifacts": {
-                "planner_results": str(planner_results),
-                "rl_validation_matrix_episodes": str(rl_rows),
-            }
+            "artifacts": artifacts
         },
     }
 
@@ -129,6 +135,7 @@ def test_learned_policy_diagnostics_labels_tradeoffs(tmp_path: Path, monkeypatch
             min_sep=2.4,
             p05=3.0,
             final_goal=14.0,
+            training={"recipe": "python -m microbench.cli train-learned-bc"},
         ),
         "close": _fake_review(
             tmp_path,
@@ -139,6 +146,10 @@ def test_learned_policy_diagnostics_labels_tradeoffs(tmp_path: Path, monkeypatch
             min_sep=0.4,
             p05=0.9,
             near_miss_ticks=2,
+            training={
+                "recipe": "python -m microbench.cli learned-hard-lane-loop",
+                "sample_selection": {"mode": "hard_negative_windows"},
+            },
         ),
         "unsafe": _fake_review(
             tmp_path,
@@ -149,6 +160,10 @@ def test_learned_policy_diagnostics_labels_tradeoffs(tmp_path: Path, monkeypatch
             min_sep=0.1,
             p05=0.2,
             collisions=1,
+            training={
+                "recipe": "python -m microbench.cli learned-closed-loop-finetune",
+                "holdout_result": {"profile": "broad_3d_stress", "promotion_candidate": False},
+            },
         ),
     }
     monkeypatch.setattr(
@@ -163,6 +178,10 @@ def test_learned_policy_diagnostics_labels_tradeoffs(tmp_path: Path, monkeypatch
     assert by_policy["safe_slow_policy"]["diagnostic_label"] == "safe_but_slow"
     assert by_policy["close_policy"]["diagnostic_label"] == "fast_but_close"
     assert by_policy["unsafe_policy"]["diagnostic_label"] == "unsafe"
+    assert by_policy["safe_slow_policy"]["lineage_label"] == "bc_only"
+    assert by_policy["close_policy"]["lineage_label"] == "hard_lane_bc"
+    assert by_policy["unsafe_policy"]["lineage_label"] == "closed_loop_holdout_review"
+    assert by_policy["unsafe_policy"]["promotion_stage"] == "holdout_review_required"
     assert by_policy["close_policy"]["min_sep_min_row_m"] == 0.4
     assert by_policy["close_policy"]["min_sep_min_summary_mean_min_m"] == 0.65
     assert report["summary"]["safety_leader"] == "safe_slow_policy"
@@ -175,6 +194,7 @@ def test_learned_policy_diagnostics_labels_tradeoffs(tmp_path: Path, monkeypatch
     assert Path(written["diagnostics_csv"]).exists()
     assert Path(written["diagnostics_markdown"]).exists()
     assert "safe_but_slow" in Path(written["diagnostics_markdown"]).read_text(encoding="utf-8")
+    assert "hard_lane_bc" in Path(written["diagnostics_markdown"]).read_text(encoding="utf-8")
 
 
 def test_learned_diagnostics_cli_writes_reports(tmp_path: Path) -> None:

@@ -83,6 +83,11 @@ from microbench.rl.learned_leaderboard import (
     build_learned_policy_leaderboard,
     write_learned_policy_leaderboard,
 )
+from microbench.rl.learned_lineage import (
+    LEARNED_POLICY_LINEAGE_FIELDS,
+    LEARNED_POLICY_LINEAGE_SCHEMA_VERSION,
+    classify_learned_policy_lineage,
+)
 from microbench.rl.policies import GoalDirectionPolicy, MlpLearnedPolicy, RandomPolicy, TinyLearnedPolicy, ZeroPolicy, make_policy
 from microbench.rl.policy_spec import (
     RL_POLICY_SPEC_SCHEMA_VERSION,
@@ -166,6 +171,8 @@ __all__ = [
     "LEARNED_SUBMISSION_SCHEMA_CHECK_VERSION",
     "LEARNED_POLICY_LEADERBOARD_SCHEMA_VERSION",
     "LEARNED_POLICY_DIAGNOSTICS_SCHEMA_VERSION",
+    "LEARNED_POLICY_LINEAGE_FIELDS",
+    "LEARNED_POLICY_LINEAGE_SCHEMA_VERSION",
     "LEARNED_DATASET_POLICY_CHOICES",
     "LEARNED_DATASET_EXTRA_LANE_IDS",
     "LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID",
@@ -205,6 +212,7 @@ __all__ = [
     "build_learned_policy_diagnostics",
     "build_behavior_cloned_policy_evidence",
     "check_parallel_env_api",
+    "classify_learned_policy_lineage",
     "export_learned_policy_dataset",
     "fine_tune_closed_loop_policy",
     "selected_learned_dataset_lanes",

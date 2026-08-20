@@ -10,6 +10,7 @@ from microbench.rl.submission_bundle import (
     LEARNED_SUBMISSION_BUNDLE_REVIEW_SCHEMA_VERSION,
     review_learned_policy_submission_bundle,
 )
+from microbench.rl.learned_lineage import LEARNED_POLICY_LINEAGE_FIELDS, classify_learned_policy_lineage
 
 
 LEARNED_POLICY_LEADERBOARD_SCHEMA_VERSION = "0.1"
@@ -22,6 +23,7 @@ LEARNED_POLICY_LEADERBOARD_FIELDS = (
     "recommendation",
     "method",
     "policy",
+    *LEARNED_POLICY_LINEAGE_FIELDS,
     "suite",
     "run_count",
     "planned_run_count",
@@ -93,6 +95,7 @@ def _review_to_row(*, bundle: str | Path, review: dict[str, Any], error: str | N
     score = review.get("score_v0") if isinstance(review.get("score_v0"), dict) else {}
     limitations = list(review.get("limitations", [])) if isinstance(review.get("limitations"), list) else []
     recommendation = str(review.get("recommendation") or "fix_artifacts")
+    lineage = classify_learned_policy_lineage(bundle=bundle, review=review)
 
     return {
         "development_rank": None,
@@ -102,6 +105,7 @@ def _review_to_row(*, bundle: str | Path, review: dict[str, Any], error: str | N
         "recommendation": recommendation,
         "method": review.get("method"),
         "policy": review.get("policy"),
+        **{field: lineage.get(field) for field in LEARNED_POLICY_LINEAGE_FIELDS},
         "suite": review.get("suite"),
         "run_count": int(review.get("run_count", 0) or 0),
         "planned_run_count": int(review.get("planned_run_count", 0) or 0),
@@ -198,7 +202,10 @@ def build_learned_policy_leaderboard(*, bundles: list[str | Path] | tuple[str | 
             "Development rows are sorted by learned bundle review score_v0_mean; lower is better. "
             "Only rows with recommendation=leaderboard_candidate should be treated as candidate leaderboard evidence."
         ),
-        "source_note": "Rows are derived from review-learned-bundle summaries; keep the underlying bundles for audit.",
+        "source_note": (
+            "Rows are derived from review-learned-bundle summaries; keep the underlying bundles for audit. "
+            "Lineage labels separate frozen fixtures, BC-only artifacts, hard-lane BC artifacts, and closed-loop holdout-passed variants."
+        ),
         "columns": list(LEARNED_POLICY_LEADERBOARD_FIELDS),
         "rows": ranked_rows,
     }

@@ -16,7 +16,23 @@ from microbench.rl.submission_bundle import run_learned_policy_submission_bundle
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _fake_review(*, method: str, policy: str, score: float, recommendation: str = "leaderboard_candidate") -> dict:
+def _write_policy_artifact(tmp_path: Path, name: str, training: dict) -> Path:
+    path = tmp_path / f"{name}.json"
+    path.write_text(json.dumps({"model_id": "mlp_learned_v0", "training": training}) + "\n", encoding="utf-8")
+    return path
+
+
+def _fake_review(
+    *,
+    method: str,
+    policy: str,
+    score: float,
+    recommendation: str = "leaderboard_candidate",
+    policy_artifact: Path | None = None,
+) -> dict:
+    artifacts = {}
+    if policy_artifact is not None:
+        artifacts["policy_artifact"] = str(policy_artifact)
     return {
         "schema_version": "0.1",
         "ok": True,
@@ -66,7 +82,7 @@ def _fake_review(*, method: str, policy: str, score: float, recommendation: str 
             },
         },
         "checks": [],
-        "validation": {},
+        "validation": {"artifacts": artifacts},
     }
 
 
@@ -96,6 +112,8 @@ def test_learned_policy_leaderboard_ranks_reviewable_rows(tmp_path: Path, monkey
     assert [row["policy"] for row in report["rows"]] == ["mlp_learned", "external_fixture", "tiny_learned"]
     assert [row["development_rank"] for row in report["rows"]] == [1, 2, 3]
     assert report["rows"][1]["leaderboard_candidate"] is False
+    assert report["rows"][0]["lineage_label"] == "frozen_fixture"
+    assert report["rows"][1]["lineage_label"] == "external_or_unknown"
     assert report["rows"][1]["limitations"] == "limited_planner_sweep"
     assert report["rows"][1]["min_sep_min_row_m"] == 0.45
     assert report["rows"][1]["min_sep_min_summary_mean_min_m"] == 0.5
@@ -106,6 +124,69 @@ def test_learned_policy_leaderboard_ranks_reviewable_rows(tmp_path: Path, monkey
     assert Path(written["leaderboard_csv"]).exists()
     assert "score_v0_mean" in Path(written["leaderboard_csv"]).read_text(encoding="utf-8")
     assert "min_sep_min_row_m" in Path(written["leaderboard_csv"]).read_text(encoding="utf-8")
+    assert "lineage_label" in Path(written["leaderboard_csv"]).read_text(encoding="utf-8")
+
+
+def test_learned_policy_leaderboard_labels_training_lineage(tmp_path: Path, monkeypatch) -> None:
+    bc_artifact = _write_policy_artifact(
+        tmp_path,
+        "bc",
+        {"recipe": "python -m microbench.cli train-learned-bc"},
+    )
+    hard_artifact = _write_policy_artifact(
+        tmp_path,
+        "hard",
+        {
+            "recipe": "python -m microbench.cli learned-hard-lane-loop",
+            "sample_selection": {"mode": "hard_negative_windows"},
+            "sample_weighting": {"mode": "safety"},
+        },
+    )
+    closed_loop_artifact = _write_policy_artifact(
+        tmp_path,
+        "closed_loop",
+        {
+            "recipe": "python -m microbench.cli learned-closed-loop-finetune",
+            "trainable_parameters": "all_layers",
+            "holdout": {"profile": "broad_3d_stress"},
+            "holdout_result": {"profile": "broad_3d_stress", "promotion_candidate": True},
+        },
+    )
+    reviews = {
+        "bc": _fake_review(
+            method="learned_policy_spec",
+            policy="bc_mlp_learned",
+            score=12.0,
+            policy_artifact=bc_artifact,
+        ),
+        "hard": _fake_review(
+            method="learned_policy_spec",
+            policy="bc_mlp_hard_lane",
+            score=10.0,
+            policy_artifact=hard_artifact,
+        ),
+        "closed_loop": _fake_review(
+            method="learned_policy_spec",
+            policy="closed_loop_mlp_learned",
+            score=8.0,
+            policy_artifact=closed_loop_artifact,
+        ),
+    }
+    monkeypatch.setattr(
+        "microbench.rl.learned_leaderboard.review_learned_policy_submission_bundle",
+        lambda bundle: reviews[str(bundle)],
+    )
+
+    report = build_learned_policy_leaderboard(bundles=["bc", "hard", "closed_loop"])
+    by_policy = {row["policy"]: row for row in report["rows"]}
+
+    assert by_policy["bc_mlp_learned"]["lineage_label"] == "bc_only"
+    assert by_policy["bc_mlp_hard_lane"]["lineage_label"] == "hard_lane_bc"
+    assert by_policy["bc_mlp_hard_lane"]["sample_selection"] == "hard_negative_windows"
+    assert by_policy["closed_loop_mlp_learned"]["lineage_label"] == "closed_loop_holdout_passed"
+    assert by_policy["closed_loop_mlp_learned"]["promotion_stage"] == "holdout_passed"
+    assert by_policy["closed_loop_mlp_learned"]["holdout_profile"] == "broad_3d_stress"
+    assert by_policy["closed_loop_mlp_learned"]["holdout_promotion_candidate"] is True
 
 
 def test_learned_policy_leaderboard_cli_compares_bundles(tmp_path: Path) -> None:

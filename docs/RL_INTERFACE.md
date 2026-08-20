@@ -466,6 +466,8 @@ python -m microbench.cli learned-diagnostics \
   --require-pass
 ```
 
+The learned leaderboard and diagnostics rows include lineage metadata (`lineage_label`, `training_lineage`, `promotion_stage`) so BC-only, hard-lane BC, closed-loop holdout-passed, frozen fixture, and external/unknown policies stay visually separated in reviewer tables.
+
 The leaderboard writes a JSON report and sibling CSV with one row per bundle, combining planner `summary.csv` score fields with RL validation-matrix lane evidence. It reports true row-level clearance (`min_sep_min_row_m`, `min_sep_p05_row_min_m`) alongside summary-derived clearance (`min_sep_min_summary_mean_min_m`, `min_sep_p05_summary_mean_min_m`); the v0 score still uses the summary fields for continuity. Diagnostics writes JSON/CSV/Markdown labels that explain the main behavior pattern and weakest scenario/lane. These are development review tables; only rows marked `leaderboard_candidate` should be treated as candidate leaderboard evidence.
 
 ## Compatibility Check

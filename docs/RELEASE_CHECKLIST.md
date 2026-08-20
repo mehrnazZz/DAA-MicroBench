@@ -42,8 +42,8 @@ Use this checklist before tagging a public alpha, announcing a leaderboard run, 
 - [ ] Learned bundles contain `learned_submission_manifest.json` with artifact hashes and policy-spec provenance.
 - [ ] `python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --require-pass` passes for the frozen learned-policy fixture bundle.
 - [ ] `python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --require-pass` summarizes the frozen learned-policy fixture bundle.
-- [ ] `python -m microbench.cli learned-leaderboard --bundle runs_learned_bundle --bundle runs_external_learned_bundle --out runs_learned_leaderboard/learned_policy_leaderboard.json --require-pass` writes learned-policy JSON/CSV review tables.
-- [ ] `python -m microbench.cli learned-diagnostics --bundle runs_learned_bundle --bundle runs_external_learned_bundle --out runs_learned_diagnostics/learned_policy_diagnostics.json --require-pass` writes learned-policy JSON/CSV/Markdown diagnostic labels.
+- [ ] `python -m microbench.cli learned-leaderboard --bundle runs_learned_bundle --bundle runs_external_learned_bundle --out runs_learned_leaderboard/learned_policy_leaderboard.json --require-pass` writes learned-policy JSON/CSV review tables with lineage labels.
+- [ ] `python -m microbench.cli learned-diagnostics --bundle runs_learned_bundle --bundle runs_external_learned_bundle --out runs_learned_diagnostics/learned_policy_diagnostics.json --require-pass` writes learned-policy JSON/CSV/Markdown diagnostic and lineage labels.
 - [ ] Optional when `.[rl]` is installed: `python -m pytest tests/test_rl_optional_integrations.py -q` passes.
 - [ ] GitHub Actions CI is green for Python 3.10, 3.11, and 3.12.
 - [ ] `docs/README.md`, `docs/PUBLIC_ALPHA_NOTES.md`, `docs/DESIGN_V1.md`, `docs/PLANNER_API.md`, `docs/SCENARIO_SUITES.md`, `docs/BASELINES.md`, `docs/LEADERBOARD.md`, `docs/RL_INTERFACE.md`, `docs/RL_STABLE_V1_FREEZE.md`, and `docs/RESULT_SUBMISSION.md` reflect the release behavior.
