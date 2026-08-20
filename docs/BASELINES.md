@@ -850,13 +850,14 @@ python -m microbench.cli learned-hard-lane-loop \
   --require-pass
 ```
 
-For rollout-aware learned-policy iteration, `learned-closed-loop-finetune` starts from an existing portable `mlp_json` policy spec, evaluates perturbed MLP output heads through the PettingZoo-style environment, and accepts only candidates that improve the configured closed-loop objective without collision, clearance, or near-miss guardrail regression.
+For rollout-aware learned-policy iteration, `learned-closed-loop-finetune` starts from an existing portable `mlp_json` policy spec, evaluates perturbed MLP parameters through the PettingZoo-style environment, and accepts only candidates that improve the configured closed-loop objective without collision, clearance, or near-miss guardrail regression.
 
 ```bash
 python -m microbench.cli learned-closed-loop-finetune \
   --out-dir runs_closed_loop_finetune \
   --base-policy-spec runs_bc_mlp_policy/policy_spec.json \
   --lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
+  --trainable-parameters all_layers \
   --generations 4 \
   --population-size 12 \
   --train-max-steps 24 \

@@ -107,13 +107,14 @@ python -m microbench.cli learned-closed-loop-finetune \
   --out-dir runs_closed_loop_finetune \
   --base-policy-spec runs_bc_mlp_policy/policy_spec.json \
   --lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
+  --trainable-parameters all_layers \
   --generations 4 \
   --population-size 12 \
   --train-max-steps 24 \
   --require-pass
 ```
 
-The fine-tuner evaluates candidates inside `DaaParallelEnv`, records every candidate rollout in CSV, and writes a new portable `mlp_json` policy only after applying collision, clearance, and near-miss guardrails. Treat this as the benchmark-native closed-loop training spine for stronger learned baselines; it is still public-alpha infrastructure.
+The fine-tuner evaluates candidates inside `DaaParallelEnv`, records every candidate rollout in CSV, and writes a new portable `mlp_json` policy only after applying collision, clearance, and near-miss guardrails. Use `--trainable-parameters output_head` for conservative audits and `all_layers` for stronger learned-baseline development. Treat this as the benchmark-native closed-loop training spine for stronger learned baselines; it is still public-alpha infrastructure.
 
 ## Health Gates
 

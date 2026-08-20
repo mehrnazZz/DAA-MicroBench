@@ -125,7 +125,7 @@ python -m microbench.cli learned-dataset-export --out-dir runs_learned_dataset -
 python -m microbench.cli train-learned-bc --out-dir runs_bc_mlp_policy --lanes head_on,crossing,urban_obstacle --eval-lanes head_on,crossing --require-pass
 python -m microbench.cli learned-bc-evidence --out-dir runs_bc_mlp_evidence --lanes head_on,crossing,urban_obstacle --max-runs 1 --require-pass
 python -m microbench.cli learned-hard-lane-loop --out-dir runs_hard_lane_loop --diagnostics runs_learned_diagnostics/learned_policy_diagnostics.json --target-policy bc_mlp_learned --target-method learned_policy_spec --fallback-lanes urban_obstacle,communication_delay,high_n_dense_merge --mix-lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge,dense_swarm_hard_negative --sample-weighting safety --sample-selection hard_negative_windows --max-lanes 3 --max-runs 1 --require-pass
-python -m microbench.cli learned-closed-loop-finetune --out-dir runs_closed_loop_finetune --base-policy-spec runs_bc_mlp_policy/policy_spec.json --lanes head_on,crossing,urban_obstacle --generations 2 --population-size 8 --require-pass
+python -m microbench.cli learned-closed-loop-finetune --out-dir runs_closed_loop_finetune --base-policy-spec runs_bc_mlp_policy/policy_spec.json --lanes head_on,crossing,urban_obstacle --trainable-parameters all_layers --generations 2 --population-size 8 --require-pass
 python -m microbench.cli rl-contract --json
 python -m microbench.cli rl-freeze-check --require-pass --json
 python -m microbench.cli validate-learned-manifest --manifest examples/learned_submission_manifest_template.json --require-pass
@@ -1147,13 +1147,14 @@ The top-level `learned_hard_lane_loop.json` records the selected lanes, mixed da
 
 ## 11.3) Closed-Loop Learned Fine-Tuning
 
-`learned-closed-loop-finetune` is the first rollout-aware learned-policy optimizer. It starts from an existing portable `mlp_json` policy spec, perturbs only the MLP output head, evaluates candidates through the PettingZoo-style `DaaParallelEnv`, and accepts only candidates that improve the closed-loop objective without violating collision, clearance, or near-miss guardrails.
+`learned-closed-loop-finetune` is the first rollout-aware learned-policy optimizer. It starts from an existing portable `mlp_json` policy spec, perturbs either the MLP output head or all MLP layers, evaluates candidates through the PettingZoo-style `DaaParallelEnv`, and accepts only candidates that improve the closed-loop objective without violating collision, clearance, or near-miss guardrails.
 
 ```bash
 python -m microbench.cli learned-closed-loop-finetune \
   --out-dir runs_closed_loop_finetune \
   --base-policy-spec runs_bc_mlp_policy/policy_spec.json \
   --lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
+  --trainable-parameters all_layers \
   --generations 4 \
   --population-size 12 \
   --train-max-steps 24 \
@@ -1161,7 +1162,7 @@ python -m microbench.cli learned-closed-loop-finetune \
   --require-pass
 ```
 
-This writes `closed_loop_mlp_policy.json`, `policy_spec.json`, `candidate_summary.csv`, `candidate_episodes.csv`, `closed_loop_training_report.json`, and optional RL validation evidence. Treat it as benchmark-native closed-loop training infrastructure, not as a final SOTA RL algorithm yet.
+This writes `closed_loop_mlp_policy.json`, `policy_spec.json`, `candidate_summary.csv`, `candidate_episodes.csv`, `closed_loop_training_report.json`, and optional RL validation evidence. `--trainable-parameters output_head` is the conservative audit mode; `all_layers` is the stronger search mode for learned-baseline development. Treat it as benchmark-native closed-loop training infrastructure, not as a final SOTA RL algorithm yet.
 
 ## 12) Performance Expectations and Practical Profiling
 

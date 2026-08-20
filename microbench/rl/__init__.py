@@ -40,6 +40,7 @@ from microbench.rl.bc_training import (
 )
 from microbench.rl.closed_loop_training import (
     CLOSED_LOOP_POLICY_NAME,
+    CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES,
     CLOSED_LOOP_TRAINING_SCHEMA_VERSION,
     fine_tune_closed_loop_policy,
 )
@@ -138,6 +139,7 @@ __all__ = [
     "BC_FIXTURE_BUNDLE_CONFIGS",
     "BC_TRAINING_SCHEMA_VERSION",
     "CLOSED_LOOP_POLICY_NAME",
+    "CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES",
     "CLOSED_LOOP_TRAINING_SCHEMA_VERSION",
     "DaaParallelEnv",
     "DaaSingleAgentEnv",

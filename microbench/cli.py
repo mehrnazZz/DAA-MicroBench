@@ -21,7 +21,11 @@ from microbench.dataset import generate_dataset, expand_scenarios, expand_list, 
 from microbench.logging import wandb_logger
 from microbench.rl.calibration import run_rl_policy_calibration
 from microbench.rl.bc_training import BC_FEATURE_NORMALIZATION_CHOICES, build_behavior_cloned_policy_evidence, train_behavior_cloned_policy
-from microbench.rl.closed_loop_training import CLOSED_LOOP_POLICY_NAME, fine_tune_closed_loop_policy
+from microbench.rl.closed_loop_training import (
+    CLOSED_LOOP_POLICY_NAME,
+    CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES,
+    fine_tune_closed_loop_policy,
+)
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import run_rl_freeze_check
 from microbench.rl.hard_lane_training import (
@@ -1500,6 +1504,7 @@ def _learned_closed_loop_finetune(args) -> None:
         train_max_steps=args.train_max_steps,
         generations=int(args.generations),
         population_size=int(args.population_size),
+        trainable_parameters=str(args.trainable_parameters),
         sigma=float(args.sigma),
         sigma_decay=float(args.sigma_decay),
         min_delta=float(args.min_delta),
@@ -2839,14 +2844,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_clft.add_argument("--train-max-steps", type=int, default=12, help="Rollout step cap during candidate evaluation")
     p_clft.add_argument("--generations", type=int, default=2, help="Number of evolutionary search generations")
     p_clft.add_argument("--population-size", type=int, default=8, help="Candidate perturbations evaluated per generation")
-    p_clft.add_argument("--sigma", type=float, default=0.03, help="Gaussian perturbation scale for MLP output-head weights")
+    p_clft.add_argument(
+        "--trainable-parameters",
+        choices=CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES,
+        default="output_head",
+        help="MLP parameter subset perturbed during closed-loop search",
+    )
+    p_clft.add_argument("--sigma", type=float, default=0.03, help="Gaussian perturbation scale for selected MLP parameters")
     p_clft.add_argument("--sigma-decay", type=float, default=0.5, help="Sigma multiplier after a generation with no accepted candidate")
     p_clft.add_argument("--min-delta", type=float, default=1e-6, help="Minimum score improvement required to accept a candidate")
     p_clft.add_argument("--collision-tick-penalty", type=float, default=120.0, help="Closed-loop objective penalty per collision tick")
     p_clft.add_argument("--near-miss-tick-penalty", type=float, default=12.0, help="Closed-loop objective penalty per near-miss tick")
     p_clft.add_argument("--clearance-penalty", type=float, default=20.0, help="Closed-loop objective penalty per meter below clearance floor")
     p_clft.add_argument("--mission-penalty", type=float, default=60.0, help="Closed-loop objective penalty for incomplete missions")
-    p_clft.add_argument("--reward-weight", type=float, default=0.0, help="Optional bonus weight on environment rollout reward")
+    p_clft.add_argument("--reward-weight", type=float, default=1.0, help="Bonus weight on environment rollout reward after hard safety penalties")
     p_clft.add_argument("--min-clearance-m", type=float, default=0.0, help="Hard minimum final clearance for accepted candidates")
     p_clft.add_argument("--max-collision-ticks", type=int, default=0, help="Hard collision-tick cap for accepted candidates")
     p_clft.add_argument("--max-near-miss-ticks", type=int, default=None, help="Optional hard near-miss tick cap for accepted candidates")

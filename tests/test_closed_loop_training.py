@@ -47,6 +47,7 @@ def test_closed_loop_finetune_writes_guarded_policy_spec(tmp_path: Path) -> None
         train_max_steps=2,
         generations=1,
         population_size=2,
+        trainable_parameters="all_layers",
         sigma=0.01,
         eval_lanes=["head_on"],
         eval_max_steps=2,
@@ -64,6 +65,7 @@ def test_closed_loop_finetune_writes_guarded_policy_spec(tmp_path: Path) -> None
     model = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
     assert model["model_id"] == MLP_LEARNED_MODEL_ID
     assert model["training"]["recipe"] == "python -m microbench.cli learned-closed-loop-finetune"
+    assert model["training"]["trainable_parameters"] == "all_layers"
     assert model["training"]["public_observations_only"] is True
     assert model["training"]["privileged_global_state"] is False
     assert model["training"]["base_policy_spec"] == str(base_spec)
@@ -98,6 +100,8 @@ def test_closed_loop_finetune_cli_smoke(tmp_path: Path) -> None:
             "1",
             "--population-size",
             "1",
+            "--trainable-parameters",
+            "all_layers",
             "--sigma",
             "0.01",
             "--eval-lanes",

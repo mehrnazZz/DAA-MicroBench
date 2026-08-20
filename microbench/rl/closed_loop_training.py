@@ -32,12 +32,13 @@ from microbench.tools.baseline_validation_matrix import (
 
 CLOSED_LOOP_TRAINING_SCHEMA_VERSION = "0.1"
 CLOSED_LOOP_POLICY_NAME = "closed_loop_mlp_learned"
+CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES = ("output_head", "all_layers")
 CLOSED_LOOP_OBJECTIVE_DEFAULTS = {
     "collision_tick_penalty": 120.0,
     "near_miss_tick_penalty": 12.0,
     "clearance_penalty": 20.0,
     "mission_penalty": 60.0,
-    "reward_weight": 0.0,
+    "reward_weight": 1.0,
     "min_clearance_m": 0.0,
     "max_collision_ticks": 0,
     "max_near_miss_ticks": None,
@@ -133,6 +134,52 @@ def _output_head_vector(spec: dict[str, Any]) -> np.ndarray:
     if b2.shape != (3,):
         raise ValueError(f"MLP layer2 bias must have shape (3,), got {b2.shape}")
     return np.concatenate([w2.reshape(-1), b2.reshape(-1)], axis=0)
+
+
+def _trainable_parameters(value: str) -> str:
+    normalized = str(value).strip()
+    if normalized not in CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES:
+        raise ValueError(
+            "trainable_parameters must be one of "
+            + ",".join(CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES)
+        )
+    return normalized
+
+
+def _parameter_blocks(spec: dict[str, Any], trainable_parameters: str) -> list[tuple[str, tuple[int, ...], np.ndarray]]:
+    def block(name: str) -> tuple[str, tuple[int, ...], np.ndarray]:
+        values = np.asarray(spec[name], dtype=np.float64)
+        return name, tuple(values.shape), values
+
+    mode = _trainable_parameters(trainable_parameters)
+    if mode == "output_head":
+        return [block("layer2_weights"), block("layer2_bias")]
+    return [
+        block("layer1_weights"),
+        block("layer1_bias"),
+        block("layer2_weights"),
+        block("layer2_bias"),
+    ]
+
+
+def _parameter_vector(spec: dict[str, Any], trainable_parameters: str) -> np.ndarray:
+    blocks = _parameter_blocks(spec, trainable_parameters)
+    return np.concatenate([values.reshape(-1) for _name, _shape, values in blocks], axis=0)
+
+
+def _copy_with_parameter_vector(spec: dict[str, Any], vector: np.ndarray, trainable_parameters: str) -> dict[str, Any]:
+    out = copy.deepcopy(spec)
+    blocks = _parameter_blocks(out, trainable_parameters)
+    vec = np.asarray(vector, dtype=np.float64).reshape(-1)
+    expected = sum(int(np.prod(shape)) for _name, shape, _values in blocks)
+    if vec.shape != (expected,):
+        raise ValueError(f"MLP parameter vector must have shape {(expected,)}, got {vec.shape}")
+    cursor = 0
+    for name, shape, _values in blocks:
+        size = int(np.prod(shape))
+        out[name] = vec[cursor : cursor + size].reshape(shape).round(8).tolist()
+        cursor += size
+    return out
 
 
 def _load_base_mlp_spec(policy_spec: str | Path) -> tuple[dict[str, Any], Path, dict[str, Any]]:
@@ -361,7 +408,13 @@ def _training_disclosure(
     objective: dict[str, Any],
     candidate_count: int,
     accepted_count: int,
+    trainable_parameters: str,
 ) -> dict[str, Any]:
+    updated = (
+        "MLP output layer weights and bias only; feature extractor and normalization are inherited"
+        if trainable_parameters == "output_head"
+        else "all MLP layer weights and biases; feature normalization is inherited"
+    )
     return {
         "schema_version": CLOSED_LOOP_TRAINING_SCHEMA_VERSION,
         "recipe": "python -m microbench.cli learned-closed-loop-finetune",
@@ -377,8 +430,9 @@ def _training_disclosure(
         "objective": objective,
         "candidate_count": int(candidate_count),
         "accepted_generation_count": int(accepted_count),
-        "optimizer": "bounded evolutionary output-head search",
-        "updated_parameters": "MLP output layer weights and bias only; feature extractor and normalization are inherited",
+        "optimizer": "bounded evolutionary MLP parameter search",
+        "trainable_parameters": str(trainable_parameters),
+        "updated_parameters": updated,
         "external_data": "none",
         "pretrained_models": "base DAA Microbench mlp_json policy spec",
         "hardware": "local CPU",
@@ -394,6 +448,7 @@ def fine_tune_closed_loop_policy(
     train_max_steps: int | None = 12,
     generations: int = 2,
     population_size: int = 8,
+    trainable_parameters: str = "output_head",
     sigma: float = 0.03,
     sigma_decay: float = 0.5,
     min_delta: float = 1e-6,
@@ -445,6 +500,7 @@ def fine_tune_closed_loop_policy(
     if float(sigma_decay) <= 0.0 or not math.isfinite(float(sigma_decay)):
         raise ValueError("sigma_decay must be finite and > 0")
 
+    trainable_parameters = _trainable_parameters(trainable_parameters)
     base_spec, base_artifact, wrapper_spec = _load_base_mlp_spec(base_policy_spec)
     selected = selected_validation_lanes(list(lanes) if lanes is not None else None)
     seed_override = None if seeds is None else [int(value) for value in seeds]
@@ -462,9 +518,9 @@ def fine_tune_closed_loop_policy(
     )
 
     rng = np.random.default_rng(int(seed) + 17041)
-    base_vector = _output_head_vector(base_spec)
+    base_vector = _parameter_vector(base_spec, trainable_parameters)
     best_vector = base_vector.copy()
-    best_spec = _copy_with_output_head(base_spec, best_vector)
+    best_spec = _copy_with_parameter_vector(base_spec, best_vector, trainable_parameters)
     base_metrics, base_episode_rows = _evaluate_candidate(
         candidate_id="base",
         generation=0,
@@ -510,7 +566,7 @@ def fine_tune_closed_loop_policy(
             candidate_id = f"g{generation:03d}_c{candidate_index:03d}"
             noise = rng.normal(0.0, current_sigma, size=best_vector.shape)
             vector = best_vector + noise
-            candidate_spec = _copy_with_output_head(base_spec, vector)
+            candidate_spec = _copy_with_parameter_vector(base_spec, vector, trainable_parameters)
             metrics, rows = _evaluate_candidate(
                 candidate_id=candidate_id,
                 generation=generation,
@@ -541,7 +597,7 @@ def fine_tune_closed_loop_policy(
         if chosen is not None:
             chosen_metrics, chosen_vector, chosen_rows = chosen
             best_vector = chosen_vector.copy()
-            best_spec = _copy_with_output_head(base_spec, best_vector)
+            best_spec = _copy_with_parameter_vector(base_spec, best_vector, trainable_parameters)
             best_metrics = dict(chosen_metrics)
             best_candidate_id = str(chosen_metrics["candidate_id"])
             accepted_count += 1
@@ -567,6 +623,7 @@ def fine_tune_closed_loop_policy(
         objective=objective,
         candidate_count=len(candidate_rows),
         accepted_count=accepted_count,
+        trainable_parameters=trainable_parameters,
     )
     training.update(
         {
@@ -654,6 +711,7 @@ def fine_tune_closed_loop_policy(
         "train_max_steps": None if train_max_steps is None else int(train_max_steps),
         "generations": int(generations),
         "population_size": int(population_size),
+        "trainable_parameters": str(trainable_parameters),
         "sigma": float(sigma),
         "sigma_decay": float(sigma_decay),
         "min_delta": float(min_delta),
@@ -675,6 +733,7 @@ __all__ = [
     "CLOSED_LOOP_EPISODE_FIELDS",
     "CLOSED_LOOP_OBJECTIVE_DEFAULTS",
     "CLOSED_LOOP_POLICY_NAME",
+    "CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES",
     "CLOSED_LOOP_TRAINING_SCHEMA_VERSION",
     "fine_tune_closed_loop_policy",
 ]
