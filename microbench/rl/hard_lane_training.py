@@ -36,6 +36,12 @@ from microbench.tools.baseline_validation_matrix import ValidationLane, selected
 LEARNED_HARD_LANE_LOOP_SCHEMA_VERSION = "0.1"
 LEARNED_DATASET_BC_TRAINING_SOURCE = "DAA Microbench learned-dataset-export shards"
 DEFAULT_HARD_LANE_FALLBACK = ("head_on", "crossing", "urban_obstacle")
+BC_SAMPLE_WEIGHTING_CHOICES = ("none", "safety")
+DEFAULT_COLLISION_SAMPLE_WEIGHT = 8.0
+DEFAULT_NEAR_MISS_SAMPLE_WEIGHT = 4.0
+DEFAULT_LOW_CLEARANCE_SAMPLE_WEIGHT = 3.0
+DEFAULT_SAMPLE_WEIGHT_CLEARANCE_THRESHOLD_M = 1.5
+DEFAULT_MAX_SAMPLE_WEIGHT = 10.0
 HARD_DIAGNOSTIC_LABELS = (
     "unsafe",
     "needs_training",
@@ -78,6 +84,18 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _check(name: str, ok: bool, details: dict[str, Any] | None = None) -> dict[str, Any]:
     return {"name": name, "ok": bool(ok), "details": details or {}}
+
+
+def _round_or_none(value: float | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(out):
+        return None
+    return round(out, 6)
 
 
 def _remove_known_loop_outputs(out: Path) -> None:
@@ -175,6 +193,96 @@ def _unique_lanes(*groups: tuple[str, ...] | list[str] | None) -> list[str]:
             if lane.lane_id not in selected:
                 selected.append(lane.lane_id)
     return selected
+
+
+def _sample_weighting_config(
+    *,
+    mode: str,
+    collision_weight: float = DEFAULT_COLLISION_SAMPLE_WEIGHT,
+    near_miss_weight: float = DEFAULT_NEAR_MISS_SAMPLE_WEIGHT,
+    low_clearance_weight: float = DEFAULT_LOW_CLEARANCE_SAMPLE_WEIGHT,
+    clearance_threshold_m: float = DEFAULT_SAMPLE_WEIGHT_CLEARANCE_THRESHOLD_M,
+    max_weight: float = DEFAULT_MAX_SAMPLE_WEIGHT,
+) -> dict[str, Any]:
+    clean_mode = str(mode or "none").strip().lower()
+    if clean_mode not in BC_SAMPLE_WEIGHTING_CHOICES:
+        raise ValueError(f"Unsupported BC sample weighting {mode!r}; expected one of {','.join(BC_SAMPLE_WEIGHTING_CHOICES)}")
+    if clean_mode == "none":
+        return {
+            "mode": "none",
+            "description": "uniform sample weights",
+            "applied": False,
+        }
+    values = {
+        "collision_weight": float(collision_weight),
+        "near_miss_weight": float(near_miss_weight),
+        "low_clearance_weight": float(low_clearance_weight),
+        "clearance_threshold_m": float(clearance_threshold_m),
+        "max_weight": float(max_weight),
+    }
+    invalid = [name for name, value in values.items() if not math.isfinite(value)]
+    if invalid:
+        raise ValueError(f"BC safety sample weights must be finite: {','.join(invalid)}")
+    if values["collision_weight"] < 1.0 or values["near_miss_weight"] < 1.0:
+        raise ValueError("BC safety collision and near-miss sample weights must be >= 1.0")
+    if values["low_clearance_weight"] < 0.0:
+        raise ValueError("BC safety low-clearance sample weight must be >= 0.0")
+    if values["clearance_threshold_m"] <= 0.0:
+        raise ValueError("BC safety clearance threshold must be > 0.0")
+    if values["max_weight"] < 1.0:
+        raise ValueError("BC safety max sample weight must be >= 1.0")
+    return {
+        "mode": "safety",
+        "description": (
+            "collision, near-miss, and low-clearance samples receive larger relative weights "
+            "during the supervised output-layer fit"
+        ),
+        "applied": True,
+        **values,
+    }
+
+
+def _sample_weights_from_diagnostics(
+    diagnostics: dict[str, np.ndarray],
+    *,
+    config: dict[str, Any],
+) -> tuple[np.ndarray, dict[str, Any]]:
+    collisions = np.asarray(diagnostics.get("collision", np.zeros((0,), dtype=bool)), dtype=bool).reshape(-1)
+    near_misses = np.asarray(diagnostics.get("near_miss", np.zeros(collisions.shape, dtype=bool)), dtype=bool).reshape(-1)
+    min_sep = np.asarray(diagnostics.get("min_sep_m", np.full(collisions.shape, np.nan)), dtype=np.float32).reshape(-1)
+    n = int(collisions.shape[0])
+    weights = np.ones((n,), dtype=np.float32)
+
+    if str(config.get("mode", "none")) == "safety" and n:
+        finite_sep = np.isfinite(min_sep)
+        threshold = max(1e-6, float(config.get("clearance_threshold_m", DEFAULT_SAMPLE_WEIGHT_CLEARANCE_THRESHOLD_M)))
+        low_clearance = finite_sep & (min_sep < threshold)
+        clearance_fraction = np.zeros_like(weights, dtype=np.float32)
+        clearance_fraction[low_clearance] = np.clip((threshold - min_sep[low_clearance]) / threshold, 0.0, 1.0)
+        clearance_weights = 1.0 + float(config.get("low_clearance_weight", DEFAULT_LOW_CLEARANCE_SAMPLE_WEIGHT)) * clearance_fraction
+        weights = np.maximum(weights, clearance_weights.astype(np.float32))
+        weights = np.maximum(weights, np.where(near_misses, float(config.get("near_miss_weight", DEFAULT_NEAR_MISS_SAMPLE_WEIGHT)), 1.0))
+        weights = np.maximum(weights, np.where(collisions, float(config.get("collision_weight", DEFAULT_COLLISION_SAMPLE_WEIGHT)), 1.0))
+        weights = np.clip(weights, 1.0, float(config.get("max_weight", DEFAULT_MAX_SAMPLE_WEIGHT))).astype(np.float32)
+    else:
+        low_clearance = np.zeros((n,), dtype=bool)
+
+    mean_before = float(np.mean(weights)) if n else 1.0
+    normalized = weights / max(mean_before, 1e-9)
+    effective_n = float((np.sum(normalized) ** 2) / max(float(np.sum(normalized**2)), 1e-9)) if n else 0.0
+    summary = {
+        **config,
+        "sample_count": n,
+        "collision_sample_count": int(np.sum(collisions)),
+        "near_miss_sample_count": int(np.sum(near_misses)),
+        "low_clearance_sample_count": int(np.sum(low_clearance)),
+        "mean_weight_before_normalization": _round_or_none(mean_before),
+        "weight_min": _round_or_none(float(np.min(normalized)) if n else None),
+        "weight_mean": _round_or_none(float(np.mean(normalized)) if n else None),
+        "weight_max": _round_or_none(float(np.max(normalized)) if n else None),
+        "effective_sample_count": _round_or_none(effective_n),
+    }
+    return normalized.astype(np.float32), summary
 
 
 def select_hard_lanes_from_diagnostics(
@@ -324,11 +432,18 @@ def _dataset_training_rows(shard_rows: list[dict[str, Any]]) -> list[dict[str, A
     return [grouped[key] for key in order]
 
 
-def _load_shard_features_and_labels(report: dict[str, Any], *, root: Path) -> tuple[np.ndarray, np.ndarray, list[dict[str, Any]], list[Path]]:
+def _load_shard_features_and_labels(
+    report: dict[str, Any],
+    *,
+    root: Path,
+) -> tuple[np.ndarray, np.ndarray, list[dict[str, Any]], list[Path], dict[str, np.ndarray]]:
     feature_rows: list[np.ndarray] = []
     label_rows: list[np.ndarray] = []
     shard_rows: list[dict[str, Any]] = []
     loaded_shards: list[Path] = []
+    collision_rows: list[bool] = []
+    near_miss_rows: list[bool] = []
+    min_sep_rows: list[float] = []
 
     for raw_shard in report.get("shards", []) or []:
         shard = _resolve_output_path(raw_shard, root=root)
@@ -346,6 +461,13 @@ def _load_shard_features_and_labels(report: dict[str, Any], *, root: Path) -> tu
             n_agents = np.asarray(data["n_agents"], dtype=np.int32)
             comm_profiles = np.asarray(data["comm_profile"]).astype(str)
             steps = np.asarray(data["step"], dtype=np.int32) if "step" in data.files else np.zeros((actions.shape[0],), dtype=np.int32)
+            collisions = np.asarray(data["collision"], dtype=bool) if "collision" in data.files else np.zeros((actions.shape[0],), dtype=bool)
+            near_misses = np.asarray(data["near_miss"], dtype=bool) if "near_miss" in data.files else np.zeros((actions.shape[0],), dtype=bool)
+            min_seps = (
+                np.asarray(data["min_sep_m"], dtype=np.float32)
+                if "min_sep_m" in data.files
+                else np.full((actions.shape[0],), np.nan, dtype=np.float32)
+            )
 
             for idx in range(actions.shape[0]):
                 valid_dim = int(valid_dims[idx])
@@ -353,6 +475,9 @@ def _load_shard_features_and_labels(report: dict[str, Any], *, root: Path) -> tu
                 top_k = max(0, (valid_dim - OBS_BASE_DIM) // OBS_NEIGHBOR_DIM)
                 feature_rows.append(observation_to_mlp_features(obs, top_k=top_k))
                 label_rows.append(np.clip(actions[idx], -1.0, 1.0).astype(np.float32))
+                collision_rows.append(bool(collisions[idx]))
+                near_miss_rows.append(bool(near_misses[idx]))
+                min_sep_rows.append(float(min_seps[idx]))
                 shard_rows.append(
                     {
                         "lane_id": lane_ids[idx],
@@ -373,6 +498,11 @@ def _load_shard_features_and_labels(report: dict[str, Any], *, root: Path) -> tu
         np.vstack(label_rows).astype(np.float32),
         _dataset_training_rows(shard_rows),
         loaded_shards,
+        {
+            "collision": np.asarray(collision_rows, dtype=bool),
+            "near_miss": np.asarray(near_miss_rows, dtype=bool),
+            "min_sep_m": np.asarray(min_sep_rows, dtype=np.float32),
+        },
     )
 
 
@@ -397,6 +527,7 @@ def _manifest_overlay_from_dataset_training_report(report: dict[str, Any]) -> di
     samples = int(report.get("sample_count", 0) or 0)
     source_policy = str(report.get("source_policy") or report.get("teacher_policy") or "dataset_action_labels")
     normalization = dict(report.get("feature_normalization", {}) or {})
+    sample_weighting = dict(report.get("sample_weighting", {}) or {})
     return {
         "dependencies": {
             "inference_packages": [
@@ -421,6 +552,7 @@ def _manifest_overlay_from_dataset_training_report(report: dict[str, Any]) -> di
                 "then normalized velocity action clipped by the DAA Microbench action contract"
             ),
             "reward_configuration": "not used; supervised behavior cloning from dataset action labels",
+            "sample_weighting": sample_weighting.get("description") or sample_weighting.get("mode") or "uniform sample weights",
             "external_data": "none; input labels came from DAA Microbench learned-dataset-export shards",
             "pretrained_models": "none",
             "hardware": "local CPU",
@@ -452,6 +584,12 @@ def train_behavior_cloned_policy_from_dataset(
     hidden_dim: int = 32,
     ridge: float = 1e-4,
     feature_normalization: str = "standard",
+    sample_weighting: str = "none",
+    collision_sample_weight: float = DEFAULT_COLLISION_SAMPLE_WEIGHT,
+    near_miss_sample_weight: float = DEFAULT_NEAR_MISS_SAMPLE_WEIGHT,
+    low_clearance_sample_weight: float = DEFAULT_LOW_CLEARANCE_SAMPLE_WEIGHT,
+    sample_weight_clearance_threshold_m: float = DEFAULT_SAMPLE_WEIGHT_CLEARANCE_THRESHOLD_M,
+    max_sample_weight: float = DEFAULT_MAX_SAMPLE_WEIGHT,
     eval_lanes: tuple[str, ...] | list[str] | None = None,
     eval_max_steps: int | None = 12,
     policy_name: str = BC_POLICY_NAME,
@@ -480,11 +618,20 @@ def train_behavior_cloned_policy_from_dataset(
         shutil.rmtree(validation_dir)
 
     report, manifest_path, dataset_root = _load_dataset_manifest(dataset_manifest)
-    features, labels, training_rows, loaded_shards = _load_shard_features_and_labels(report, root=dataset_root)
+    features, labels, training_rows, loaded_shards, sample_diagnostics = _load_shard_features_and_labels(report, root=dataset_root)
     selected_lanes = _selected_lanes_from_training_rows(training_rows, report)
     seed_override = sorted({int(row.get("seed", 0) or 0) for row in training_rows})
     normalization_payload = _feature_normalization_payload(features, mode=str(feature_normalization))
     fit_features = _apply_feature_normalization(features, normalization_payload)
+    sample_weight_config = _sample_weighting_config(
+        mode=str(sample_weighting),
+        collision_weight=float(collision_sample_weight),
+        near_miss_weight=float(near_miss_sample_weight),
+        low_clearance_weight=float(low_clearance_sample_weight),
+        clearance_threshold_m=float(sample_weight_clearance_threshold_m),
+        max_weight=float(max_sample_weight),
+    )
+    sample_weights, sample_weight_summary = _sample_weights_from_diagnostics(sample_diagnostics, config=sample_weight_config)
 
     w1, b1, w2, b2, fit_rmse = _fit_random_feature_mlp(
         fit_features,
@@ -492,6 +639,7 @@ def train_behavior_cloned_policy_from_dataset(
         seed=int(seed),
         hidden_dim=int(hidden_dim),
         ridge=float(ridge),
+        sample_weights=sample_weights,
     )
     max_steps = report.get("max_steps")
     if max_steps is None:
@@ -526,6 +674,7 @@ def train_behavior_cloned_policy_from_dataset(
             "source_dataset_shards": [str(path) for path in loaded_shards],
             "rollout_policy": "dataset_action_labels",
             "rollout_noise_std": 0.0,
+            "sample_weighting": sample_weight_summary,
         }
     )
     spec_payload = _policy_spec(artifact_name=model_path.name, policy_name=str(policy_name))
@@ -556,6 +705,16 @@ def train_behavior_cloned_policy_from_dataset(
                 "feature_shape": list(features.shape),
                 "label_shape": list(labels.shape),
                 "feature_normalization": normalization_payload.get("mode"),
+                "sample_weighting": sample_weight_summary.get("mode"),
+            },
+        ),
+        _check(
+            "sample_weights_finite",
+            bool(np.all(np.isfinite(sample_weights)) and np.all(sample_weights >= 0.0)),
+            {
+                "sample_weighting": sample_weight_summary.get("mode"),
+                "weight_min": sample_weight_summary.get("weight_min"),
+                "weight_max": sample_weight_summary.get("weight_max"),
             },
         ),
         _check("fit_rmse_finite", math.isfinite(float(fit_rmse)), {"fit_rmse": round(float(fit_rmse), 8)}),
@@ -594,6 +753,7 @@ def train_behavior_cloned_policy_from_dataset(
         "label_dim": int(labels.shape[1]),
         "hidden_dim": int(hidden_dim),
         "feature_normalization": normalization_payload,
+        "sample_weighting": sample_weight_summary,
         "fit_rmse": round(float(fit_rmse), 8),
         "training_rows": training_rows,
         "validation_matrix": validation_report,
@@ -622,6 +782,12 @@ def run_learned_hard_lane_loop(
     hidden_dim: int = 32,
     ridge: float = 1e-4,
     feature_normalization: str = "standard",
+    sample_weighting: str = "none",
+    collision_sample_weight: float = DEFAULT_COLLISION_SAMPLE_WEIGHT,
+    near_miss_sample_weight: float = DEFAULT_NEAR_MISS_SAMPLE_WEIGHT,
+    low_clearance_sample_weight: float = DEFAULT_LOW_CLEARANCE_SAMPLE_WEIGHT,
+    sample_weight_clearance_threshold_m: float = DEFAULT_SAMPLE_WEIGHT_CLEARANCE_THRESHOLD_M,
+    max_sample_weight: float = DEFAULT_MAX_SAMPLE_WEIGHT,
     eval_lanes: tuple[str, ...] | list[str] | None = None,
     eval_max_steps: int | None = 12,
     policy_name: str = BC_POLICY_NAME,
@@ -684,6 +850,12 @@ def run_learned_hard_lane_loop(
         hidden_dim=int(hidden_dim),
         ridge=float(ridge),
         feature_normalization=str(feature_normalization),
+        sample_weighting=str(sample_weighting),
+        collision_sample_weight=float(collision_sample_weight),
+        near_miss_sample_weight=float(near_miss_sample_weight),
+        low_clearance_sample_weight=float(low_clearance_sample_weight),
+        sample_weight_clearance_threshold_m=float(sample_weight_clearance_threshold_m),
+        max_sample_weight=float(max_sample_weight),
         eval_lanes=eval_lanes if eval_lanes is not None else selected_lanes,
         eval_max_steps=eval_max_steps,
         policy_name=str(policy_name),
@@ -772,6 +944,7 @@ def run_learned_hard_lane_loop(
             "fit_rmse": training.get("fit_rmse"),
             "training_source": training.get("training_source"),
             "feature_normalization": training.get("feature_normalization", {}).get("mode"),
+            "sample_weighting": training.get("sample_weighting", {}).get("mode"),
         },
         "manifest_overlay": str(manifest_overlay_path),
         "bundle_paths": {
@@ -798,6 +971,7 @@ def run_learned_hard_lane_loop(
 
 
 __all__ = [
+    "BC_SAMPLE_WEIGHTING_CHOICES",
     "DEFAULT_HARD_LANE_FALLBACK",
     "HARD_DIAGNOSTIC_LABELS",
     "LEARNED_DATASET_BC_TRAINING_SOURCE",

@@ -153,17 +153,36 @@ def _fit_random_feature_mlp(
     seed: int,
     hidden_dim: int,
     ridge: float,
+    sample_weights: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
     rng = np.random.default_rng(int(seed) + 1009)
     x = np.asarray(features, dtype=np.float64)
     y = np.arctanh(np.clip(np.asarray(labels, dtype=np.float64), -0.999, 0.999))
+    weights = None
+    if sample_weights is not None:
+        weights = np.asarray(sample_weights, dtype=np.float64).reshape(-1)
+        if weights.shape != (x.shape[0],):
+            raise ValueError(f"sample_weights must have shape {(x.shape[0],)}, got {weights.shape}")
+        if not np.all(np.isfinite(weights)):
+            raise ValueError("sample_weights must be finite")
+        weights = np.clip(weights, 0.0, None)
+        mean_weight = float(np.mean(weights))
+        if mean_weight <= 1e-12:
+            raise ValueError("sample_weights must contain at least one positive value")
+        weights = weights / mean_weight
     w1 = rng.normal(0.0, 0.75 / math.sqrt(max(1, x.shape[1])), size=(int(hidden_dim), x.shape[1]))
     b1 = rng.normal(0.0, 0.08, size=(int(hidden_dim),))
     hidden = np.tanh(x @ w1.T + b1)
     hidden_aug = np.concatenate([hidden, np.ones((hidden.shape[0], 1), dtype=np.float64)], axis=1)
+    solve_x = hidden_aug
+    solve_y = y
+    if weights is not None:
+        sqrt_weights = np.sqrt(weights).reshape(-1, 1)
+        solve_x = hidden_aug * sqrt_weights
+        solve_y = y * sqrt_weights
     reg = float(ridge) * np.eye(hidden_aug.shape[1], dtype=np.float64)
     reg[-1, -1] = 0.0
-    coef = np.linalg.solve(hidden_aug.T @ hidden_aug + reg, hidden_aug.T @ y)
+    coef = np.linalg.solve(solve_x.T @ solve_x + reg, solve_x.T @ solve_y)
     w2 = coef[:-1, :].T
     b2 = coef[-1, :]
     pred = np.tanh(hidden @ w2.T + b2)

@@ -53,6 +53,7 @@ from microbench.rl.learned_dataset import (
     export_learned_policy_dataset,
 )
 from microbench.rl.hard_lane_training import (
+    BC_SAMPLE_WEIGHTING_CHOICES,
     DEFAULT_HARD_LANE_FALLBACK,
     HARD_DIAGNOSTIC_LABELS,
     LEARNED_DATASET_BC_TRAINING_SOURCE,
@@ -118,6 +119,7 @@ __all__ = [
     "CallablePolicyAdapter",
     "BC_POLICY_NAME",
     "BC_TEACHER_NAME",
+    "BC_SAMPLE_WEIGHTING_CHOICES",
     "BC_EVIDENCE_SCHEMA_VERSION",
     "BC_FEATURE_NORMALIZATION_CHOICES",
     "BC_FIXTURE_BUNDLE_CONFIGS",

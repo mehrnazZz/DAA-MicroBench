@@ -5,6 +5,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+import numpy as np
+
 from microbench.rl import (
     LEARNED_DATASET_BC_TRAINING_SOURCE,
     LEARNED_HARD_LANE_LOOP_SCHEMA_VERSION,
@@ -12,6 +14,7 @@ from microbench.rl import (
     select_hard_lanes_from_diagnostics,
     train_behavior_cloned_policy_from_dataset,
 )
+from microbench.rl.hard_lane_training import _sample_weighting_config, _sample_weights_from_diagnostics
 from microbench.rl.learned_dataset import export_learned_policy_dataset
 
 
@@ -91,6 +94,26 @@ def test_hard_lane_selector_can_target_policy_and_fill_3d_fallbacks() -> None:
     assert report["reasons"][1]["source_field"] == "fallback_lanes"
 
 
+def test_safety_sample_weighting_prioritizes_close_or_unsafe_samples() -> None:
+    config = _sample_weighting_config(mode="safety", clearance_threshold_m=1.5)
+    weights, summary = _sample_weights_from_diagnostics(
+        {
+            "collision": np.asarray([False, True, False, False], dtype=bool),
+            "near_miss": np.asarray([False, False, True, False], dtype=bool),
+            "min_sep_m": np.asarray([2.0, 0.1, 0.5, 1.2], dtype=np.float32),
+        },
+        config=config,
+    )
+
+    assert summary["mode"] == "safety"
+    assert summary["collision_sample_count"] == 1
+    assert summary["near_miss_sample_count"] == 1
+    assert summary["low_clearance_sample_count"] == 3
+    assert summary["weight_max"] > summary["weight_min"]
+    assert np.isclose(float(np.mean(weights)), 1.0)
+    assert float(weights[1]) > float(weights[0])
+
+
 def test_dataset_shard_training_writes_portable_policy(tmp_path: Path) -> None:
     dataset = export_learned_policy_dataset(
         out_dir=tmp_path / "dataset",
@@ -111,12 +134,42 @@ def test_dataset_shard_training_writes_portable_policy(tmp_path: Path) -> None:
     assert report["training_source"] == LEARNED_DATASET_BC_TRAINING_SOURCE
     assert report["sample_count"] == 8
     assert report["feature_normalization"]["mode"] == "standard"
+    assert report["sample_weighting"]["mode"] == "none"
+    assert report["sample_weighting"]["weight_mean"] == 1.0
     assert Path(report["policy_spec"]).exists()
     model = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
     assert model["feature_normalization"]["mode"] == "standard"
     assert model["training"]["source"] == LEARNED_DATASET_BC_TRAINING_SOURCE
+    assert model["training"]["sample_weighting"]["mode"] == "none"
     assert model["training"]["source_dataset_manifest"] == dataset["manifest"]
     assert model["training"]["source_policy"] == "local_lateral_avoidance_teacher_v0"
+
+
+def test_dataset_shard_training_records_safety_sample_weighting(tmp_path: Path) -> None:
+    dataset = export_learned_policy_dataset(
+        out_dir=tmp_path / "dataset",
+        lanes=["head_on"],
+        max_steps=2,
+        shard_size=4,
+    )
+
+    report = train_behavior_cloned_policy_from_dataset(
+        out_dir=tmp_path / "training",
+        dataset_manifest=dataset["manifest"],
+        hidden_dim=8,
+        eval_lanes=["head_on"],
+        eval_max_steps=2,
+        sample_weighting="safety",
+    )
+
+    assert report["ok"] is True
+    assert report["sample_weighting"]["mode"] == "safety"
+    assert report["sample_weighting"]["applied"] is True
+    assert report["sample_weighting"]["sample_count"] == report["sample_count"]
+    assert report["sample_weighting"]["weight_mean"] == 1.0
+    assert next(check for check in report["checks"] if check["name"] == "sample_weights_finite")["ok"] is True
+    model = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
+    assert model["training"]["sample_weighting"]["mode"] == "safety"
 
 
 def test_learned_hard_lane_loop_smoke_without_fixtures(tmp_path: Path) -> None:
@@ -147,6 +200,7 @@ def test_learned_hard_lane_loop_smoke_without_fixtures(tmp_path: Path) -> None:
         dataset_max_steps=2,
         dataset_shard_size=4,
         hidden_dim=8,
+        sample_weighting="safety",
         eval_lanes=["head_on"],
         eval_max_steps=2,
         bundle_max_steps=2,
@@ -161,6 +215,7 @@ def test_learned_hard_lane_loop_smoke_without_fixtures(tmp_path: Path) -> None:
     assert report["dataset"]["sample_count"] == 20
     assert report["training"]["training_source"] == LEARNED_DATASET_BC_TRAINING_SOURCE
     assert report["training"]["feature_normalization"] == "standard"
+    assert report["training"]["sample_weighting"] == "safety"
     assert set(report["bundle_paths"]) == {"bc"}
     assert report["leaderboard"]["bundle_count"] == 1
     assert report["diagnostics"]["bundle_count"] == 1
@@ -207,6 +262,8 @@ def test_learned_hard_lane_loop_cli_smoke(tmp_path: Path) -> None:
             "4",
             "--hidden-dim",
             "8",
+            "--sample-weighting",
+            "safety",
             "--eval-lanes",
             "head_on",
             "--eval-max-steps",
@@ -230,5 +287,6 @@ def test_learned_hard_lane_loop_cli_smoke(tmp_path: Path) -> None:
     assert report["selection"]["selected_lanes"] == ["head_on"]
     assert report["dataset_lanes"] == ["head_on", "crossing"]
     assert report["dataset"]["sample_count"] == 20
+    assert report["training"]["sample_weighting"] == "safety"
     assert (out_dir / "learned_hard_lane_loop.json").exists()
     assert (out_dir / "learned_policy_leaderboard.csv").exists()

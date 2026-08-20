@@ -23,7 +23,15 @@ from microbench.rl.calibration import run_rl_policy_calibration
 from microbench.rl.bc_training import BC_FEATURE_NORMALIZATION_CHOICES, build_behavior_cloned_policy_evidence, train_behavior_cloned_policy
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import run_rl_freeze_check
-from microbench.rl.hard_lane_training import run_learned_hard_lane_loop
+from microbench.rl.hard_lane_training import (
+    BC_SAMPLE_WEIGHTING_CHOICES,
+    DEFAULT_COLLISION_SAMPLE_WEIGHT,
+    DEFAULT_LOW_CLEARANCE_SAMPLE_WEIGHT,
+    DEFAULT_MAX_SAMPLE_WEIGHT,
+    DEFAULT_NEAR_MISS_SAMPLE_WEIGHT,
+    DEFAULT_SAMPLE_WEIGHT_CLEARANCE_THRESHOLD_M,
+    run_learned_hard_lane_loop,
+)
 from microbench.rl.learned_dataset import LEARNED_DATASET_POLICY_CHOICES, export_learned_policy_dataset
 from microbench.rl.learned_diagnostics import write_learned_policy_diagnostics
 from microbench.rl.learned_leaderboard import write_learned_policy_leaderboard
@@ -1421,6 +1429,12 @@ def _learned_hard_lane_loop(args) -> None:
         hidden_dim=int(args.hidden_dim),
         ridge=float(args.ridge),
         feature_normalization=str(args.feature_normalization),
+        sample_weighting=str(args.sample_weighting),
+        collision_sample_weight=float(args.collision_sample_weight),
+        near_miss_sample_weight=float(args.near_miss_sample_weight),
+        low_clearance_sample_weight=float(args.low_clearance_sample_weight),
+        sample_weight_clearance_threshold_m=float(args.sample_weight_clearance_threshold_m),
+        max_sample_weight=float(args.max_sample_weight),
         eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
         eval_max_steps=args.eval_max_steps,
         policy_name=str(args.policy_name),
@@ -1449,6 +1463,8 @@ def _learned_hard_lane_loop(args) -> None:
         )
         if report.get("dataset_lanes"):
             print(f"  dataset_lanes: {','.join(report.get('dataset_lanes', []))}")
+        if training.get("sample_weighting"):
+            print(f"  sample_weighting: {training.get('sample_weighting')}")
         print(f"  dataset: {dataset.get('manifest')}")
         print(f"  policy_spec: {training.get('policy_spec')}")
         print(f"  bc_bundle: {report.get('bundle_paths', {}).get('bc')}")
@@ -2663,6 +2679,42 @@ def build_parser() -> argparse.ArgumentParser:
         choices=BC_FEATURE_NORMALIZATION_CHOICES,
         default="standard",
         help="Feature transform stored in the portable MLP artifact",
+    )
+    p_hlt.add_argument(
+        "--sample-weighting",
+        choices=BC_SAMPLE_WEIGHTING_CHOICES,
+        default="none",
+        help="Optional supervised sample weighting for dataset-trained BC policies",
+    )
+    p_hlt.add_argument(
+        "--collision-sample-weight",
+        type=float,
+        default=DEFAULT_COLLISION_SAMPLE_WEIGHT,
+        help="Relative safety weight for collision samples",
+    )
+    p_hlt.add_argument(
+        "--near-miss-sample-weight",
+        type=float,
+        default=DEFAULT_NEAR_MISS_SAMPLE_WEIGHT,
+        help="Relative safety weight for near-miss samples",
+    )
+    p_hlt.add_argument(
+        "--low-clearance-sample-weight",
+        type=float,
+        default=DEFAULT_LOW_CLEARANCE_SAMPLE_WEIGHT,
+        help="Relative bonus for low-clearance samples",
+    )
+    p_hlt.add_argument(
+        "--sample-weight-clearance-threshold-m",
+        type=float,
+        default=DEFAULT_SAMPLE_WEIGHT_CLEARANCE_THRESHOLD_M,
+        help="Clearance threshold below which samples receive a safety weight bonus",
+    )
+    p_hlt.add_argument(
+        "--max-sample-weight",
+        type=float,
+        default=DEFAULT_MAX_SAMPLE_WEIGHT,
+        help="Maximum raw sample weight before mean normalization",
     )
     p_hlt.add_argument("--eval-lanes", default=None, help="Comma-separated validation lane ids for the trained spec")
     p_hlt.add_argument("--eval-max-steps", type=int, default=12, help="Validation rollout step cap for the trained spec")

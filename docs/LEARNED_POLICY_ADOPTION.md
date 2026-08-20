@@ -91,12 +91,13 @@ python -m microbench.cli learned-hard-lane-loop \
   --target-policy bc_mlp_learned \
   --fallback-lanes urban_obstacle,communication_delay,high_n_dense_merge \
   --mix-lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
+  --sample-weighting safety \
   --max-lanes 3 \
   --max-runs 1 \
   --require-pass
 ```
 
-The hard-lane loop selects canonical validation lanes from `unsafe`, `needs_training`, `fast_but_close`, `safe_but_slow`, and limited-evidence diagnostics, exports `learned-dataset-export` shards, trains the BC MLP from those shards, packages the trained policy, and writes a fresh learned leaderboard plus diagnostics report. Use `--target-policy` when the diagnostics file contains comparison fixtures but you only want to retrain one policy; `--fallback-lanes` can fill the remaining hard-lane budget with richer 3D/degraded lanes, and `--mix-lanes` adds broad replay lanes so focused retraining does not erase general behavior. New BC artifacts store per-feature mean/std normalization by default.
+The hard-lane loop selects canonical validation lanes from `unsafe`, `needs_training`, `fast_but_close`, `safe_but_slow`, and limited-evidence diagnostics, exports `learned-dataset-export` shards, trains the BC MLP from those shards, packages the trained policy, and writes a fresh learned leaderboard plus diagnostics report. Use `--target-policy` when the diagnostics file contains comparison fixtures but you only want to retrain one policy; `--fallback-lanes` can fill the remaining hard-lane budget with richer 3D/degraded lanes, `--mix-lanes` adds broad replay lanes so focused retraining does not erase general behavior, and `--sample-weighting safety` emphasizes collision, near-miss, and low-clearance samples in the supervised fit. New BC artifacts store per-feature mean/std normalization and the sample-weighting recipe by default.
 
 ## Health Gates
 

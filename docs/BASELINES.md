@@ -836,13 +836,14 @@ python -m microbench.cli learned-bc-evidence \
 
 This writes a trained BC bundle, `learned_tiny`/`learned_mlp` comparison bundles, a learned-policy leaderboard JSON/CSV, and a diagnostics JSON/CSV/Markdown report with labels such as `safe_but_slow`, `fast_but_close`, and `balanced`.
 
-For focused learned-policy iteration, `learned-hard-lane-loop` can consume those diagnostics, select the weakest canonical validation lanes, export public observation/action shards, train the BC MLP from the shards, and rerun the bundle/leaderboard/diagnostic evidence. Add `--mix-lanes` to keep broad replay in the training set beside the selected hard lanes.
+For focused learned-policy iteration, `learned-hard-lane-loop` can consume those diagnostics, select the weakest canonical validation lanes, export public observation/action shards, train the BC MLP from the shards, and rerun the bundle/leaderboard/diagnostic evidence. Add `--mix-lanes` to keep broad replay in the training set beside the selected hard lanes, and use `--sample-weighting safety` when collision, near-miss, and low-clearance samples should receive more supervised fit weight.
 
 ```bash
 python -m microbench.cli learned-hard-lane-loop \
   --out-dir runs_hard_lane_loop \
   --diagnostics runs_bc_mlp_evidence/learned_policy_diagnostics.json \
   --mix-lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
+  --sample-weighting safety \
   --max-lanes 3 \
   --max-runs 1 \
   --require-pass
