@@ -871,13 +871,15 @@ python -m microbench.cli learned-closed-loop-finetune \
 
 This is benchmark-native closed-loop learned-policy infrastructure. `--require-promotion` requires the tuned policy to avoid safety, clearance, and `score_v0` regression against the base policy on the selected broad 3D holdout rows. It is not yet a claim that the shipped learned baseline is SOTA.
 
+When the goal is to reduce validation-lane overfit, use `--lane-profile validation_plus_broad_3d`. That profile trains on the canonical learned validation lanes plus broad 3D stress training lanes for sphere swap, dense swarm, merge, sensor-volume, and noncooperative-intruder geometry.
+
 For a single auditable learned-baseline study, use the wrapper:
 
 ```bash
 python -m microbench.cli learned-closed-loop-study \
   --out-dir runs_closed_loop_study \
   --base-policy-spec runs_bc_mlp_policy/policy_spec.json \
-  --lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
+  --lane-profile validation_plus_broad_3d \
   --trainable-parameters all_layers \
   --holdout-profile broad_3d_stress \
   --comparison-bundle runs_bc_mlp_evidence/bc_bundle \
@@ -885,7 +887,7 @@ python -m microbench.cli learned-closed-loop-study \
   --require-pass
 ```
 
-This writes the training report, broad-holdout evidence, learned submission bundle, learned leaderboard, diagnostics, and a top-level recommendation in one folder. A study can be structurally `ok` while still returning `reject_regression`; that is expected when the holdout catches learned-policy overfit.
+This writes the training report, broad-holdout evidence, learned submission bundle, learned leaderboard, diagnostics, and a top-level recommendation in one folder. A study can be structurally `ok` while still returning `reject_regression`; that is expected when the holdout catches learned-policy overfit. If the holdout passes but no candidate was accepted beyond the base policy, the recommendation is `holdout_passed_no_update`.
 
 ## Promotion Calibration
 

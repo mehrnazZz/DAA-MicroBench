@@ -38,6 +38,7 @@ from microbench.types import RunSpec
 CLOSED_LOOP_TRAINING_SCHEMA_VERSION = "0.1"
 CLOSED_LOOP_POLICY_NAME = "closed_loop_mlp_learned"
 CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES = ("output_head", "all_layers")
+CLOSED_LOOP_TRAINING_LANE_PROFILE_CHOICES = ("validation", "broad_3d_stress", "validation_plus_broad_3d")
 CLOSED_LOOP_HOLDOUT_PROFILE_CHOICES = ("none", "broad_3d_stress")
 CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE = 1.0
 CLOSED_LOOP_BROAD_3D_HOLDOUT_SCENARIOS = (
@@ -47,6 +48,69 @@ CLOSED_LOOP_BROAD_3D_HOLDOUT_SCENARIOS = (
     "sensor_volume_3d_hard",
     "noncooperative_intruder_3d_hard",
 )
+CLOSED_LOOP_BROAD_3D_TRAINING_LANES = (
+    ValidationLane(
+        lane_id="sphere_swap_3d_training",
+        category="sphere_swap_3d",
+        suite="official_3d_stress",
+        scenario="sphere_swap_3d_medium",
+        comm_profile="ideal_50hz",
+        n_agents=6,
+        seed=0,
+        duration_s=18.0,
+        purpose="Closed-loop learned-policy 3D altitude/lateral swap training lane.",
+        expected_failure_modes=("vertical_layer_conflict", "reciprocal_yield_oscillation", "late_lateral_yield"),
+    ),
+    ValidationLane(
+        lane_id="dense_swarm_3d_training",
+        category="dense_swarm_3d",
+        suite="official_3d_stress",
+        scenario="dense_swarm_3d_hard",
+        comm_profile="degraded_20hz",
+        n_agents=8,
+        seed=0,
+        duration_s=18.0,
+        purpose="Closed-loop learned-policy dense 3D swarm training lane under degraded communication.",
+        expected_failure_modes=("dense_center_conflict", "throughput_collapse", "stale_intent"),
+    ),
+    ValidationLane(
+        lane_id="merge_3d_training",
+        category="merge_3d",
+        suite="official_3d_stress",
+        scenario="merge_3d_hard",
+        comm_profile="degraded_20hz",
+        n_agents=6,
+        seed=0,
+        duration_s=18.0,
+        purpose="Closed-loop learned-policy 3D merge training lane with bottleneck pressure.",
+        expected_failure_modes=("late_merge", "vertical_squeeze", "bottleneck_deadlock"),
+    ),
+    ValidationLane(
+        lane_id="sensor_volume_3d_training",
+        category="sensor_volume_3d",
+        suite="official_3d_stress",
+        scenario="sensor_volume_3d_hard",
+        comm_profile="degraded_20hz",
+        n_agents=6,
+        seed=0,
+        duration_s=18.0,
+        purpose="Closed-loop learned-policy 3D sensing-volume training lane under stale fused tracks.",
+        expected_failure_modes=("fov_blind_spot", "stale_track_collision", "message_sensor_disagreement"),
+    ),
+    ValidationLane(
+        lane_id="noncooperative_intruder_3d_training",
+        category="noncooperative_intruder_3d",
+        suite="official_3d_stress",
+        scenario="noncooperative_intruder_3d_hard",
+        comm_profile="degraded_20hz",
+        n_agents=6,
+        seed=0,
+        duration_s=18.0,
+        purpose="Closed-loop learned-policy intruder-geometry training lane; all agents share the candidate RL policy.",
+        expected_failure_modes=("noncooperative_intruder", "late_yield", "priority_inversion"),
+    ),
+)
+CLOSED_LOOP_BROAD_3D_TRAINING_LANE_IDS = tuple(lane.lane_id for lane in CLOSED_LOOP_BROAD_3D_TRAINING_LANES)
 CLOSED_LOOP_OBJECTIVE_DEFAULTS = {
     "collision_tick_penalty": 120.0,
     "near_miss_tick_penalty": 12.0,
@@ -197,6 +261,66 @@ def _holdout_str_list(values: tuple[str, ...] | list[str] | None, default: tuple
 
 def _holdout_int_list(values: tuple[int, ...] | list[int] | None, default: tuple[int, ...]) -> list[int]:
     return [int(value) for value in (default if values is None else values)]
+
+
+def _training_lane_profile(value: str) -> str:
+    normalized = str(value).strip()
+    if normalized not in CLOSED_LOOP_TRAINING_LANE_PROFILE_CHOICES:
+        raise ValueError("lane_profile must be one of " + ",".join(CLOSED_LOOP_TRAINING_LANE_PROFILE_CHOICES))
+    return normalized
+
+
+def _closed_loop_training_lane_map() -> dict[str, ValidationLane]:
+    lanes = [*selected_validation_lanes(None), *CLOSED_LOOP_BROAD_3D_TRAINING_LANES]
+    return {lane.lane_id: lane for lane in lanes}
+
+
+def _dedupe_lanes(lanes: list[ValidationLane]) -> list[ValidationLane]:
+    out: list[ValidationLane] = []
+    seen: set[str] = set()
+    for lane in lanes:
+        if lane.lane_id in seen:
+            continue
+        out.append(lane)
+        seen.add(lane.lane_id)
+    return out
+
+
+def selected_closed_loop_training_lanes(
+    lanes: tuple[str, ...] | list[str] | None = None,
+    *,
+    lane_profile: str = "validation",
+) -> list[ValidationLane]:
+    """Return closed-loop training lanes, including optional broad 3D stress lanes."""
+
+    profile = _training_lane_profile(lane_profile)
+    if lanes is None:
+        validation = selected_validation_lanes(None)
+        broad = list(CLOSED_LOOP_BROAD_3D_TRAINING_LANES)
+        if profile == "validation":
+            return validation
+        if profile == "broad_3d_stress":
+            return broad
+        return _dedupe_lanes([*validation, *broad])
+
+    lane_ids = [str(lane_id).strip() for lane_id in lanes if str(lane_id).strip()]
+    by_id = _closed_loop_training_lane_map()
+    unknown = sorted(set(lane_ids) - set(by_id))
+    if unknown:
+        raise ValueError(
+            "Unknown closed-loop training lane(s): "
+            + ",".join(unknown)
+            + "; expected validation lanes or "
+            + ",".join(CLOSED_LOOP_BROAD_3D_TRAINING_LANE_IDS)
+        )
+    return [by_id[lane_id] for lane_id in lane_ids]
+
+
+def _canonical_eval_lanes_for_training_lanes(lanes: list[ValidationLane]) -> list[str]:
+    canonical_ids = [lane.lane_id for lane in selected_validation_lanes(None)]
+    selected_ids = {lane.lane_id for lane in lanes}
+    overlap = [lane_id for lane_id in canonical_ids if lane_id in selected_ids]
+    return overlap if overlap else canonical_ids
 
 
 def _materialize_holdout_scenarios(out_dir: Path, scenario_ids: list[str]) -> dict[str, Path]:
@@ -731,6 +855,7 @@ def _training_disclosure(
     base_policy_spec: str | Path,
     base_model_artifact: str | Path,
     lanes: list[ValidationLane],
+    lane_profile: str,
     seeds: list[int] | None,
     objective: dict[str, Any],
     candidate_count: int,
@@ -751,6 +876,7 @@ def _training_disclosure(
         "base_model_artifact": str(base_model_artifact),
         "public_observations_only": True,
         "privileged_global_state": False,
+        "lane_profile": str(lane_profile),
         "training_lanes": [lane.lane_id for lane in lanes],
         "training_scenarios": [lane.scenario for lane in lanes],
         "training_seed_override": None if seeds is None else [int(seed) for seed in seeds],
@@ -773,6 +899,7 @@ def fine_tune_closed_loop_policy(
     out_dir: str | Path,
     base_policy_spec: str | Path,
     lanes: tuple[str, ...] | list[str] | None = None,
+    lane_profile: str = "validation",
     seeds: tuple[int, ...] | list[int] | None = None,
     train_max_steps: int | None = 12,
     generations: int = 2,
@@ -864,7 +991,7 @@ def fine_tune_closed_loop_policy(
         "allow_score_regression": bool(allow_holdout_score_regression),
     }
     base_spec, base_artifact, wrapper_spec = _load_base_mlp_spec(base_policy_spec)
-    selected = selected_validation_lanes(list(lanes) if lanes is not None else None)
+    selected = selected_closed_loop_training_lanes(list(lanes) if lanes is not None else None, lane_profile=str(lane_profile))
     seed_override = None if seeds is None else [int(value) for value in seeds]
     scenario_paths = prepare_validation_lane_scenarios(out_dir=out / "_closed_loop_training_scenarios", lanes=selected)
     objective = _objective_config(
@@ -981,6 +1108,7 @@ def fine_tune_closed_loop_policy(
         base_policy_spec=base_policy_spec,
         base_model_artifact=base_artifact,
         lanes=selected,
+        lane_profile=str(lane_profile),
         seeds=seed_override,
         objective=objective,
         candidate_count=len(candidate_rows),
@@ -1010,7 +1138,7 @@ def fine_tune_closed_loop_policy(
         validation_report = run_rl_validation_matrix(
             out_dir=validation_dir,
             policy_spec=spec_path,
-            lanes=list(eval_lanes) if eval_lanes is not None else [lane.lane_id for lane in selected],
+            lanes=list(eval_lanes) if eval_lanes is not None else _canonical_eval_lanes_for_training_lanes(selected),
             max_steps=eval_max_steps,
         )
 
@@ -1106,6 +1234,7 @@ def fine_tune_closed_loop_policy(
         "candidate_episodes_csv": str(episode_csv),
         "training_lanes": [asdict(lane) for lane in selected],
         "seeds": None if seed_override is None else [int(value) for value in seed_override],
+        "lane_profile": str(lane_profile),
         "train_max_steps": None if train_max_steps is None else int(train_max_steps),
         "generations": int(generations),
         "population_size": int(population_size),
@@ -1135,7 +1264,10 @@ __all__ = [
     "CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE",
     "CLOSED_LOOP_OBJECTIVE_DEFAULTS",
     "CLOSED_LOOP_POLICY_NAME",
+    "CLOSED_LOOP_BROAD_3D_TRAINING_LANE_IDS",
+    "CLOSED_LOOP_TRAINING_LANE_PROFILE_CHOICES",
     "CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES",
     "CLOSED_LOOP_TRAINING_SCHEMA_VERSION",
     "fine_tune_closed_loop_policy",
+    "selected_closed_loop_training_lanes",
 ]

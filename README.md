@@ -126,7 +126,7 @@ python -m microbench.cli train-learned-bc --out-dir runs_bc_mlp_policy --lanes h
 python -m microbench.cli learned-bc-evidence --out-dir runs_bc_mlp_evidence --lanes head_on,crossing,urban_obstacle --max-runs 1 --require-pass
 python -m microbench.cli learned-hard-lane-loop --out-dir runs_hard_lane_loop --diagnostics runs_learned_diagnostics/learned_policy_diagnostics.json --target-policy bc_mlp_learned --target-method learned_policy_spec --fallback-lanes urban_obstacle,communication_delay,high_n_dense_merge --mix-lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge,dense_swarm_hard_negative --sample-weighting safety --sample-selection hard_negative_windows --max-lanes 3 --max-runs 1 --require-pass
 python -m microbench.cli learned-closed-loop-finetune --out-dir runs_closed_loop_finetune --base-policy-spec runs_bc_mlp_policy/policy_spec.json --lanes head_on,crossing,urban_obstacle --trainable-parameters all_layers --generations 2 --population-size 8 --holdout-profile broad_3d_stress --require-pass --require-promotion
-python -m microbench.cli learned-closed-loop-study --out-dir runs_closed_loop_study --base-policy-spec runs_bc_mlp_policy/policy_spec.json --lanes head_on,crossing,urban_obstacle --trainable-parameters all_layers --generations 2 --population-size 8 --holdout-profile broad_3d_stress --bundle-max-runs 1 --require-pass --require-promotion
+python -m microbench.cli learned-closed-loop-study --out-dir runs_closed_loop_study --base-policy-spec runs_bc_mlp_policy/policy_spec.json --lane-profile validation_plus_broad_3d --trainable-parameters all_layers --generations 2 --population-size 8 --holdout-profile broad_3d_stress --bundle-max-runs 1 --require-pass --require-promotion
 python -m microbench.cli rl-contract --json
 python -m microbench.cli rl-freeze-check --require-pass --json
 python -m microbench.cli validate-learned-manifest --manifest examples/learned_submission_manifest_template.json --require-pass
@@ -1170,6 +1170,8 @@ python -m microbench.cli learned-closed-loop-finetune \
 
 This writes `closed_loop_mlp_policy.json`, `policy_spec.json`, `candidate_summary.csv`, `candidate_episodes.csv`, `closed_loop_training_report.json`, optional RL validation evidence, and, when enabled, `broad_3d_holdout/` with base-versus-tuned `results.csv`, `summary.csv`, `comparison_summary.csv`, and `comparison_report.json`. `--trainable-parameters output_head` is the conservative audit mode; `all_layers` is the stronger search mode for learned-baseline development. `--require-pass` checks structural/training gates; `--require-promotion` additionally requires broad 3D holdout safety, clearance, and `score_v0` non-regression. Treat it as benchmark-native closed-loop training infrastructure, not as a final SOTA RL algorithm yet.
 
+Use `--lane-profile validation_plus_broad_3d` when you want closed-loop training to include the canonical validation lanes plus broad 3D stress training lanes (`sphere_swap_3d_training`, `dense_swarm_3d_training`, `merge_3d_training`, `sensor_volume_3d_training`, and `noncooperative_intruder_3d_training`). Explicit `--lanes` still overrides the profile.
+
 ## 11.4) Closed-Loop Learned Study Workflow
 
 `learned-closed-loop-study` wraps the full learned-policy development loop into one auditable command: closed-loop fine-tuning, broad 3D holdout comparison, learned submission bundle, learned leaderboard, learned diagnostics, and a final promotion recommendation.
@@ -1178,7 +1180,7 @@ This writes `closed_loop_mlp_policy.json`, `policy_spec.json`, `candidate_summar
 python -m microbench.cli learned-closed-loop-study \
   --out-dir runs_closed_loop_study \
   --base-policy-spec runs_bc_mlp_policy/policy_spec.json \
-  --lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
+  --lane-profile validation_plus_broad_3d \
   --trainable-parameters all_layers \
   --generations 4 \
   --population-size 12 \
@@ -1193,7 +1195,7 @@ python -m microbench.cli learned-closed-loop-study \
   --require-promotion
 ```
 
-The study folder contains `study_manifest.json`, `learned_closed_loop_study_report.json`, `training/`, `bundle/`, `learned_leaderboard.json/.csv`, and `learned_diagnostics.json/.csv/.md`. `ok` means the workflow produced reviewable artifacts; `promotion_candidate` and `recommendation` (`promote`, `holdout_review_required`, or `reject_regression`) carry the safety verdict.
+The study folder contains `study_manifest.json`, `learned_closed_loop_study_report.json`, `training/`, `bundle/`, `learned_leaderboard.json/.csv`, and `learned_diagnostics.json/.csv/.md`. `ok` means the workflow produced reviewable artifacts; `promotion_candidate` and `recommendation` (`promote`, `holdout_passed_no_update`, `holdout_review_required`, or `reject_regression`) carry the safety verdict. A no-update result means the base policy passed the holdout but the search did not find a better accepted candidate.
 
 ## 12) Performance Expectations and Practical Profiling
 

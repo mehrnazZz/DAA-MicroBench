@@ -26,6 +26,7 @@ from microbench.rl.closed_loop_training import (
     CLOSED_LOOP_HOLDOUT_PROFILE_CHOICES,
     CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE,
     CLOSED_LOOP_POLICY_NAME,
+    CLOSED_LOOP_TRAINING_LANE_PROFILE_CHOICES,
     CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES,
     fine_tune_closed_loop_policy,
 )
@@ -1504,6 +1505,7 @@ def _learned_closed_loop_finetune(args) -> None:
         out_dir=args.out_dir,
         base_policy_spec=args.base_policy_spec,
         lanes=_parse_str_list(args.lanes) if args.lanes else None,
+        lane_profile=str(args.lane_profile),
         seeds=_parse_int_list(args.seeds) if args.seeds else None,
         train_max_steps=args.train_max_steps,
         generations=int(args.generations),
@@ -1570,6 +1572,7 @@ def _learned_closed_loop_study(args) -> None:
         out_dir=args.out_dir,
         base_policy_spec=args.base_policy_spec,
         lanes=_parse_str_list(args.lanes) if args.lanes else None,
+        lane_profile=str(args.lane_profile),
         seeds=_parse_int_list(args.seeds) if args.seeds else None,
         train_max_steps=args.train_max_steps,
         generations=int(args.generations),
@@ -2934,6 +2937,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Comma-separated validation lane ids used for closed-loop training; defaults to the canonical validation lanes",
     )
+    p_clft.add_argument(
+        "--lane-profile",
+        choices=CLOSED_LOOP_TRAINING_LANE_PROFILE_CHOICES,
+        default="validation",
+        help="Default training-lane profile when --lanes is omitted",
+    )
     p_clft.add_argument("--seeds", default=None, help="Optional seed list/range for every training lane")
     p_clft.add_argument("--train-max-steps", type=int, default=12, help="Rollout step cap during candidate evaluation")
     p_clft.add_argument("--generations", type=int, default=2, help="Number of evolutionary search generations")
@@ -3011,6 +3020,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--lanes",
         default=None,
         help="Comma-separated validation lane ids used for closed-loop training; defaults to the canonical validation lanes",
+    )
+    p_cls.add_argument(
+        "--lane-profile",
+        choices=CLOSED_LOOP_TRAINING_LANE_PROFILE_CHOICES,
+        default="validation",
+        help="Default training-lane profile when --lanes is omitted",
     )
     p_cls.add_argument("--seeds", default=None, help="Optional seed list/range for every training lane")
     p_cls.add_argument("--train-max-steps", type=int, default=12, help="Rollout step cap during candidate evaluation")

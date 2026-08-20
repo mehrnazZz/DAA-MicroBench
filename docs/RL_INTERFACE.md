@@ -456,7 +456,7 @@ For the full reproducible study path, use:
 python -m microbench.cli learned-closed-loop-study \
   --out-dir runs_closed_loop_study \
   --base-policy-spec runs_bc_mlp_policy/policy_spec.json \
-  --lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
+  --lane-profile validation_plus_broad_3d \
   --trainable-parameters all_layers \
   --holdout-profile broad_3d_stress \
   --comparison-bundle runs_bc_mlp_evidence/bc_bundle \
@@ -464,7 +464,7 @@ python -m microbench.cli learned-closed-loop-study \
   --require-pass
 ```
 
-The study command produces `study_manifest.json`, `learned_closed_loop_study_report.json`, a reviewable learned bundle, learned leaderboard, and diagnostics in one output directory. Its `ok` field means the workflow artifacts are reviewable; use `promotion_candidate` and `recommendation` for the actual learned-policy verdict.
+The study command produces `study_manifest.json`, `learned_closed_loop_study_report.json`, a reviewable learned bundle, learned leaderboard, and diagnostics in one output directory. Its `ok` field means the workflow artifacts are reviewable; use `promotion_candidate` and `recommendation` for the actual learned-policy verdict. `--lane-profile validation_plus_broad_3d` is the preferred development profile when broad 3D holdout overfit is the failure mode. A `holdout_passed_no_update` recommendation means the base-equivalent policy passed the holdout but search did not find a better accepted candidate.
 
 Compare multiple learned-policy bundles without rerunning simulations:
 

@@ -34,7 +34,7 @@ def test_learned_closed_loop_study_writes_bundle_and_review_artifacts(tmp_path: 
     report = run_learned_closed_loop_study(
         out_dir=tmp_path / "study",
         base_policy_spec=base_spec,
-        lanes=["head_on"],
+        lane_profile="broad_3d_stress",
         train_max_steps=2,
         generations=0,
         population_size=1,
@@ -55,7 +55,8 @@ def test_learned_closed_loop_study_writes_bundle_and_review_artifacts(tmp_path: 
     assert report["schema_version"] == LEARNED_CLOSED_LOOP_STUDY_SCHEMA_VERSION
     assert report["ok"] is True
     assert report["promotion_candidate"] is True
-    assert report["recommendation"] == "promote"
+    assert report["recommendation"] == "holdout_passed_no_update"
+    assert report["configuration"]["lane_profile"] == "broad_3d_stress"
     assert report["training"]["holdout"]["promotion_candidate"] is True
     assert report["bundle"]["ok"] is True
     assert report["leaderboard"]["ok"] is True
@@ -79,7 +80,7 @@ def test_learned_closed_loop_study_writes_bundle_and_review_artifacts(tmp_path: 
 
     manifest = json.loads(Path(artifacts["study_manifest"]).read_text(encoding="utf-8"))
     assert manifest["workflow"] == "learned-closed-loop-study"
-    assert manifest["recommendation"] == "promote"
+    assert manifest["recommendation"] == "holdout_passed_no_update"
 
     leaderboard = json.loads(Path(artifacts["leaderboard_json"]).read_text(encoding="utf-8"))
     assert leaderboard["rows"][0]["lineage_label"] == "closed_loop_holdout_passed"
@@ -100,8 +101,8 @@ def test_learned_closed_loop_study_cli_smoke(tmp_path: Path) -> None:
             str(out_dir),
             "--base-policy-spec",
             str(base_spec),
-            "--lanes",
-            "head_on",
+            "--lane-profile",
+            "validation_plus_broad_3d",
             "--train-max-steps",
             "2",
             "--generations",
@@ -145,7 +146,7 @@ def test_learned_closed_loop_study_cli_smoke(tmp_path: Path) -> None:
     report = json.loads(proc.stdout)
     assert report["ok"] is True
     assert report["promotion_candidate"] is True
-    assert report["recommendation"] == "promote"
+    assert report["recommendation"] == "holdout_passed_no_update"
     assert (out_dir / "study_manifest.json").exists()
     assert (out_dir / "learned_closed_loop_study_report.json").exists()
     assert (out_dir / "training" / "closed_loop_training_report.json").exists()

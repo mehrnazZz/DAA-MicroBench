@@ -121,13 +121,15 @@ python -m microbench.cli learned-closed-loop-finetune \
 
 The fine-tuner evaluates candidates inside `DaaParallelEnv`, records every candidate rollout in CSV, and writes a new portable `mlp_json` policy only after applying collision, clearance, and near-miss guardrails. Use `--trainable-parameters output_head` for conservative audits and `all_layers` for stronger learned-baseline development. `--require-promotion` adds broad 3D holdout non-regression before the report marks the result as a promotion candidate. Treat this as the benchmark-native closed-loop training spine for stronger learned baselines; it is still public-alpha infrastructure.
 
+Use `--lane-profile validation_plus_broad_3d` to train on canonical validation lanes plus 3D stress geometry (`sphere_swap_3d_training`, `dense_swarm_3d_training`, `merge_3d_training`, `sensor_volume_3d_training`, and `noncooperative_intruder_3d_training`). Explicit `--lanes` remains available for targeted ablations.
+
 For reproducible learned-baseline studies, prefer the wrapper that runs fine-tuning, broad holdout, bundling, learned leaderboard, and diagnostics in one directory:
 
 ```bash
 python -m microbench.cli learned-closed-loop-study \
   --out-dir runs_closed_loop_study \
   --base-policy-spec runs_bc_mlp_policy/policy_spec.json \
-  --lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
+  --lane-profile validation_plus_broad_3d \
   --trainable-parameters all_layers \
   --generations 4 \
   --population-size 12 \
@@ -142,7 +144,7 @@ python -m microbench.cli learned-closed-loop-study \
   --require-promotion
 ```
 
-The wrapper writes `study_manifest.json`, `learned_closed_loop_study_report.json`, `training/`, `bundle/`, `learned_leaderboard.json/.csv`, and `learned_diagnostics.json/.csv/.md`. Use the top-level `recommendation` field to separate `promote`, `holdout_review_required`, and `reject_regression` outcomes without manually stitching one-off experiment artifacts together.
+The wrapper writes `study_manifest.json`, `learned_closed_loop_study_report.json`, `training/`, `bundle/`, `learned_leaderboard.json/.csv`, and `learned_diagnostics.json/.csv/.md`. Use the top-level `recommendation` field to separate `promote`, `holdout_passed_no_update`, `holdout_review_required`, and `reject_regression` outcomes without manually stitching one-off experiment artifacts together.
 
 ## Health Gates
 

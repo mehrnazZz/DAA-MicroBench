@@ -8,7 +8,14 @@ import sys
 import numpy as np
 
 from microbench.learned import MLP_LEARNED_MODEL_ID
-from microbench.rl import CLOSED_LOOP_TRAINING_SCHEMA_VERSION, fine_tune_closed_loop_policy, load_policy_from_spec, train_behavior_cloned_policy
+from microbench.rl import (
+    CLOSED_LOOP_BROAD_3D_TRAINING_LANE_IDS,
+    CLOSED_LOOP_TRAINING_SCHEMA_VERSION,
+    fine_tune_closed_loop_policy,
+    load_policy_from_spec,
+    selected_closed_loop_training_lanes,
+    train_behavior_cloned_policy,
+)
 from microbench.rl.schema import OBS_A_MAX_INDEX, OBS_GOAL_DIR_SLICE, OBS_RADIUS_INDEX, OBS_V_MAX_INDEX
 
 
@@ -65,6 +72,7 @@ def test_closed_loop_finetune_writes_guarded_policy_spec(tmp_path: Path) -> None
     model = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
     assert model["model_id"] == MLP_LEARNED_MODEL_ID
     assert model["training"]["recipe"] == "python -m microbench.cli learned-closed-loop-finetune"
+    assert model["training"]["lane_profile"] == "validation"
     assert model["training"]["trainable_parameters"] == "all_layers"
     assert model["training"]["public_observations_only"] is True
     assert model["training"]["privileged_global_state"] is False
@@ -76,6 +84,41 @@ def test_closed_loop_finetune_writes_guarded_policy_spec(tmp_path: Path) -> None
     assert loaded.policy_name == "closed_loop_mlp_learned"
     assert action.shape == (3,)
     assert np.all(np.isfinite(action))
+
+
+def test_closed_loop_training_lane_profile_adds_broad_3d_lanes() -> None:
+    validation = selected_closed_loop_training_lanes(lane_profile="validation")
+    broad = selected_closed_loop_training_lanes(lane_profile="broad_3d_stress")
+    combined = selected_closed_loop_training_lanes(lane_profile="validation_plus_broad_3d")
+
+    assert [lane.lane_id for lane in broad] == list(CLOSED_LOOP_BROAD_3D_TRAINING_LANE_IDS)
+    assert len(combined) == len(validation) + len(broad)
+    assert [lane.lane_id for lane in combined[: len(validation)]] == [lane.lane_id for lane in validation]
+    assert [lane.lane_id for lane in combined[len(validation) :]] == list(CLOSED_LOOP_BROAD_3D_TRAINING_LANE_IDS)
+
+
+def test_closed_loop_finetune_supports_broad_3d_training_profile(tmp_path: Path) -> None:
+    base_spec = _base_policy_spec(tmp_path)
+
+    report = fine_tune_closed_loop_policy(
+        out_dir=tmp_path / "closed_loop_broad_3d_training",
+        base_policy_spec=base_spec,
+        lane_profile="broad_3d_stress",
+        train_max_steps=2,
+        generations=0,
+        population_size=1,
+        trainable_parameters="all_layers",
+        eval_lanes=["head_on"],
+        eval_max_steps=2,
+        holdout_profile="none",
+    )
+
+    assert report["ok"] is True
+    assert report["lane_profile"] == "broad_3d_stress"
+    assert [lane["lane_id"] for lane in report["training_lanes"]] == list(CLOSED_LOOP_BROAD_3D_TRAINING_LANE_IDS)
+    model = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
+    assert model["training"]["lane_profile"] == "broad_3d_stress"
+    assert model["training"]["training_lanes"] == list(CLOSED_LOOP_BROAD_3D_TRAINING_LANE_IDS)
 
 
 def test_closed_loop_finetune_broad_3d_holdout_promotion_gate(tmp_path: Path) -> None:

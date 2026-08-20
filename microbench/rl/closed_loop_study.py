@@ -10,6 +10,7 @@ from microbench.rl.closed_loop_training import (
     CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE,
     CLOSED_LOOP_OBJECTIVE_DEFAULTS,
     CLOSED_LOOP_POLICY_NAME,
+    CLOSED_LOOP_TRAINING_LANE_PROFILE_CHOICES,
     fine_tune_closed_loop_policy,
 )
 from microbench.rl.learned_diagnostics import write_learned_policy_diagnostics
@@ -177,6 +178,8 @@ def _recommendation(*, training: dict[str, Any], ok: bool) -> str:
     if not ok:
         return "fix_artifacts"
     if bool(training.get("promotion_candidate")):
+        if int(training.get("accepted_generation_count", 0) or 0) <= 0 or str(training.get("best_candidate_id") or "") == "base":
+            return "holdout_passed_no_update"
         return "promote"
     failed = _failed_behavior_checks(training)
     if any(name.startswith("holdout_") or name.startswith("final_") for name in failed):
@@ -189,6 +192,7 @@ def run_learned_closed_loop_study(
     out_dir: str | Path,
     base_policy_spec: str | Path,
     lanes: tuple[str, ...] | list[str] | None = None,
+    lane_profile: str = "validation",
     seeds: tuple[int, ...] | list[int] | None = None,
     train_max_steps: int | None = 12,
     generations: int = 2,
@@ -257,6 +261,7 @@ def run_learned_closed_loop_study(
         out_dir=training_dir,
         base_policy_spec=base_policy_spec,
         lanes=lanes,
+        lane_profile=str(lane_profile),
         seeds=seeds,
         train_max_steps=train_max_steps,
         generations=int(generations),
@@ -372,6 +377,7 @@ def run_learned_closed_loop_study(
     }
     configuration = {
         "base_policy_spec": str(base_policy_spec),
+        "lane_profile": str(lane_profile),
         "lanes": None if lanes is None else [str(lane) for lane in lanes],
         "seeds": None if seeds is None else [int(value) for value in seeds],
         "train_max_steps": None if train_max_steps is None else int(train_max_steps),
@@ -468,5 +474,6 @@ __all__ = [
     "LEARNED_CLOSED_LOOP_STUDY_MANIFEST_FILENAME",
     "LEARNED_CLOSED_LOOP_STUDY_REPORT_FILENAME",
     "LEARNED_CLOSED_LOOP_STUDY_SCHEMA_VERSION",
+    "CLOSED_LOOP_TRAINING_LANE_PROFILE_CHOICES",
     "run_learned_closed_loop_study",
 ]
