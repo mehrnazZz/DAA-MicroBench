@@ -121,6 +121,29 @@ python -m microbench.cli learned-closed-loop-finetune \
 
 The fine-tuner evaluates candidates inside `DaaParallelEnv`, records every candidate rollout in CSV, and writes a new portable `mlp_json` policy only after applying collision, clearance, and near-miss guardrails. Use `--trainable-parameters output_head` for conservative audits and `all_layers` for stronger learned-baseline development. `--require-promotion` adds broad 3D holdout non-regression before the report marks the result as a promotion candidate. Treat this as the benchmark-native closed-loop training spine for stronger learned baselines; it is still public-alpha infrastructure.
 
+For reproducible learned-baseline studies, prefer the wrapper that runs fine-tuning, broad holdout, bundling, learned leaderboard, and diagnostics in one directory:
+
+```bash
+python -m microbench.cli learned-closed-loop-study \
+  --out-dir runs_closed_loop_study \
+  --base-policy-spec runs_bc_mlp_policy/policy_spec.json \
+  --lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
+  --trainable-parameters all_layers \
+  --generations 4 \
+  --population-size 12 \
+  --train-max-steps 24 \
+  --holdout-profile broad_3d_stress \
+  --holdout-scenarios sphere_swap_3d_medium,dense_swarm_3d_hard,merge_3d_hard,sensor_volume_3d_hard,noncooperative_intruder_3d_hard \
+  --holdout-seeds 0:2 \
+  --holdout-comm ideal_50hz,degraded_20hz \
+  --comparison-bundle runs_bc_mlp_evidence/bc_bundle \
+  --bundle-max-runs 1 \
+  --require-pass \
+  --require-promotion
+```
+
+The wrapper writes `study_manifest.json`, `learned_closed_loop_study_report.json`, `training/`, `bundle/`, `learned_leaderboard.json/.csv`, and `learned_diagnostics.json/.csv/.md`. Use the top-level `recommendation` field to separate `promote`, `holdout_review_required`, and `reject_regression` outcomes without manually stitching one-off experiment artifacts together.
+
 ## Health Gates
 
 Smoke-test the wrapper API on 2D and 3D generated scenarios:

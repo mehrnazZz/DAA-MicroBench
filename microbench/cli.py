@@ -29,6 +29,7 @@ from microbench.rl.closed_loop_training import (
     CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES,
     fine_tune_closed_loop_policy,
 )
+from microbench.rl.closed_loop_study import run_learned_closed_loop_study
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import run_rl_freeze_check
 from microbench.rl.hard_lane_training import (
@@ -1564,6 +1565,81 @@ def _learned_closed_loop_finetune(args) -> None:
         raise SystemExit(f"learned closed-loop fine-tune is not a promotion candidate: {','.join(failed)}")
 
 
+def _learned_closed_loop_study(args) -> None:
+    report = run_learned_closed_loop_study(
+        out_dir=args.out_dir,
+        base_policy_spec=args.base_policy_spec,
+        lanes=_parse_str_list(args.lanes) if args.lanes else None,
+        seeds=_parse_int_list(args.seeds) if args.seeds else None,
+        train_max_steps=args.train_max_steps,
+        generations=int(args.generations),
+        population_size=int(args.population_size),
+        trainable_parameters=str(args.trainable_parameters),
+        sigma=float(args.sigma),
+        sigma_decay=float(args.sigma_decay),
+        min_delta=float(args.min_delta),
+        collision_tick_penalty=float(args.collision_tick_penalty),
+        near_miss_tick_penalty=float(args.near_miss_tick_penalty),
+        clearance_penalty=float(args.clearance_penalty),
+        mission_penalty=float(args.mission_penalty),
+        reward_weight=float(args.reward_weight),
+        min_clearance_m=float(args.min_clearance_m),
+        max_collision_ticks=int(args.max_collision_ticks),
+        max_near_miss_ticks=None if args.max_near_miss_ticks is None else int(args.max_near_miss_ticks),
+        allow_near_miss_regression=bool(args.allow_near_miss_regression),
+        eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
+        eval_max_steps=args.eval_max_steps,
+        holdout_profile=str(args.holdout_profile),
+        holdout_scenarios=_parse_str_list(args.holdout_scenarios) if args.holdout_scenarios else None,
+        holdout_seeds=_parse_int_list(args.holdout_seeds) if args.holdout_seeds else None,
+        holdout_comm_profiles=_parse_str_list(args.holdout_comm) if args.holdout_comm else None,
+        holdout_n_agents=int(args.holdout_n),
+        holdout_max_runs=args.holdout_max_runs,
+        holdout_score_tolerance=float(args.holdout_score_tolerance),
+        allow_holdout_safety_regression=bool(args.allow_holdout_safety_regression),
+        allow_holdout_score_regression=bool(args.allow_holdout_score_regression),
+        policy_name=str(args.policy_name),
+        seed=int(args.seed),
+        run_validation=not bool(args.skip_validation),
+        bundle_method=str(args.bundle_method),
+        bundle_suite=str(args.bundle_suite),
+        bundle_root=args.root,
+        bundle_n_agents=int(args.bundle_n),
+        bundle_seeds=_parse_int_list(args.bundle_seeds) if args.bundle_seeds else None,
+        bundle_max_steps=args.bundle_max_steps,
+        bundle_max_runs=args.bundle_max_runs,
+        bundle_save_trace=bool(args.save_trace),
+        submission_manifest=args.submission_manifest,
+        comparison_bundles=list(args.comparison_bundle or []),
+        overwrite=bool(args.overwrite),
+    )
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "FAIL"
+        promotion = "YES" if report.get("promotion_candidate") else "NO"
+        training = report.get("training", {})
+        print(
+            f"learned-closed-loop-study: {status} recommendation={report.get('recommendation')} "
+            f"promotion_candidate={promotion} policy={training.get('policy_name')}"
+        )
+        print(f"  study_manifest: {report['artifacts']['study_manifest']}")
+        print(f"  training_report: {report['artifacts']['training_report']}")
+        print(f"  bundle: {report['artifacts']['bundle_dir']}")
+        print(f"  leaderboard: {report['artifacts']['leaderboard_json']}")
+        print(f"  diagnostics: {report['artifacts']['diagnostics_markdown']}")
+
+    if args.require_pass and not report["ok"]:
+        failed = [check["name"] for check in report["checks"] if not check["ok"]]
+        raise SystemExit(f"learned closed-loop study failed: {','.join(failed)}")
+    if args.require_promotion and not report.get("promotion_candidate"):
+        failed = report.get("training", {}).get("failed_behavior_checks") or [
+            check["name"] for check in report["checks"] if not check["ok"]
+        ]
+        raise SystemExit(f"learned closed-loop study is not a promotion candidate: {','.join(failed)}")
+
+
 def _rl_contract(args) -> None:
     report = interface_contract(top_k=int(args.top_k))
     payload = json.dumps(report, indent=2, sort_keys=True)
@@ -2925,6 +3001,103 @@ def build_parser() -> argparse.ArgumentParser:
     p_clft.add_argument("--require-pass", action="store_true", help="Fail if fine-tuning gates fail")
     p_clft.add_argument("--require-promotion", action="store_true", help="Fail unless the tuned policy passes promotion-candidate gates")
 
+    p_cls = sub.add_parser(
+        "learned-closed-loop-study",
+        help="Run closed-loop tuning, broad holdout, bundle, leaderboard, and diagnostics in one workflow",
+    )
+    p_cls.add_argument("--out-dir", required=True, help="Output directory for the complete learned-policy study")
+    p_cls.add_argument("--base-policy-spec", required=True, help="Existing mlp_json policy_spec.json used as the starting policy")
+    p_cls.add_argument(
+        "--lanes",
+        default=None,
+        help="Comma-separated validation lane ids used for closed-loop training; defaults to the canonical validation lanes",
+    )
+    p_cls.add_argument("--seeds", default=None, help="Optional seed list/range for every training lane")
+    p_cls.add_argument("--train-max-steps", type=int, default=12, help="Rollout step cap during candidate evaluation")
+    p_cls.add_argument("--generations", type=int, default=2, help="Number of evolutionary search generations")
+    p_cls.add_argument("--population-size", type=int, default=8, help="Candidate perturbations evaluated per generation")
+    p_cls.add_argument(
+        "--trainable-parameters",
+        choices=CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES,
+        default="output_head",
+        help="MLP parameter subset perturbed during closed-loop search",
+    )
+    p_cls.add_argument("--sigma", type=float, default=0.03, help="Gaussian perturbation scale for selected MLP parameters")
+    p_cls.add_argument("--sigma-decay", type=float, default=0.5, help="Sigma multiplier after a generation with no accepted candidate")
+    p_cls.add_argument("--min-delta", type=float, default=1e-6, help="Minimum score improvement required to accept a candidate")
+    p_cls.add_argument("--collision-tick-penalty", type=float, default=120.0, help="Closed-loop objective penalty per collision tick")
+    p_cls.add_argument("--near-miss-tick-penalty", type=float, default=12.0, help="Closed-loop objective penalty per near-miss tick")
+    p_cls.add_argument("--clearance-penalty", type=float, default=20.0, help="Closed-loop objective penalty per meter below clearance floor")
+    p_cls.add_argument("--mission-penalty", type=float, default=60.0, help="Closed-loop objective penalty for incomplete missions")
+    p_cls.add_argument("--reward-weight", type=float, default=1.0, help="Bonus weight on environment rollout reward after hard safety penalties")
+    p_cls.add_argument("--min-clearance-m", type=float, default=0.0, help="Hard minimum final clearance for accepted candidates")
+    p_cls.add_argument("--max-collision-ticks", type=int, default=0, help="Hard collision-tick cap for accepted candidates")
+    p_cls.add_argument("--max-near-miss-ticks", type=int, default=None, help="Optional hard near-miss tick cap for accepted candidates")
+    p_cls.add_argument(
+        "--allow-near-miss-regression",
+        action="store_true",
+        help="Allow accepted candidates to exceed the base policy near-miss count",
+    )
+    p_cls.add_argument("--eval-lanes", default=None, help="Comma-separated validation lane ids for the final tuned spec")
+    p_cls.add_argument("--eval-max-steps", type=int, default=12, help="Validation rollout step cap for the final tuned spec")
+    p_cls.add_argument(
+        "--holdout-profile",
+        choices=CLOSED_LOOP_HOLDOUT_PROFILE_CHOICES,
+        default="broad_3d_stress",
+        help="Post-training holdout sweep used to decide promotion-candidate status",
+    )
+    p_cls.add_argument(
+        "--holdout-scenarios",
+        default=",".join(CLOSED_LOOP_BROAD_3D_HOLDOUT_SCENARIOS),
+        help="Comma-separated broad 3D holdout scenario ids when --holdout-profile is broad_3d_stress",
+    )
+    p_cls.add_argument("--holdout-seeds", default="0:2", help="Seed list/range for holdout runs")
+    p_cls.add_argument("--holdout-comm", default="ideal_50hz,degraded_20hz", help="Comma-separated holdout communication profiles")
+    p_cls.add_argument("--holdout-n", type=int, default=6, help="Agent count for holdout runs")
+    p_cls.add_argument("--holdout-max-runs", type=int, default=None, help="Optional cap for compact holdout smoke runs")
+    p_cls.add_argument(
+        "--holdout-score-tolerance",
+        type=float,
+        default=CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE,
+        help="Allowed tuned-minus-base score_v0 delta before promotion_candidate fails",
+    )
+    p_cls.add_argument(
+        "--allow-holdout-safety-regression",
+        action="store_true",
+        help="Do not block promotion_candidate on holdout collision, near-miss, or clearance regressions",
+    )
+    p_cls.add_argument(
+        "--allow-holdout-score-regression",
+        action="store_true",
+        help="Do not block promotion_candidate on holdout score_v0 regression",
+    )
+    p_cls.add_argument("--policy-name", default=CLOSED_LOOP_POLICY_NAME, help="Policy name written to policy_spec.json")
+    p_cls.add_argument("--seed", type=int, default=37, help="Closed-loop candidate-search seed")
+    p_cls.add_argument("--skip-validation", action="store_true", help="Skip post-training RL validation matrix inside training")
+    p_cls.add_argument("--bundle-method", default="learned_policy_spec", help="Planner method used for the learned submission bundle")
+    p_cls.add_argument("--bundle-suite", default="official_smoke_generated", choices=list_official_suites(), help="Generated suite for the bundle planner CSV artifacts")
+    p_cls.add_argument("--root", default=".", help="Repository root used for bundle freeze-check docs/examples")
+    p_cls.add_argument("--bundle-n", type=int, default=4, help="Agent count for bundle RL wrapper checks")
+    p_cls.add_argument("--bundle-seeds", default="0", help="Seed list/range for bundle RL wrapper artifacts")
+    p_cls.add_argument("--bundle-max-steps", type=int, default=12, help="Step cap for bundle RL wrapper checks")
+    p_cls.add_argument("--bundle-max-runs", type=int, default=1, help="Planner-sweep run cap for the study bundle")
+    p_cls.add_argument("--save-trace", action="store_true", help="Save traces for bundle planner-sweep rows")
+    p_cls.add_argument(
+        "--submission-manifest",
+        default=None,
+        help="Optional JSON disclosure overrides merged into learned_submission_manifest.json",
+    )
+    p_cls.add_argument(
+        "--comparison-bundle",
+        action="append",
+        default=None,
+        help="Existing learned bundle to include beside the tuned policy; repeat for multiple bundles",
+    )
+    p_cls.add_argument("--overwrite", action="store_true", help="Overwrite known study artifacts in --out-dir")
+    p_cls.add_argument("--json", action="store_true", help="Emit machine-readable study report")
+    p_cls.add_argument("--require-pass", action="store_true", help="Fail if training, bundle, leaderboard, or diagnostics artifacts fail")
+    p_cls.add_argument("--require-promotion", action="store_true", help="Fail unless the study output is a broad-holdout promotion candidate")
+
     p_rlc = sub.add_parser("rl-contract", help="Print the versioned RL action/observation/reward contract")
     p_rlc.add_argument("--top-k", type=int, default=8, help="Neighbor slots used to compute observation shape")
     p_rlc.add_argument("--out", default=None, help="Optional JSON output path")
@@ -3218,6 +3391,9 @@ def main() -> None:
         return
     if args.cmd == "learned-closed-loop-finetune":
         _learned_closed_loop_finetune(args)
+        return
+    if args.cmd == "learned-closed-loop-study":
+        _learned_closed_loop_study(args)
         return
     if args.cmd == "rl-contract":
         _rl_contract(args)

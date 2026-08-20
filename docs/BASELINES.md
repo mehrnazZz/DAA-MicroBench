@@ -871,6 +871,22 @@ python -m microbench.cli learned-closed-loop-finetune \
 
 This is benchmark-native closed-loop learned-policy infrastructure. `--require-promotion` requires the tuned policy to avoid safety, clearance, and `score_v0` regression against the base policy on the selected broad 3D holdout rows. It is not yet a claim that the shipped learned baseline is SOTA.
 
+For a single auditable learned-baseline study, use the wrapper:
+
+```bash
+python -m microbench.cli learned-closed-loop-study \
+  --out-dir runs_closed_loop_study \
+  --base-policy-spec runs_bc_mlp_policy/policy_spec.json \
+  --lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
+  --trainable-parameters all_layers \
+  --holdout-profile broad_3d_stress \
+  --comparison-bundle runs_bc_mlp_evidence/bc_bundle \
+  --bundle-max-runs 1 \
+  --require-pass
+```
+
+This writes the training report, broad-holdout evidence, learned submission bundle, learned leaderboard, diagnostics, and a top-level recommendation in one folder. A study can be structurally `ok` while still returning `reject_regression`; that is expected when the holdout catches learned-policy overfit.
+
 ## Promotion Calibration
 
 `baseline-promotion --require-calibrated` is the current public-alpha gate for experimental baselines. Passing it means the method imports, has docs/tests coverage, supports 2D and 3D, runs the behavior smoke without planner guardrail failures, emits its expected signal/debug contract, and passes compact promotion-calibration acceptance on an 8-second 3D stress lane plus an 8-second degraded fused-sensing lane. For `cbf_qp` and `mpc_local`, it also runs `official_experimental_baselines` and checks that suite acceptance metadata.

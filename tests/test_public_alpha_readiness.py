@@ -48,6 +48,7 @@ def test_release_readiness_script_runs_expected_checks() -> None:
     assert "rl-calibration --out-dir" in script
     assert "learned-dataset-export --out-dir" in script
     assert "learned-closed-loop-finetune --out-dir" in script
+    assert "learned-closed-loop-study --out-dir" in script
     assert "--holdout-profile broad_3d_stress" in script
     assert "--require-promotion" in script
     assert "rl-contract --json" in script
@@ -78,6 +79,7 @@ def test_docs_index_and_checklist_reference_alpha_notes_and_dry_run() -> None:
     assert "rl-calibration --out-dir" in docs_index
     assert "learned-dataset-export --out-dir" in docs_index
     assert "learned-closed-loop-finetune --out-dir" in docs_index
+    assert "learned-closed-loop-study --out-dir" in docs_index
     assert "--holdout-profile broad_3d_stress" in docs_index
     assert "--require-promotion" in docs_index
     assert "rl-contract --json" in docs_index
@@ -100,6 +102,7 @@ def test_docs_index_and_checklist_reference_alpha_notes_and_dry_run() -> None:
     assert "rl-calibration --out-dir" in checklist
     assert "learned-dataset-export --out-dir" in checklist
     assert "learned-closed-loop-finetune --out-dir" in checklist
+    assert "learned-closed-loop-study --out-dir" in checklist
     assert "--holdout-profile broad_3d_stress" in checklist
     assert "--require-promotion" in checklist
     assert "rl-freeze-check --require-pass" in checklist

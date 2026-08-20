@@ -450,6 +450,22 @@ python -m microbench.cli learned-closed-loop-finetune \
 
 This evaluates perturbed MLP parameters through the same parallel RL wrapper, accepts only non-regressing candidates under collision, clearance, and near-miss guardrails, writes candidate rollout CSVs plus a new `mlp_json` policy spec, and can compare the final policy against its base on a broad 3D holdout before marking it as a promotion candidate.
 
+For the full reproducible study path, use:
+
+```bash
+python -m microbench.cli learned-closed-loop-study \
+  --out-dir runs_closed_loop_study \
+  --base-policy-spec runs_bc_mlp_policy/policy_spec.json \
+  --lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
+  --trainable-parameters all_layers \
+  --holdout-profile broad_3d_stress \
+  --comparison-bundle runs_bc_mlp_evidence/bc_bundle \
+  --bundle-max-runs 1 \
+  --require-pass
+```
+
+The study command produces `study_manifest.json`, `learned_closed_loop_study_report.json`, a reviewable learned bundle, learned leaderboard, and diagnostics in one output directory. Its `ok` field means the workflow artifacts are reviewable; use `promotion_candidate` and `recommendation` for the actual learned-policy verdict.
+
 Compare multiple learned-policy bundles without rerunning simulations:
 
 ```bash

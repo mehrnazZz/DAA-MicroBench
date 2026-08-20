@@ -47,6 +47,7 @@ from microbench.rl.closed_loop_training import (
     CLOSED_LOOP_TRAINING_SCHEMA_VERSION,
     fine_tune_closed_loop_policy,
 )
+from microbench.rl.closed_loop_study import LEARNED_CLOSED_LOOP_STUDY_SCHEMA_VERSION, run_learned_closed_loop_study
 from microbench.rl.compliance import check_parallel_env_api
 from microbench.rl.evaluate import run_rl_policy_smoke
 from microbench.rl.freeze import RL_FREEZE_CHECK_SCHEMA_VERSION, run_rl_freeze_check
@@ -173,6 +174,7 @@ __all__ = [
     "LEARNED_POLICY_DIAGNOSTICS_SCHEMA_VERSION",
     "LEARNED_POLICY_LINEAGE_FIELDS",
     "LEARNED_POLICY_LINEAGE_SCHEMA_VERSION",
+    "LEARNED_CLOSED_LOOP_STUDY_SCHEMA_VERSION",
     "LEARNED_DATASET_POLICY_CHOICES",
     "LEARNED_DATASET_EXTRA_LANE_IDS",
     "LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID",
@@ -240,6 +242,7 @@ __all__ = [
     "run_parallel_policy_rollouts",
     "run_learned_policy_submission_bundle",
     "run_learned_hard_lane_loop",
+    "run_learned_closed_loop_study",
     "run_learned_submission_schema_check",
     "run_rl_freeze_check",
     "run_rl_policy_calibration",
