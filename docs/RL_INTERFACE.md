@@ -411,7 +411,18 @@ python -m microbench.cli learned-dataset-export \
   --require-pass
 ```
 
-This writes `learned_dataset_manifest.json`, `learned_dataset_episodes.csv`, compressed `shards/shard_*.npz`, and optional replay JSONL. Shards include `observations`, `actions`, `next_observations`, rewards, termination flags, lane metadata, and collision/near-miss diagnostics. The default action source is `bc_teacher`; pass `--policy-spec` to export samples from a submitted learned policy.
+This writes `learned_dataset_manifest.json`, `learned_dataset_episodes.csv`, compressed `shards/shard_*.npz`, and optional replay JSONL. Shards include `observations`, `actions`, `next_observations`, rewards, termination flags, lane metadata, and collision/near-miss diagnostics. The default action source is `bc_teacher`; pass `--policy-spec` to export samples from a submitted learned policy, or `--planner-expert dynamic_tube_dmpc` to distill labels from a registered local planner/optimizer. Dataset manifests preserve the public-observation contract and separately disclose whether the label source was privileged.
+
+Then train the portable MLP from those shards:
+
+```bash
+python -m microbench.cli train-learned-bc \
+  --out-dir runs_dmpc_distilled_policy \
+  --dataset-manifest runs_learned_dataset/learned_dataset_manifest.json \
+  --mlp-feature-set public_obs_v1 \
+  --eval-lanes head_on,crossing \
+  --require-pass
+```
 
 Run a diagnostics-driven hard-lane retraining loop:
 

@@ -9,11 +9,15 @@ from typing import Any, Callable
 
 import numpy as np
 
+from microbench.core import EpisodeEngine
+from microbench.core.episode_engine import PRIVILEGED_JOINT_METHODS
+from microbench.planners import canonical_method, list_methods
 from microbench.rl.bc_training import BC_TEACHER_NAME, _teacher_action_from_observation
-from microbench.rl.envs import DaaParallelEnv, agent_id_from_name
+from microbench.rl.envs import DaaParallelEnv, agent_id_from_name, observation_from_public_snapshot
 from microbench.rl.policies import POLICY_NAMES, RlPolicy, make_policy
 from microbench.rl.policy_spec import policy_factory_from_spec
 from microbench.rl.schema import (
+    DEFAULT_REWARD_WEIGHTS,
     RL_ACTION_SCHEMA_VERSION,
     RL_INTERFACE_VERSION,
     RL_OBSERVATION_SCHEMA_VERSION,
@@ -29,6 +33,7 @@ from microbench.tools.baseline_validation_matrix import (
 
 LEARNED_DATASET_SCHEMA_VERSION = "0.1"
 LEARNED_DATASET_TEACHER_POLICY = "bc_teacher"
+LEARNED_DATASET_PLANNER_EXPERT_SOURCE = "planner_expert"
 LEARNED_DATASET_POLICY_CHOICES = (LEARNED_DATASET_TEACHER_POLICY, *POLICY_NAMES)
 LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID = "dense_swarm_hard_negative"
 LEARNED_DATASET_EXTRA_LANES = (
@@ -177,6 +182,33 @@ def _safe_action(policy_obj: RlPolicy, agent: str, observation: np.ndarray, acti
         raise ValueError(f"policy action for {agent} must have shape (3,), got {action.shape}")
     if not np.all(np.isfinite(action)):
         raise ValueError(f"policy action for {agent} must be finite")
+    return np.clip(action, -1.0, 1.0).astype(np.float32)
+
+
+def _planner_expert_name(planner_expert: str | None) -> str | None:
+    if planner_expert is None:
+        return None
+    key = str(planner_expert).strip()
+    if not key:
+        raise ValueError("planner_expert must be a non-empty planner method name")
+    canonical = canonical_method(key)
+    if canonical not in set(list_methods()):
+        raise ValueError(f"Unknown planner expert {planner_expert!r}; expected one of {','.join(list_methods())}")
+    if canonical == "learned_policy_spec":
+        raise ValueError("planner_expert cannot be learned_policy_spec; pass it as --policy-spec instead")
+    return canonical
+
+
+def _planner_expert_uses_privileged_state(planner_expert: str | None) -> bool:
+    if planner_expert is None:
+        return False
+    return canonical_method(str(planner_expert)) in PRIVILEGED_JOINT_METHODS
+
+
+def _action_from_planner_v_cmd(v_cmd: np.ndarray, *, v_max: float, planar: bool) -> np.ndarray:
+    action = np.asarray(v_cmd, dtype=np.float32).reshape(3) / max(1e-6, float(v_max))
+    if bool(planar):
+        action[1] = 0.0
     return np.clip(action, -1.0, 1.0).astype(np.float32)
 
 
@@ -446,11 +478,198 @@ def _collect_episode(
     return samples, episode_row
 
 
+def _collect_planner_expert_episode(
+    *,
+    episode_id: int,
+    lane: ValidationLane,
+    scenario_path: Path,
+    seed: int,
+    planner_expert: str,
+    max_steps: int | None,
+    save_replay: bool,
+    replay_dir: Path,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    engine = EpisodeEngine(
+        scenario_path=str(scenario_path),
+        method=str(planner_expert),
+        n_agents=int(lane.n_agents),
+        seed=int(seed),
+        comm_profile=str(lane.comm_profile),
+    )
+
+    samples: list[dict[str, Any]] = []
+    replay_path: Path | None = None
+    replay_fh = None
+    steps = 0
+    collision_ticks = 0
+    near_miss_ticks = 0
+    final_min_sep = float("nan")
+    api_error = ""
+    completed_agents = 0
+    controlled_agents = int(engine.n_agents)
+    dimension = "2d" if engine.planar else "3d"
+
+    try:
+        if save_replay:
+            replay_path = replay_dir / f"episode_{episode_id:05d}_{lane.lane_id}_seed{int(seed)}.jsonl"
+            replay_path.parent.mkdir(parents=True, exist_ok=True)
+            replay_fh = replay_path.open("w", encoding="utf-8")
+            replay_fh.write(
+                json.dumps(
+                    {
+                        "kind": "meta",
+                        "trace_type": "learned_dataset_replay",
+                        "episode_id": int(episode_id),
+                        "lane_id": lane.lane_id,
+                        "scenario": Path(str(scenario_path)).stem,
+                        "seed": int(seed),
+                        "n_agents": int(lane.n_agents),
+                        "comm_profile": lane.comm_profile,
+                        "action_source": LEARNED_DATASET_PLANNER_EXPERT_SOURCE,
+                        "policy": planner_expert,
+                        "planner_expert": planner_expert,
+                    },
+                    sort_keys=True,
+                )
+                + "\n"
+            )
+
+        cap = int(max_steps) if max_steps is not None else int(engine.steps)
+        top_k = int(engine.neighbor_cfg.get("top_k", 8))
+        while not engine.done() and steps < cap:
+            step = engine.step()
+            if step is None:
+                break
+            if replay_fh is not None:
+                replay_fh.write(
+                    json.dumps(
+                        {"kind": "frame", "episode_id": int(episode_id), "lane_id": lane.lane_id, "step": int(steps), **step.trace_frame()},
+                        default=_json_default,
+                    )
+                    + "\n"
+                )
+
+            if step.collisions > 0:
+                collision_ticks += 1
+            if step.near_misses > 0:
+                near_miss_ticks += 1
+            final_min_sep = float(step.min_sep)
+            collision_agents = {idx for pair in step.collision_pairs for idx in pair}
+            near_agents = {idx for pair in step.near_miss_pairs for idx in pair}
+            horizon_truncated = bool(engine.k >= engine.steps)
+
+            for idx, state in enumerate(step.planner_states):
+                if bool(state.done):
+                    continue
+                post_state = step.states[idx]
+                context = engine.agent_contexts[idx]
+                selected_obs = list(step.selected_obs[idx]) if idx < len(step.selected_obs) else []
+                obs = observation_from_public_snapshot(
+                    state=state,
+                    selected_obs=selected_obs,
+                    agent_id=int(idx),
+                    n_agents=int(engine.n_agents),
+                    top_k=top_k,
+                    t=float(step.t),
+                    priority=int(context.priority),
+                )
+                next_obs = observation_from_public_snapshot(
+                    state=post_state,
+                    selected_obs=selected_obs,
+                    agent_id=int(idx),
+                    n_agents=int(engine.n_agents),
+                    top_k=top_k,
+                    t=float(step.t + engine.dt),
+                    priority=int(context.priority),
+                )
+                action = _action_from_planner_v_cmd(
+                    np.asarray(step.v_cmds[idx], dtype=np.float32),
+                    v_max=float(state.v_max),
+                    planar=bool(engine.planar),
+                )
+                previous_goal_dist = float(np.linalg.norm(np.asarray(state.goal) - np.asarray(state.pos)))
+                next_goal_dist = float(np.linalg.norm(np.asarray(post_state.goal) - np.asarray(post_state.pos)))
+                newly_done = bool(post_state.done and not state.done)
+                collision = int(idx) in collision_agents
+                near_miss = int(idx) in near_agents
+                reward = (
+                    float(DEFAULT_REWARD_WEIGHTS["progress"]) * (previous_goal_dist - next_goal_dist)
+                    + float(DEFAULT_REWARD_WEIGHTS["time"])
+                    + (float(DEFAULT_REWARD_WEIGHTS["goal"]) if newly_done else 0.0)
+                    + (float(DEFAULT_REWARD_WEIGHTS["collision"]) if collision else 0.0)
+                    + (float(DEFAULT_REWARD_WEIGHTS["near_miss"]) if near_miss and not collision else 0.0)
+                )
+                terminated = bool(post_state.done)
+                truncated = bool(horizon_truncated and not terminated)
+                completed_agents += 1 if newly_done and terminated else 0
+                samples.append(
+                    {
+                        "episode_id": int(episode_id),
+                        "step": int(steps),
+                        "agent_id": int(idx),
+                        "lane_id": lane.lane_id,
+                        "category": lane.category,
+                        "scenario": Path(str(scenario_path)).stem,
+                        "seed": int(seed),
+                        "n_agents": int(lane.n_agents),
+                        "comm_profile": lane.comm_profile,
+                        "observation": obs,
+                        "action": action,
+                        "next_observation": next_obs,
+                        "reward": float(reward),
+                        "terminated": terminated,
+                        "truncated": truncated,
+                        "done": bool(terminated or truncated),
+                        "t_sec": float(step.t),
+                        "next_t_sec": float(step.t + engine.dt),
+                        "goal_dist_m": previous_goal_dist,
+                        "next_goal_dist_m": next_goal_dist,
+                        "collision": collision,
+                        "near_miss": near_miss,
+                        "min_sep_m": float(step.min_sep),
+                    }
+                )
+            steps += 1
+    except Exception as exc:  # pragma: no cover - exercised by CLI failure paths.
+        api_error = f"{type(exc).__name__}: {exc}"
+    finally:
+        if replay_fh is not None:
+            replay_fh.close()
+        engine.close()
+
+    sample_count = len(samples)
+    episode_row = {
+        "episode_id": int(episode_id),
+        "lane_id": lane.lane_id,
+        "category": lane.category,
+        "suite": lane.suite,
+        "scenario": Path(str(scenario_path)).stem,
+        "scenario_path": str(scenario_path),
+        "dimension": dimension,
+        "action_source": LEARNED_DATASET_PLANNER_EXPERT_SOURCE,
+        "policy": planner_expert,
+        "n_agents": int(lane.n_agents),
+        "seed": int(seed),
+        "comm_profile": lane.comm_profile,
+        "steps": int(steps),
+        "sample_count": int(sample_count),
+        "controlled_agents": int(controlled_agents),
+        "completion_rate": float(completed_agents / max(1, controlled_agents)),
+        "collision_ticks": int(collision_ticks),
+        "near_miss_ticks": int(near_miss_ticks),
+        "final_min_sep_m": final_min_sep,
+        "replay_path": "" if replay_path is None else str(replay_path),
+        "api_error": api_error,
+    }
+    return samples, episode_row
+
+
 def export_learned_policy_dataset(
     *,
     out_dir: str | Path,
     policy: str = LEARNED_DATASET_TEACHER_POLICY,
     policy_spec: str | Path | None = None,
+    planner_expert: str | None = None,
     lanes: tuple[str, ...] | list[str] | None = None,
     seeds: tuple[int, ...] | list[int] | None = None,
     duration_s: float | None = None,
@@ -500,7 +719,17 @@ def export_learned_policy_dataset(
             for seed in _seed_list_for_lane(lane, seed_override)
         )
     ]
-    policy_factory, action_source, policy_name, policy_spec_summary = _policy_factory(policy=policy, policy_spec=policy_spec)
+    planner_expert_name = _planner_expert_name(planner_expert)
+    if planner_expert_name is not None:
+        if policy_spec is not None:
+            raise ValueError("planner_expert cannot be combined with policy_spec")
+        policy_factory = None
+        action_source = LEARNED_DATASET_PLANNER_EXPERT_SOURCE
+        policy_name = planner_expert_name
+        policy_spec_summary = None
+    else:
+        policy_factory, action_source, policy_name, policy_spec_summary = _policy_factory(policy=policy, policy_spec=policy_spec)
+    privileged_label_source = _planner_expert_uses_privileged_state(planner_expert_name)
 
     if plan_only:
         report = {
@@ -514,6 +743,8 @@ def export_learned_policy_dataset(
             "out_dir": str(out),
             "action_source": action_source,
             "policy": policy_name,
+            "planner_expert": planner_expert_name,
+            "privileged_label_source": privileged_label_source,
             "policy_spec": policy_spec_summary,
             "lanes": [asdict(lane) for lane in selected],
             "extra_lane_ids": list(LEARNED_DATASET_EXTRA_LANE_IDS),
@@ -534,18 +765,32 @@ def export_learned_policy_dataset(
     episode_rows: list[dict[str, Any]] = []
     for entry in planned:
         lane = lane_by_id[str(entry["lane_id"])]
-        samples, episode_row = _collect_episode(
-            episode_id=int(entry["episode_id"]),
-            lane=lane,
-            scenario_path=scenario_paths[lane.lane_id],
-            seed=int(entry["seed"]),
-            policy_factory=policy_factory,
-            action_source=action_source,
-            policy_name=policy_name,
-            max_steps=max_steps,
-            save_replay=bool(save_replay),
-            replay_dir=out / "replay",
-        )
+        if planner_expert_name is not None:
+            samples, episode_row = _collect_planner_expert_episode(
+                episode_id=int(entry["episode_id"]),
+                lane=lane,
+                scenario_path=scenario_paths[lane.lane_id],
+                seed=int(entry["seed"]),
+                planner_expert=planner_expert_name,
+                max_steps=max_steps,
+                save_replay=bool(save_replay),
+                replay_dir=out / "replay",
+            )
+        else:
+            if policy_factory is None:
+                raise RuntimeError("dataset policy factory was not initialized")
+            samples, episode_row = _collect_episode(
+                episode_id=int(entry["episode_id"]),
+                lane=lane,
+                scenario_path=scenario_paths[lane.lane_id],
+                seed=int(entry["seed"]),
+                policy_factory=policy_factory,
+                action_source=action_source,
+                policy_name=policy_name,
+                max_steps=max_steps,
+                save_replay=bool(save_replay),
+                replay_dir=out / "replay",
+            )
         all_samples.extend(samples)
         episode_rows.append(episode_row)
 
@@ -581,6 +826,8 @@ def export_learned_policy_dataset(
         "manifest": str(manifest_path),
         "action_source": action_source,
         "policy": policy_name,
+        "planner_expert": planner_expert_name,
+        "privileged_label_source": privileged_label_source,
         "policy_spec": policy_spec_summary,
         "teacher_policy": BC_TEACHER_NAME if action_source == "bc_teacher" else None,
         "public_observations_only": True,

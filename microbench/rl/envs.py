@@ -61,6 +61,53 @@ def _clamp_speed(v: np.ndarray, v_max: float) -> np.ndarray:
     return (arr / n * float(v_max)).astype(np.float32)
 
 
+def observation_from_public_snapshot(
+    *,
+    state: Any,
+    selected_obs: list[dict[str, Any]],
+    agent_id: int,
+    n_agents: int,
+    top_k: int,
+    t: float,
+    priority: int | float = 0,
+) -> np.ndarray:
+    """Build the public RL observation vector from one local decision snapshot."""
+
+    goal_delta = np.asarray(state.goal, dtype=float) - np.asarray(state.pos, dtype=float)
+    goal_dist = float(np.linalg.norm(goal_delta))
+    goal_dir = _normalize(goal_delta)
+    base = [
+        *np.asarray(state.pos, dtype=float).tolist(),
+        *np.asarray(state.vel, dtype=float).tolist(),
+        *goal_dir.tolist(),
+        goal_dist,
+        1.0 if bool(getattr(state, "done", False)) else 0.0,
+        float(t),
+        float(agent_id) / max(1.0, float(int(n_agents) - 1)),
+        float(priority),
+        float(state.radius),
+        float(state.v_max),
+        float(state.a_max),
+    ]
+
+    features: list[float] = []
+    for obs in list(selected_obs)[: max(0, int(top_k))]:
+        rel_pos = np.asarray(obs.get("pos", [0.0, 0.0, 0.0]), dtype=float) - np.asarray(state.pos, dtype=float)
+        rel_vel = np.asarray(obs.get("vel", [0.0, 0.0, 0.0]), dtype=float) - np.asarray(state.vel, dtype=float)
+        features.extend(
+            [
+                1.0,
+                *rel_pos.tolist(),
+                *rel_vel.tolist(),
+                float(obs.get("radius", 0.0)),
+                float(obs.get("msg_age_sec", 0.0)),
+            ]
+        )
+    while len(features) < max(0, int(top_k)) * OBS_NEIGHBOR_DIM:
+        features.extend([0.0] * OBS_NEIGHBOR_DIM)
+    return np.asarray([*base, *features], dtype=np.float32)
+
+
 @dataclass
 class _ActionProvider:
     strict_actions: bool = True
@@ -295,45 +342,22 @@ class DaaParallelEnv(_PettingZooParallelEnv):
         if self._engine is None:
             return np.zeros(self._observation_dim(), dtype=np.float32)
         state = self._engine.states[int(agent_id)]
-        goal_delta = np.asarray(state.goal, dtype=float) - np.asarray(state.pos, dtype=float)
-        goal_dist = float(np.linalg.norm(goal_delta))
-        goal_dir = _normalize(goal_delta)
         t = float(self._engine.k * self._engine.dt)
         context = self._engine.agent_contexts[int(agent_id)]
-        base = [
-            *np.asarray(state.pos, dtype=float).tolist(),
-            *np.asarray(state.vel, dtype=float).tolist(),
-            *goal_dir.tolist(),
-            goal_dist,
-            1.0 if state.done else 0.0,
-            t,
-            float(agent_id) / max(1.0, float(self.n_agents - 1)),
-            float(context.priority),
-            float(state.radius),
-            float(state.v_max),
-            float(state.a_max),
-        ]
 
         neighbors: list[dict[str, Any]] = []
         if self._last_step is not None and int(agent_id) < len(self._last_step.selected_obs):
             neighbors = list(self._last_step.selected_obs[int(agent_id)])
         top_k = int((self._engine.neighbor_cfg if self._engine is not None else {}).get("top_k", 8))
-        features: list[float] = []
-        for obs in neighbors[:top_k]:
-            rel_pos = np.asarray(obs.get("pos", [0.0, 0.0, 0.0]), dtype=float) - np.asarray(state.pos, dtype=float)
-            rel_vel = np.asarray(obs.get("vel", [0.0, 0.0, 0.0]), dtype=float) - np.asarray(state.vel, dtype=float)
-            features.extend(
-                [
-                    1.0,
-                    *rel_pos.tolist(),
-                    *rel_vel.tolist(),
-                    float(obs.get("radius", 0.0)),
-                    float(obs.get("msg_age_sec", 0.0)),
-                ]
-            )
-        while len(features) < top_k * OBS_NEIGHBOR_DIM:
-            features.extend([0.0] * OBS_NEIGHBOR_DIM)
-        return np.asarray([*base, *features], dtype=np.float32)
+        return observation_from_public_snapshot(
+            state=state,
+            selected_obs=neighbors,
+            agent_id=int(agent_id),
+            n_agents=int(self.n_agents),
+            top_k=top_k,
+            t=t,
+            priority=int(context.priority),
+        )
 
     def _info(self, agent_id: int, *, reset: bool = False, **extra) -> dict:
         if self._engine is None:

@@ -49,6 +49,7 @@ from microbench.rl.hard_lane_training import (
     DEFAULT_SAMPLE_SELECTION_HARD_LANE_IDS,
     DEFAULT_SAMPLE_WEIGHT_CLEARANCE_THRESHOLD_M,
     run_learned_hard_lane_loop,
+    train_behavior_cloned_policy_from_dataset,
 )
 from microbench.rl.learned_dataset import (
     LEARNED_DATASET_EXTRA_LANE_IDS,
@@ -1315,6 +1316,7 @@ def _learned_dataset_export(args) -> None:
         out_dir=args.out_dir,
         policy=str(args.policy),
         policy_spec=args.policy_spec,
+        planner_expert=args.planner_expert,
         lanes=_parse_str_list(args.lanes) if args.lanes else None,
         seeds=_parse_int_list(args.seeds) if args.seeds else None,
         duration_s=args.duration_s,
@@ -1347,23 +1349,39 @@ def _learned_dataset_export(args) -> None:
 
 
 def _train_learned_bc(args) -> None:
-    report = train_behavior_cloned_policy(
-        out_dir=args.out_dir,
-        lanes=_parse_str_list(args.lanes) if args.lanes else None,
-        seeds=_parse_int_list(args.seeds) if args.seeds else None,
-        max_steps=int(args.max_steps),
-        hidden_dim=int(args.hidden_dim),
-        ridge=float(args.ridge),
-        rollout_noise_std=float(args.rollout_noise_std),
-        feature_normalization=str(args.feature_normalization),
-        feature_set=str(args.mlp_feature_set),
-        eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
-        eval_max_steps=args.eval_max_steps,
-        policy_name=str(args.policy_name),
-        seed=int(args.seed),
-        overwrite=bool(args.overwrite),
-        run_validation=not bool(args.skip_validation),
-    )
+    if args.dataset_manifest:
+        report = train_behavior_cloned_policy_from_dataset(
+            out_dir=args.out_dir,
+            dataset_manifest=args.dataset_manifest,
+            hidden_dim=int(args.hidden_dim),
+            ridge=float(args.ridge),
+            feature_normalization=str(args.feature_normalization),
+            feature_set=str(args.mlp_feature_set),
+            eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
+            eval_max_steps=args.eval_max_steps,
+            policy_name=str(args.policy_name),
+            seed=int(args.seed),
+            overwrite=bool(args.overwrite),
+            run_validation=not bool(args.skip_validation),
+        )
+    else:
+        report = train_behavior_cloned_policy(
+            out_dir=args.out_dir,
+            lanes=_parse_str_list(args.lanes) if args.lanes else None,
+            seeds=_parse_int_list(args.seeds) if args.seeds else None,
+            max_steps=int(args.max_steps),
+            hidden_dim=int(args.hidden_dim),
+            ridge=float(args.ridge),
+            rollout_noise_std=float(args.rollout_noise_std),
+            feature_normalization=str(args.feature_normalization),
+            feature_set=str(args.mlp_feature_set),
+            eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
+            eval_max_steps=args.eval_max_steps,
+            policy_name=str(args.policy_name),
+            seed=int(args.seed),
+            overwrite=bool(args.overwrite),
+            run_validation=not bool(args.skip_validation),
+        )
 
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
@@ -1448,6 +1466,7 @@ def _learned_hard_lane_loop(args) -> None:
         fill_with_fallback=not bool(args.no_fill_fallback),
         dataset_policy=str(args.dataset_policy),
         dataset_policy_spec=args.dataset_policy_spec,
+        dataset_planner_expert=args.dataset_planner_expert,
         dataset_max_steps=args.dataset_max_steps,
         dataset_shard_size=int(args.dataset_shard_size),
         save_replay=bool(args.save_replay),
@@ -2735,6 +2754,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_ldsex.add_argument("--policy-spec", default=None, help="Optional JSON/YAML external policy spec; overrides --policy")
     p_ldsex.add_argument(
+        "--planner-expert",
+        choices=list_methods(),
+        default=None,
+        help="Use a registered local planner as the action-label expert; overrides --policy",
+    )
+    p_ldsex.add_argument(
         "--lanes",
         default=None,
         help=(
@@ -2758,6 +2783,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Train a dependency-free behavior-cloned MLP policy from public RL validation-lane observations",
     )
     p_bc.add_argument("--out-dir", required=True, help="Output directory for model, policy spec, and training report")
+    p_bc.add_argument(
+        "--dataset-manifest",
+        default=None,
+        help="Train from a learned-dataset-export manifest instead of rolling out the built-in teacher",
+    )
     p_bc.add_argument(
         "--lanes",
         default=None,
@@ -2879,6 +2909,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Action source for hard-lane dataset shards",
     )
     p_hlt.add_argument("--dataset-policy-spec", default=None, help="Optional JSON/YAML policy spec for hard-lane dataset actions")
+    p_hlt.add_argument(
+        "--dataset-planner-expert",
+        choices=list_methods(),
+        default=None,
+        help="Use a registered local planner as the hard-lane action-label expert",
+    )
     p_hlt.add_argument("--dataset-max-steps", type=int, default=64, help="Step cap for each hard-lane dataset episode")
     p_hlt.add_argument("--dataset-shard-size", type=int, default=50000, help="Samples per compressed dataset shard")
     p_hlt.add_argument("--save-replay", action="store_true", help="Write lightweight per-step dataset replay JSONL files")

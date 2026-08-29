@@ -15,6 +15,7 @@ from microbench.learned import (
 from microbench.rl import (
     LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID,
     LEARNED_DATASET_BC_TRAINING_SOURCE,
+    LEARNED_DATASET_PLANNER_EXPERT_SOURCE,
     LEARNED_HARD_LANE_LOOP_SCHEMA_VERSION,
     run_learned_hard_lane_loop,
     select_hard_lanes_from_diagnostics,
@@ -191,6 +192,74 @@ def test_dataset_shard_training_writes_portable_policy(tmp_path: Path) -> None:
     assert model["training"]["sample_weighting"]["mode"] == "none"
     assert model["training"]["source_dataset_manifest"] == dataset["manifest"]
     assert model["training"]["source_policy"] == "local_lateral_avoidance_teacher_v0"
+
+
+def test_dataset_shard_training_records_planner_expert_source(tmp_path: Path) -> None:
+    dataset = export_learned_policy_dataset(
+        out_dir=tmp_path / "expert_dataset",
+        planner_expert="orca_heuristic",
+        lanes=["head_on"],
+        max_steps=2,
+        shard_size=16,
+    )
+
+    report = train_behavior_cloned_policy_from_dataset(
+        out_dir=tmp_path / "expert_training",
+        dataset_manifest=dataset["manifest"],
+        hidden_dim=8,
+        run_validation=False,
+    )
+
+    assert report["ok"] is True
+    assert report["source_policy"] == "orca_heuristic"
+    assert report["action_source"] == LEARNED_DATASET_PLANNER_EXPERT_SOURCE
+    assert report["teacher_policy"] is None
+    assert report["privileged_label_source"] is False
+    model = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
+    assert model["training"]["source_policy"] == "orca_heuristic"
+    assert model["training"]["action_source"] == LEARNED_DATASET_PLANNER_EXPERT_SOURCE
+    assert model["training"]["privileged_label_source"] is False
+
+
+def test_train_learned_bc_cli_can_train_from_dataset_manifest(tmp_path: Path) -> None:
+    dataset = export_learned_policy_dataset(
+        out_dir=tmp_path / "cli_expert_dataset",
+        planner_expert="orca_heuristic",
+        lanes=["head_on"],
+        max_steps=2,
+        shard_size=16,
+    )
+    out_dir = tmp_path / "cli_expert_training"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "microbench.cli",
+            "train-learned-bc",
+            "--out-dir",
+            str(out_dir),
+            "--dataset-manifest",
+            dataset["manifest"],
+            "--mlp-feature-set",
+            MLP_LEARNED_PUBLIC_OBS_FEATURE_SET,
+            "--hidden-dim",
+            "8",
+            "--skip-validation",
+            "--require-pass",
+            "--json",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    report = json.loads(proc.stdout)
+    assert report["ok"] is True
+    assert report["source_policy"] == "orca_heuristic"
+    assert report["action_source"] == LEARNED_DATASET_PLANNER_EXPERT_SOURCE
+    assert report["feature_set"] == MLP_LEARNED_PUBLIC_OBS_FEATURE_SET
+    assert (out_dir / "policy_spec.json").exists()
 
 
 def test_dataset_shard_training_can_use_public_obs_feature_set(tmp_path: Path) -> None:

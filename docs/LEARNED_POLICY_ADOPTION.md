@@ -68,7 +68,18 @@ python -m microbench.cli learned-dataset-export \
   --require-pass
 ```
 
-By default this uses the same transparent `bc_teacher` as the built-in trainer. Pass `--policy tiny_learned`, `--policy mlp_learned`, or `--policy-spec path/to/policy_spec.json` when you want shards from another policy. The export writes `learned_dataset_manifest.json`, `learned_dataset_episodes.csv`, compressed `shards/shard_*.npz`, and optional `replay/*.jsonl` files. Shards contain `observations`, `actions`, `next_observations`, rewards, termination flags, lane metadata, and collision/near-miss diagnostics under the public RL contract.
+By default this uses the same transparent `bc_teacher` as the built-in trainer. Pass `--policy tiny_learned`, `--policy mlp_learned`, `--policy-spec path/to/policy_spec.json`, or `--planner-expert dynamic_tube_dmpc` when you want shards from another policy or a stronger registered local optimizer. The export writes `learned_dataset_manifest.json`, `learned_dataset_episodes.csv`, compressed `shards/shard_*.npz`, and optional `replay/*.jsonl` files. Shards contain `observations`, `actions`, `next_observations`, rewards, termination flags, lane metadata, and collision/near-miss diagnostics under the public RL contract. Manifests disclose the action source and separately flag privileged oracle label sources.
+
+To train the portable MLP from exported optimizer labels, pass the dataset manifest back into `train-learned-bc`:
+
+```bash
+python -m microbench.cli train-learned-bc \
+  --out-dir runs_dmpc_distilled_policy \
+  --dataset-manifest runs_learned_dataset/learned_dataset_manifest.json \
+  --mlp-feature-set public_obs_v1 \
+  --eval-lanes head_on,crossing \
+  --require-pass
+```
 
 For an end-to-end development comparison, use:
 
@@ -98,7 +109,7 @@ python -m microbench.cli learned-hard-lane-loop \
   --require-pass
 ```
 
-The hard-lane loop selects canonical validation lanes from `unsafe`, `needs_training`, `fast_but_close`, `safe_but_slow`, and limited-evidence diagnostics, exports `learned-dataset-export` shards, trains the BC MLP from those shards, packages the trained policy, and writes a fresh learned leaderboard plus diagnostics report. Use `--target-policy` when the diagnostics file contains comparison fixtures but you only want to retrain one policy; `--fallback-lanes` can fill the remaining hard-lane budget with richer 3D/degraded lanes, `--mix-lanes` adds broad replay lanes so focused retraining does not erase general behavior, and `--sample-weighting safety` emphasizes collision, near-miss, and low-clearance samples in the supervised fit. Add `--mlp-feature-set public_obs_v1` for richer learned-policy experiments that should preserve individual neighbor slots instead of compacting them into aggregate avoidance features. Add `dense_swarm_hard_negative` to `--mix-lanes` only when you intentionally want the generated dense 3D swarm hard-negative training lane; it is not part of the default validation matrix. Use `--sample-selection hard_negative_windows` with that lane to keep only its hard-event or closest-approach temporal windows. New BC artifacts store per-feature mean/std normalization plus the sample-weighting and sample-selection recipes by default.
+The hard-lane loop selects canonical validation lanes from `unsafe`, `needs_training`, `fast_but_close`, `safe_but_slow`, and limited-evidence diagnostics, exports `learned-dataset-export` shards, trains the BC MLP from those shards, packages the trained policy, and writes a fresh learned leaderboard plus diagnostics report. Use `--target-policy` when the diagnostics file contains comparison fixtures but you only want to retrain one policy; `--fallback-lanes` can fill the remaining hard-lane budget with richer 3D/degraded lanes, `--mix-lanes` adds broad replay lanes so focused retraining does not erase general behavior, and `--dataset-planner-expert dynamic_tube_dmpc` distills optimizer-generated action labels instead of the default BC teacher. `--sample-weighting safety` emphasizes collision, near-miss, and low-clearance samples in the supervised fit. Add `--mlp-feature-set public_obs_v1` for richer learned-policy experiments that should preserve individual neighbor slots instead of compacting them into aggregate avoidance features. Add `dense_swarm_hard_negative` to `--mix-lanes` only when you intentionally want the generated dense 3D swarm hard-negative training lane; it is not part of the default validation matrix. Use `--sample-selection hard_negative_windows` with that lane to keep only its hard-event or closest-approach temporal windows. New BC artifacts store per-feature mean/std normalization plus the label source, sample-weighting, and sample-selection recipes by default.
 
 For a closed-loop learned-policy iteration path, start from any portable `mlp_json` policy and run:
 

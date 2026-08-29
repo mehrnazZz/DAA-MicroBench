@@ -9,6 +9,7 @@ import numpy as np
 
 from microbench.rl import (
     LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID,
+    LEARNED_DATASET_PLANNER_EXPERT_SOURCE,
     LEARNED_DATASET_SCHEMA_VERSION,
     LEARNED_DATASET_TEACHER_POLICY,
     export_learned_policy_dataset,
@@ -41,6 +42,7 @@ def test_learned_dataset_export_writes_public_teacher_samples_and_replay(tmp_pat
     assert Path(report["episodes_csv"]).exists()
     assert report["public_observations_only"] is True
     assert report["privileged_global_state"] is False
+    assert report["privileged_label_source"] is False
 
     first_shard = np.load(report["shards"][0])
     assert first_shard["observations"].shape == (5, 89)
@@ -68,6 +70,40 @@ def test_learned_dataset_export_writes_public_teacher_samples_and_replay(tmp_pat
     assert json.loads(lines[1])["lane_id"] == "head_on"
 
 
+def test_learned_dataset_export_supports_planner_expert_labels(tmp_path: Path) -> None:
+    out_dir = tmp_path / "planner_expert_dataset"
+    report = export_learned_policy_dataset(
+        out_dir=out_dir,
+        planner_expert="dynamic_tube_dmpc",
+        lanes=["head_on"],
+        max_steps=2,
+        shard_size=16,
+        save_replay=True,
+    )
+
+    assert report["ok"] is True
+    assert report["action_source"] == LEARNED_DATASET_PLANNER_EXPERT_SOURCE
+    assert report["policy"] == "dynamic_tube_dmpc"
+    assert report["planner_expert"] == "dynamic_tube_dmpc"
+    assert report["teacher_policy"] is None
+    assert report["public_observations_only"] is True
+    assert report["privileged_global_state"] is False
+    assert report["privileged_label_source"] is False
+    assert report["sample_count"] == 8
+
+    shard = np.load(report["shards"][0])
+    assert shard["observations"].shape == (8, 89)
+    assert shard["actions"].shape == (8, 3)
+    assert np.all(np.isfinite(shard["observations"]))
+    assert np.all(np.isfinite(shard["actions"]))
+    assert np.max(np.abs(shard["actions"])) <= 1.0
+
+    replay_path = Path(report["episodes"][0]["replay_path"])
+    meta = json.loads(replay_path.read_text(encoding="utf-8").splitlines()[0])
+    assert meta["action_source"] == LEARNED_DATASET_PLANNER_EXPERT_SOURCE
+    assert meta["planner_expert"] == "dynamic_tube_dmpc"
+
+
 def test_learned_dataset_export_plan_only(tmp_path: Path) -> None:
     report = export_learned_policy_dataset(
         out_dir=tmp_path / "learned_dataset_plan",
@@ -83,6 +119,21 @@ def test_learned_dataset_export_plan_only(tmp_path: Path) -> None:
     assert report["sample_count"] == 0
     assert {entry["lane_id"] for entry in report["matrix"]} == {"head_on", "crossing"}
     assert Path(tmp_path / "learned_dataset_plan" / "learned_dataset_manifest.json").exists()
+
+
+def test_learned_dataset_export_plan_only_discloses_privileged_planner_expert(tmp_path: Path) -> None:
+    report = export_learned_policy_dataset(
+        out_dir=tmp_path / "planner_expert_plan",
+        lanes=["head_on"],
+        planner_expert="centralized_oracle",
+        plan_only=True,
+    )
+
+    assert report["plan_only"] is True
+    assert report["action_source"] == LEARNED_DATASET_PLANNER_EXPERT_SOURCE
+    assert report["policy"] == "centralized_oracle"
+    assert report["planner_expert"] == "centralized_oracle"
+    assert report["privileged_label_source"] is True
 
 
 def test_learned_dataset_export_supports_dense_swarm_hard_negative_lane(tmp_path: Path) -> None:
@@ -118,6 +169,8 @@ def test_learned_dataset_export_cli_smoke(tmp_path: Path) -> None:
             str(out_dir),
             "--policy",
             "bc_teacher",
+            "--planner-expert",
+            "orca_heuristic",
             "--lanes",
             "head_on",
             "--max-steps",
@@ -136,6 +189,8 @@ def test_learned_dataset_export_cli_smoke(tmp_path: Path) -> None:
 
     report = json.loads(proc.stdout)
     assert report["ok"] is True
+    assert report["action_source"] == LEARNED_DATASET_PLANNER_EXPERT_SOURCE
+    assert report["policy"] == "orca_heuristic"
     assert report["sample_count"] == 8
     assert len(report["shards"]) == 2
     assert (out_dir / "learned_dataset_manifest.json").exists()
