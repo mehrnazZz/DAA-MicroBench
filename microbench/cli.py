@@ -25,6 +25,7 @@ from microbench.rl.closed_loop_training import (
     CLOSED_LOOP_BROAD_3D_HOLDOUT_SCENARIOS,
     CLOSED_LOOP_HOLDOUT_PROFILE_CHOICES,
     CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE,
+    CLOSED_LOOP_PER_LANE_CLEARANCE_TOLERANCE_M,
     CLOSED_LOOP_POLICY_NAME,
     CLOSED_LOOP_SEARCH_STRATEGY_CHOICES,
     CLOSED_LOOP_TRAINING_LANE_PROFILE_CHOICES,
@@ -1529,6 +1530,7 @@ def _learned_closed_loop_finetune(args) -> None:
         max_near_miss_ticks=None if args.max_near_miss_ticks is None else int(args.max_near_miss_ticks),
         allow_near_miss_regression=bool(args.allow_near_miss_regression),
         require_per_lane_safety=bool(args.require_per_lane_safety),
+        per_lane_clearance_tolerance_m=float(args.per_lane_clearance_tolerance_m),
         eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
         eval_max_steps=args.eval_max_steps,
         holdout_profile=str(args.holdout_profile),
@@ -1602,6 +1604,7 @@ def _learned_closed_loop_study(args) -> None:
         max_near_miss_ticks=None if args.max_near_miss_ticks is None else int(args.max_near_miss_ticks),
         allow_near_miss_regression=bool(args.allow_near_miss_regression),
         require_per_lane_safety=bool(args.require_per_lane_safety),
+        per_lane_clearance_tolerance_m=float(args.per_lane_clearance_tolerance_m),
         eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
         eval_max_steps=args.eval_max_steps,
         holdout_profile=str(args.holdout_profile),
@@ -3009,6 +3012,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Reject candidates that improve overall score while regressing any individual training lane's safety",
     )
+    p_clft.add_argument(
+        "--per-lane-clearance-tolerance-m",
+        type=float,
+        default=CLOSED_LOOP_PER_LANE_CLEARANCE_TOLERANCE_M,
+        help="Clearance tolerance used by --require-per-lane-safety before treating a lane as regressed",
+    )
     p_clft.add_argument("--eval-lanes", default=None, help="Comma-separated validation lane ids for the final tuned spec")
     p_clft.add_argument("--eval-max-steps", type=int, default=12, help="Validation rollout step cap for the final tuned spec")
     p_clft.add_argument(
@@ -3120,6 +3129,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--require-per-lane-safety",
         action="store_true",
         help="Reject candidates that improve overall score while regressing any individual training lane's safety",
+    )
+    p_cls.add_argument(
+        "--per-lane-clearance-tolerance-m",
+        type=float,
+        default=CLOSED_LOOP_PER_LANE_CLEARANCE_TOLERANCE_M,
+        help="Clearance tolerance used by --require-per-lane-safety before treating a lane as regressed",
     )
     p_cls.add_argument("--eval-lanes", default=None, help="Comma-separated validation lane ids for the final tuned spec")
     p_cls.add_argument("--eval-max-steps", type=int, default=12, help="Validation rollout step cap for the final tuned spec")

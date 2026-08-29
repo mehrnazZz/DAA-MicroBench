@@ -111,6 +111,7 @@ python -m microbench.cli learned-closed-loop-finetune \
   --search-strategy two_stage \
   --antithetic-sampling \
   --require-per-lane-safety \
+  --per-lane-clearance-tolerance-m 0.01 \
   --generations 4 \
   --population-size 12 \
   --train-max-steps 24 \
@@ -122,7 +123,7 @@ python -m microbench.cli learned-closed-loop-finetune \
   --require-promotion
 ```
 
-The fine-tuner evaluates candidates inside `DaaParallelEnv`, records every candidate rollout in CSV, writes `candidate_lane_summary.csv` for lane-by-lane review, and writes a new portable `mlp_json` policy only after applying collision, clearance, and near-miss guardrails. Use `--trainable-parameters output_head` for conservative audits and `all_layers` for stronger learned-baseline development. `--search-strategy two_stage` runs output-head warmup before all-layer refinement, `--antithetic-sampling` tests plus/minus perturbation pairs, and `--require-per-lane-safety` prevents an aggregate improvement from hiding an individual-lane safety regression. `--require-promotion` adds broad 3D holdout non-regression before the report marks the result as a promotion candidate. Treat this as the benchmark-native closed-loop training spine for stronger learned baselines; it is still public-alpha infrastructure.
+The fine-tuner evaluates candidates inside `DaaParallelEnv`, records every candidate rollout in CSV, writes `candidate_lane_summary.csv` for lane-by-lane review, and writes a new portable `mlp_json` policy only after applying collision, clearance, and near-miss guardrails. Use `--trainable-parameters output_head` for conservative audits and `all_layers` for stronger learned-baseline development. `--search-strategy two_stage` runs output-head warmup before all-layer refinement, `--antithetic-sampling` tests plus/minus perturbation pairs, and `--require-per-lane-safety` prevents an aggregate improvement from hiding an individual-lane safety regression beyond the recorded `--per-lane-clearance-tolerance-m`. `--require-promotion` adds broad 3D holdout non-regression before the report marks the result as a promotion candidate. Treat this as the benchmark-native closed-loop training spine for stronger learned baselines; it is still public-alpha infrastructure.
 
 Use `--lane-profile validation_plus_broad_3d` to train on canonical validation lanes plus 3D stress geometry (`sphere_swap_3d_training`, `dense_swarm_3d_training`, `merge_3d_training`, `sensor_volume_3d_training`, and `noncooperative_intruder_3d_training`). Explicit `--lanes` remains available for targeted ablations.
 
@@ -137,6 +138,7 @@ python -m microbench.cli learned-closed-loop-study \
   --search-strategy two_stage \
   --antithetic-sampling \
   --require-per-lane-safety \
+  --per-lane-clearance-tolerance-m 0.01 \
   --generations 4 \
   --population-size 12 \
   --train-max-steps 24 \

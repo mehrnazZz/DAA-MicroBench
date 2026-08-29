@@ -440,6 +440,7 @@ python -m microbench.cli learned-closed-loop-finetune \
   --search-strategy two_stage \
   --antithetic-sampling \
   --require-per-lane-safety \
+  --per-lane-clearance-tolerance-m 0.01 \
   --generations 4 \
   --population-size 12 \
   --train-max-steps 24 \
@@ -451,7 +452,7 @@ python -m microbench.cli learned-closed-loop-finetune \
   --require-promotion
 ```
 
-This evaluates perturbed MLP parameters through the same parallel RL wrapper, accepts only non-regressing candidates under collision, clearance, and near-miss guardrails, writes aggregate candidate rows plus `candidate_lane_summary.csv`, and can compare the final policy against its base on a broad 3D holdout before marking it as a promotion candidate. `--search-strategy two_stage` runs output-head warmup before all-layer refinement, while `--antithetic-sampling` and `--require-per-lane-safety` make the search less blind and easier to audit.
+This evaluates perturbed MLP parameters through the same parallel RL wrapper, accepts only non-regressing candidates under collision, clearance, and near-miss guardrails, writes aggregate candidate rows plus `candidate_lane_summary.csv`, and can compare the final policy against its base on a broad 3D holdout before marking it as a promotion candidate. `--search-strategy two_stage` runs output-head warmup before all-layer refinement, while `--antithetic-sampling`, `--require-per-lane-safety`, and the recorded `--per-lane-clearance-tolerance-m` make the search less blind and easier to audit.
 
 For the full reproducible study path, use:
 
@@ -464,6 +465,7 @@ python -m microbench.cli learned-closed-loop-study \
   --search-strategy two_stage \
   --antithetic-sampling \
   --require-per-lane-safety \
+  --per-lane-clearance-tolerance-m 0.01 \
   --holdout-profile broad_3d_stress \
   --comparison-bundle runs_bc_mlp_evidence/bc_bundle \
   --bundle-max-runs 1 \

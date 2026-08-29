@@ -1159,6 +1159,7 @@ python -m microbench.cli learned-closed-loop-finetune \
   --search-strategy two_stage \
   --antithetic-sampling \
   --require-per-lane-safety \
+  --per-lane-clearance-tolerance-m 0.01 \
   --generations 4 \
   --population-size 12 \
   --train-max-steps 24 \
@@ -1171,7 +1172,7 @@ python -m microbench.cli learned-closed-loop-finetune \
   --require-promotion
 ```
 
-This writes `closed_loop_mlp_policy.json`, `policy_spec.json`, `candidate_summary.csv`, `candidate_lane_summary.csv`, `candidate_episodes.csv`, `closed_loop_training_report.json`, optional RL validation evidence, and, when enabled, `broad_3d_holdout/` with base-versus-tuned `results.csv`, `summary.csv`, `comparison_summary.csv`, and `comparison_report.json`. `--trainable-parameters output_head` is the conservative audit mode; `all_layers` is the stronger search mode for learned-baseline development. `--search-strategy two_stage` warms up the output head before all-layer refinement, `--antithetic-sampling` evaluates plus/minus perturbation pairs, and `--require-per-lane-safety` rejects candidates that hide a lane-level safety regression behind an aggregate score improvement. `--require-pass` checks structural/training gates; `--require-promotion` additionally requires broad 3D holdout safety, clearance, and `score_v0` non-regression. Treat it as benchmark-native closed-loop training infrastructure, not as a final SOTA RL algorithm yet.
+This writes `closed_loop_mlp_policy.json`, `policy_spec.json`, `candidate_summary.csv`, `candidate_lane_summary.csv`, `candidate_episodes.csv`, `closed_loop_training_report.json`, optional RL validation evidence, and, when enabled, `broad_3d_holdout/` with base-versus-tuned `results.csv`, `summary.csv`, `comparison_summary.csv`, and `comparison_report.json`. `--trainable-parameters output_head` is the conservative audit mode; `all_layers` is the stronger search mode for learned-baseline development. `--search-strategy two_stage` warms up the output head before all-layer refinement, `--antithetic-sampling` evaluates plus/minus perturbation pairs, and `--require-per-lane-safety` rejects candidates that hide a lane-level safety regression behind an aggregate score improvement. `--per-lane-clearance-tolerance-m` is recorded in the lane CSV and should stay small; it prevents centimeter-scale numerical jitter from blocking otherwise identical safety behavior. `--require-pass` checks structural/training gates; `--require-promotion` additionally requires broad 3D holdout safety, clearance, and `score_v0` non-regression. Treat it as benchmark-native closed-loop training infrastructure, not as a final SOTA RL algorithm yet.
 
 Use `--lane-profile validation_plus_broad_3d` when you want closed-loop training to include the canonical validation lanes plus broad 3D stress training lanes (`sphere_swap_3d_training`, `dense_swarm_3d_training`, `merge_3d_training`, `sensor_volume_3d_training`, and `noncooperative_intruder_3d_training`). Explicit `--lanes` still overrides the profile.
 
@@ -1188,6 +1189,7 @@ python -m microbench.cli learned-closed-loop-study \
   --search-strategy two_stage \
   --antithetic-sampling \
   --require-per-lane-safety \
+  --per-lane-clearance-tolerance-m 0.01 \
   --generations 4 \
   --population-size 12 \
   --train-max-steps 24 \

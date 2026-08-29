@@ -79,6 +79,7 @@ def test_closed_loop_finetune_writes_guarded_policy_spec(tmp_path: Path) -> None
     assert model["training"]["search_strategy"] == "single_stage"
     assert model["training"]["antithetic_sampling"] is False
     assert model["training"]["require_per_lane_safety"] is False
+    assert model["training"]["per_lane_clearance_tolerance_m"] == 0.001
     assert model["training"]["public_observations_only"] is True
     assert model["training"]["privileged_global_state"] is False
     assert model["training"]["base_policy_spec"] == str(base_spec)
@@ -107,6 +108,7 @@ def test_closed_loop_finetune_reports_lanes_and_two_stage_antithetic_search(tmp_
         stage2_generations=1,
         antithetic_sampling=True,
         require_per_lane_safety=True,
+        per_lane_clearance_tolerance_m=0.01,
         sigma=0.01,
         eval_lanes=["head_on"],
         eval_max_steps=2,
@@ -118,6 +120,7 @@ def test_closed_loop_finetune_reports_lanes_and_two_stage_antithetic_search(tmp_
     assert report["search_strategy"] == "two_stage"
     assert report["antithetic_sampling"] is True
     assert report["require_per_lane_safety"] is True
+    assert report["per_lane_clearance_tolerance_m"] == 0.01
     assert [stage["stage"] for stage in report["search_plan"]] == ["output_head_warmup", "all_layers_refine"]
 
     with Path(report["candidate_summary_csv"]).open("r", newline="", encoding="utf-8") as f:
@@ -131,6 +134,7 @@ def test_closed_loop_finetune_reports_lanes_and_two_stage_antithetic_search(tmp_
     assert len(lane_rows) == report["candidate_count"]
     assert {row["lane_id"] for row in lane_rows} == {"head_on"}
     assert all(row["score"] for row in lane_rows)
+    assert all(row["per_lane_clearance_tolerance_m"] == "0.01" for row in lane_rows)
 
 
 def test_closed_loop_training_lane_profile_adds_broad_3d_lanes() -> None:

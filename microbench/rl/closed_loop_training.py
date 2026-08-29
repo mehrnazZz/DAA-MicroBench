@@ -42,6 +42,7 @@ CLOSED_LOOP_SEARCH_STRATEGY_CHOICES = ("single_stage", "two_stage")
 CLOSED_LOOP_TRAINING_LANE_PROFILE_CHOICES = ("validation", "broad_3d_stress", "validation_plus_broad_3d")
 CLOSED_LOOP_HOLDOUT_PROFILE_CHOICES = ("none", "broad_3d_stress")
 CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE = 1.0
+CLOSED_LOOP_PER_LANE_CLEARANCE_TOLERANCE_M = 1e-3
 CLOSED_LOOP_BROAD_3D_HOLDOUT_SCENARIOS = (
     "sphere_swap_3d_medium",
     "dense_swarm_3d_hard",
@@ -187,6 +188,8 @@ CLOSED_LOOP_LANE_SUMMARY_FIELDS = (
     "base_near_miss_ticks",
     "min_clearance_m",
     "base_min_clearance_m",
+    "clearance_delta_vs_base_m",
+    "per_lane_clearance_tolerance_m",
     "completion_rate_mean",
     "base_completion_rate_mean",
     "total_reward_mean",
@@ -868,6 +871,7 @@ def _lane_safety_regressed(
     metrics: dict[str, Any],
     base_metrics: dict[str, Any] | None,
     allow_near_miss_regression: bool,
+    clearance_tolerance_m: float,
 ) -> bool:
     if base_metrics is None:
         return False
@@ -877,7 +881,8 @@ def _lane_safety_regressed(
         return True
     current_clearance = _finite_float(metrics.get("min_clearance_m"))
     base_clearance = _finite_float(base_metrics.get("min_clearance_m"))
-    if base_clearance is not None and (current_clearance is None or current_clearance < base_clearance - 1e-9):
+    tolerance = max(0.0, float(clearance_tolerance_m))
+    if base_clearance is not None and (current_clearance is None or current_clearance < base_clearance - tolerance - 1e-9):
         return True
     return False
 
@@ -888,6 +893,7 @@ def _candidate_lane_summary_rows(
     rows: list[dict[str, Any]],
     objective: dict[str, Any],
     base_by_lane: dict[str, dict[str, Any]] | None,
+    per_lane_clearance_tolerance_m: float,
 ) -> list[dict[str, Any]]:
     summaries: list[dict[str, Any]] = []
     for lane_id, lane_rows in sorted(_rows_by_lane(rows).items()):
@@ -896,6 +902,8 @@ def _candidate_lane_summary_rows(
         base = (base_by_lane or {}).get(lane_id)
         current_score = _finite_float(metrics.get("score"))
         base_score = _finite_float((base or {}).get("score"))
+        current_clearance = _finite_float(metrics.get("min_clearance_m"))
+        base_clearance = _finite_float((base or {}).get("min_clearance_m"))
         summaries.append(
             {
                 "candidate_id": str(candidate.get("candidate_id", "")),
@@ -923,6 +931,7 @@ def _candidate_lane_summary_rows(
                     metrics=metrics,
                     base_metrics=base,
                     allow_near_miss_regression=bool(objective.get("allow_near_miss_regression", False)),
+                    clearance_tolerance_m=float(per_lane_clearance_tolerance_m),
                 ),
                 "collision_ticks": metrics.get("collision_ticks"),
                 "base_collision_ticks": "" if base is None else base.get("collision_ticks"),
@@ -930,6 +939,10 @@ def _candidate_lane_summary_rows(
                 "base_near_miss_ticks": "" if base is None else base.get("near_miss_ticks"),
                 "min_clearance_m": metrics.get("min_clearance_m"),
                 "base_min_clearance_m": "" if base is None else base.get("min_clearance_m"),
+                "clearance_delta_vs_base_m": ""
+                if current_clearance is None or base_clearance is None
+                else round(float(current_clearance - base_clearance), 6),
+                "per_lane_clearance_tolerance_m": float(per_lane_clearance_tolerance_m),
                 "completion_rate_mean": metrics.get("completion_rate_mean"),
                 "base_completion_rate_mean": "" if base is None else base.get("completion_rate_mean"),
                 "total_reward_mean": metrics.get("total_reward_mean"),
@@ -1112,6 +1125,7 @@ def _training_disclosure(
     search_plan: list[dict[str, Any]],
     antithetic_sampling: bool,
     require_per_lane_safety: bool,
+    per_lane_clearance_tolerance_m: float,
     holdout_config: dict[str, Any],
 ) -> dict[str, Any]:
     stage_trainables = {
@@ -1146,6 +1160,7 @@ def _training_disclosure(
         "search_plan": search_plan,
         "antithetic_sampling": bool(antithetic_sampling),
         "require_per_lane_safety": bool(require_per_lane_safety),
+        "per_lane_clearance_tolerance_m": float(per_lane_clearance_tolerance_m),
         "updated_parameters": updated,
         "holdout": holdout_config,
         "external_data": "none",
@@ -1182,6 +1197,7 @@ def fine_tune_closed_loop_policy(
     max_near_miss_ticks: int | None = None,
     allow_near_miss_regression: bool = False,
     require_per_lane_safety: bool = False,
+    per_lane_clearance_tolerance_m: float = CLOSED_LOOP_PER_LANE_CLEARANCE_TOLERANCE_M,
     eval_lanes: tuple[str, ...] | list[str] | None = None,
     eval_max_steps: int | None = 12,
     holdout_profile: str = "none",
@@ -1239,6 +1255,8 @@ def fine_tune_closed_loop_policy(
         raise ValueError("holdout_max_runs must be >= 0 when provided")
     if float(holdout_score_tolerance) < 0.0 or not math.isfinite(float(holdout_score_tolerance)):
         raise ValueError("holdout_score_tolerance must be finite and >= 0")
+    if float(per_lane_clearance_tolerance_m) < 0.0 or not math.isfinite(float(per_lane_clearance_tolerance_m)):
+        raise ValueError("per_lane_clearance_tolerance_m must be finite and >= 0")
 
     trainable_parameters = _trainable_parameters(trainable_parameters)
     search_strategy = _search_strategy(search_strategy)
@@ -1319,6 +1337,7 @@ def fine_tune_closed_loop_policy(
         rows=base_episode_rows,
         objective=objective,
         base_by_lane=None,
+        per_lane_clearance_tolerance_m=float(per_lane_clearance_tolerance_m),
     )
     _enrich_with_lane_summaries(base_candidate, base_lane_rows, require_per_lane_safety=False)
     for lane_row in base_lane_rows:
@@ -1389,6 +1408,7 @@ def fine_tune_closed_loop_policy(
                         rows=rows,
                         objective=objective,
                         base_by_lane=base_lane_by_id,
+                        per_lane_clearance_tolerance_m=float(per_lane_clearance_tolerance_m),
                     )
                     _enrich_with_lane_summaries(
                         metrics,
@@ -1443,6 +1463,7 @@ def fine_tune_closed_loop_policy(
         search_plan=planned_search,
         antithetic_sampling=bool(antithetic_sampling),
         require_per_lane_safety=bool(require_per_lane_safety),
+        per_lane_clearance_tolerance_m=float(per_lane_clearance_tolerance_m),
         holdout_config=holdout_config,
     )
     training.update(
@@ -1451,6 +1472,7 @@ def fine_tune_closed_loop_policy(
             "best_metrics": best_metrics,
             "best_candidate_id": best_candidate_id,
             "candidate_lane_summary_csv": str(lane_summary_csv),
+            "per_lane_clearance_tolerance_m": float(per_lane_clearance_tolerance_m),
             "base_policy_name": wrapper_spec.get("policy_name"),
         }
     )
@@ -1516,6 +1538,20 @@ def fine_tune_closed_loop_policy(
         _check("candidate_metrics_finite", all(math.isfinite(float(row.get("score", float("nan")))) for row in candidate_rows), {}),
         _check("output_policy_written", bool(model_path.exists() and spec_path.exists()), {"model_artifact": str(model_path), "policy_spec": str(spec_path)}),
         _check(
+            "final_training_objective_feasible",
+            bool(best_metrics.get("feasible")),
+            {
+                "best_candidate_id": best_candidate_id,
+                "collision_ticks": best_metrics.get("collision_ticks"),
+                "near_miss_ticks": best_metrics.get("near_miss_ticks"),
+                "min_clearance_m": best_metrics.get("min_clearance_m"),
+                "max_collision_ticks": objective.get("max_collision_ticks"),
+                "max_near_miss_ticks": objective.get("max_near_miss_ticks"),
+                "min_clearance_required_m": objective.get("min_clearance_m"),
+            },
+            severity="behavior",
+        ),
+        _check(
             "final_no_collision_regression",
             no_collision_regression,
             {"base_collision_ticks": base_metrics["collision_ticks"], "best_collision_ticks": best_metrics["collision_ticks"]},
@@ -1580,6 +1616,7 @@ def fine_tune_closed_loop_policy(
         "search_plan": planned_search,
         "antithetic_sampling": bool(antithetic_sampling),
         "require_per_lane_safety": bool(require_per_lane_safety),
+        "per_lane_clearance_tolerance_m": float(per_lane_clearance_tolerance_m),
         "sigma": float(sigma),
         "sigma_decay": float(sigma_decay),
         "min_delta": float(min_delta),
@@ -1605,6 +1642,7 @@ __all__ = [
     "CLOSED_LOOP_HOLDOUT_PROFILE_CHOICES",
     "CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE",
     "CLOSED_LOOP_OBJECTIVE_DEFAULTS",
+    "CLOSED_LOOP_PER_LANE_CLEARANCE_TOLERANCE_M",
     "CLOSED_LOOP_POLICY_NAME",
     "CLOSED_LOOP_SEARCH_STRATEGY_CHOICES",
     "CLOSED_LOOP_BROAD_3D_TRAINING_LANE_IDS",
