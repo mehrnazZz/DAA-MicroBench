@@ -38,6 +38,7 @@ from microbench.types import RunSpec
 CLOSED_LOOP_TRAINING_SCHEMA_VERSION = "0.1"
 CLOSED_LOOP_POLICY_NAME = "closed_loop_mlp_learned"
 CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES = ("output_head", "all_layers")
+CLOSED_LOOP_SEARCH_STRATEGY_CHOICES = ("single_stage", "two_stage")
 CLOSED_LOOP_TRAINING_LANE_PROFILE_CHOICES = ("validation", "broad_3d_stress", "validation_plus_broad_3d")
 CLOSED_LOOP_HOLDOUT_PROFILE_CHOICES = ("none", "broad_3d_stress")
 CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE = 1.0
@@ -123,6 +124,8 @@ CLOSED_LOOP_OBJECTIVE_DEFAULTS = {
 }
 CLOSED_LOOP_CANDIDATE_FIELDS = (
     "candidate_id",
+    "stage",
+    "trainable_parameters",
     "generation",
     "candidate_index",
     "parent_candidate_id",
@@ -137,15 +140,59 @@ CLOSED_LOOP_CANDIDATE_FIELDS = (
     "total_reward_mean",
     "api_error_count",
     "finite",
+    "lane_count",
+    "lane_safety_regression_count",
+    "lane_score_mean",
+    "lane_score_max",
+    "lane_score_improved_count",
     "sigma",
 )
 CLOSED_LOOP_EPISODE_FIELDS = (
     "candidate_id",
+    "stage",
+    "trainable_parameters",
     "generation",
     "candidate_index",
     "accepted",
     "feasible",
+    "lane_id",
+    "category",
+    "duration_s",
     *RL_ROLLOUT_FIELDS,
+)
+CLOSED_LOOP_LANE_SUMMARY_FIELDS = (
+    "candidate_id",
+    "stage",
+    "trainable_parameters",
+    "generation",
+    "candidate_index",
+    "parent_candidate_id",
+    "accepted",
+    "feasible",
+    "lane_id",
+    "category",
+    "suite",
+    "scenario",
+    "comm_profile",
+    "n_agents",
+    "duration_s",
+    "seed_count",
+    "score",
+    "base_score",
+    "score_delta_vs_base",
+    "safety_regression",
+    "collision_ticks",
+    "base_collision_ticks",
+    "near_miss_ticks",
+    "base_near_miss_ticks",
+    "min_clearance_m",
+    "base_min_clearance_m",
+    "completion_rate_mean",
+    "base_completion_rate_mean",
+    "total_reward_mean",
+    "api_error_count",
+    "finite",
+    "row_count",
 )
 CLOSED_LOOP_HOLDOUT_COMPARISON_FIELDS = (
     "label",
@@ -597,6 +644,68 @@ def _trainable_parameters(value: str) -> str:
     return normalized
 
 
+def _search_strategy(value: str) -> str:
+    normalized = str(value).strip()
+    if normalized not in CLOSED_LOOP_SEARCH_STRATEGY_CHOICES:
+        raise ValueError("search_strategy must be one of " + ",".join(CLOSED_LOOP_SEARCH_STRATEGY_CHOICES))
+    return normalized
+
+
+def _nonnegative_int_or_none(value: int | None, name: str) -> int | None:
+    if value is None:
+        return None
+    out = int(value)
+    if out < 0:
+        raise ValueError(f"{name} must be >= 0 when provided")
+    return out
+
+
+def _search_plan(
+    *,
+    search_strategy: str,
+    trainable_parameters: str,
+    generations: int,
+    stage1_generations: int | None,
+    stage2_generations: int | None,
+) -> list[dict[str, Any]]:
+    strategy = _search_strategy(search_strategy)
+    trainable = _trainable_parameters(trainable_parameters)
+    total_generations = int(generations)
+    if total_generations < 0:
+        raise ValueError("generations must be >= 0")
+    stage1 = _nonnegative_int_or_none(stage1_generations, "stage1_generations")
+    stage2 = _nonnegative_int_or_none(stage2_generations, "stage2_generations")
+    if strategy == "single_stage":
+        return [
+            {
+                "stage": "single_stage",
+                "trainable_parameters": trainable,
+                "generations": total_generations,
+            }
+        ]
+
+    if stage1 is None and stage2 is None:
+        stage1 = (total_generations + 1) // 2
+        stage2 = total_generations - stage1
+    elif stage1 is None:
+        stage1 = max(0, total_generations - int(stage2 or 0))
+    elif stage2 is None:
+        stage2 = max(0, total_generations - int(stage1))
+
+    return [
+        {
+            "stage": "output_head_warmup",
+            "trainable_parameters": "output_head",
+            "generations": int(stage1),
+        },
+        {
+            "stage": "all_layers_refine",
+            "trainable_parameters": "all_layers",
+            "generations": int(stage2),
+        },
+    ]
+
+
 def _parameter_blocks(spec: dict[str, Any], trainable_parameters: str) -> list[tuple[str, tuple[int, ...], np.ndarray]]:
     def block(name: str) -> tuple[str, tuple[int, ...], np.ndarray]:
         values = np.asarray(spec[name], dtype=np.float64)
@@ -746,9 +855,124 @@ def _aggregate_rollout_rows(
     }
 
 
+def _rows_by_lane(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        lane_id = str(row.get("lane_id") or row.get("scenario") or "unknown")
+        grouped.setdefault(lane_id, []).append(row)
+    return grouped
+
+
+def _lane_safety_regressed(
+    *,
+    metrics: dict[str, Any],
+    base_metrics: dict[str, Any] | None,
+    allow_near_miss_regression: bool,
+) -> bool:
+    if base_metrics is None:
+        return False
+    if int(metrics.get("collision_ticks", 0) or 0) > int(base_metrics.get("collision_ticks", 0) or 0):
+        return True
+    if not bool(allow_near_miss_regression) and int(metrics.get("near_miss_ticks", 0) or 0) > int(base_metrics.get("near_miss_ticks", 0) or 0):
+        return True
+    current_clearance = _finite_float(metrics.get("min_clearance_m"))
+    base_clearance = _finite_float(base_metrics.get("min_clearance_m"))
+    if base_clearance is not None and (current_clearance is None or current_clearance < base_clearance - 1e-9):
+        return True
+    return False
+
+
+def _candidate_lane_summary_rows(
+    *,
+    candidate: dict[str, Any],
+    rows: list[dict[str, Any]],
+    objective: dict[str, Any],
+    base_by_lane: dict[str, dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    summaries: list[dict[str, Any]] = []
+    for lane_id, lane_rows in sorted(_rows_by_lane(rows).items()):
+        metrics = _aggregate_rollout_rows(lane_rows, objective=objective, base_metrics=None)
+        first = lane_rows[0] if lane_rows else {}
+        base = (base_by_lane or {}).get(lane_id)
+        current_score = _finite_float(metrics.get("score"))
+        base_score = _finite_float((base or {}).get("score"))
+        summaries.append(
+            {
+                "candidate_id": str(candidate.get("candidate_id", "")),
+                "stage": str(candidate.get("stage", "")),
+                "trainable_parameters": str(candidate.get("trainable_parameters", "")),
+                "generation": int(candidate.get("generation", 0) or 0),
+                "candidate_index": int(candidate.get("candidate_index", 0) or 0),
+                "parent_candidate_id": str(candidate.get("parent_candidate_id", "")),
+                "accepted": bool(candidate.get("accepted", False)),
+                "feasible": bool(candidate.get("feasible", False)),
+                "lane_id": lane_id,
+                "category": str(first.get("category", "")),
+                "suite": str(first.get("suite", "")),
+                "scenario": str(first.get("scenario", "")),
+                "comm_profile": str(first.get("comm_profile", "")),
+                "n_agents": int(first.get("n_agents", 0) or 0),
+                "duration_s": first.get("duration_s", ""),
+                "seed_count": len({str(row.get("seed", "")) for row in lane_rows}),
+                "score": metrics.get("score"),
+                "base_score": "" if base_score is None else round(float(base_score), 6),
+                "score_delta_vs_base": ""
+                if current_score is None or base_score is None
+                else round(float(current_score - base_score), 6),
+                "safety_regression": _lane_safety_regressed(
+                    metrics=metrics,
+                    base_metrics=base,
+                    allow_near_miss_regression=bool(objective.get("allow_near_miss_regression", False)),
+                ),
+                "collision_ticks": metrics.get("collision_ticks"),
+                "base_collision_ticks": "" if base is None else base.get("collision_ticks"),
+                "near_miss_ticks": metrics.get("near_miss_ticks"),
+                "base_near_miss_ticks": "" if base is None else base.get("near_miss_ticks"),
+                "min_clearance_m": metrics.get("min_clearance_m"),
+                "base_min_clearance_m": "" if base is None else base.get("min_clearance_m"),
+                "completion_rate_mean": metrics.get("completion_rate_mean"),
+                "base_completion_rate_mean": "" if base is None else base.get("completion_rate_mean"),
+                "total_reward_mean": metrics.get("total_reward_mean"),
+                "api_error_count": metrics.get("api_error_count"),
+                "finite": metrics.get("finite"),
+                "row_count": metrics.get("row_count"),
+            }
+        )
+    return summaries
+
+
+def _enrich_with_lane_summaries(
+    metrics: dict[str, Any],
+    lane_summaries: list[dict[str, Any]],
+    *,
+    require_per_lane_safety: bool,
+) -> None:
+    scores = [_finite_float(row.get("score")) for row in lane_summaries]
+    finite_scores = [float(value) for value in scores if value is not None]
+    regression_count = sum(1 for row in lane_summaries if bool(row.get("safety_regression")))
+    improved_count = 0
+    for row in lane_summaries:
+        delta = _finite_float(row.get("score_delta_vs_base"))
+        if delta is not None and delta < -1e-9:
+            improved_count += 1
+    metrics.update(
+        {
+            "lane_count": int(len(lane_summaries)),
+            "lane_safety_regression_count": int(regression_count),
+            "lane_score_mean": _mean_or_none(finite_scores),
+            "lane_score_max": _max_or_none(finite_scores),
+            "lane_score_improved_count": int(improved_count),
+        }
+    )
+    if bool(require_per_lane_safety) and regression_count > 0:
+        metrics["feasible"] = False
+
+
 def _evaluate_candidate(
     *,
     candidate_id: str,
+    stage: str,
+    trainable_parameters: str,
     generation: int,
     candidate_index: int,
     spec: dict[str, Any],
@@ -776,15 +1000,20 @@ def _evaluate_candidate(
                     seed=int(seed),
                     max_steps=max_steps,
                     metadata={
+                        "lane_id": str(lane.lane_id),
+                        "category": str(lane.category),
                         "suite": str(lane.suite),
                         "scenario": Path(str(scenario_paths[lane.lane_id])).stem,
                         "policy": str(candidate_id),
                         "n_agents": int(lane.n_agents),
                         "comm_profile": str(lane.comm_profile),
+                        "duration_s": float(lane.duration_s),
                     },
                 )
             except Exception as exc:  # pragma: no cover - failure path.
                 row = {
+                    "lane_id": str(lane.lane_id),
+                    "category": str(lane.category),
                     "suite": str(lane.suite),
                     "scenario": Path(str(scenario_paths[lane.lane_id])).stem,
                     "dimension": "unknown",
@@ -792,6 +1021,7 @@ def _evaluate_candidate(
                     "n_agents": int(lane.n_agents),
                     "seed": int(seed),
                     "comm_profile": str(lane.comm_profile),
+                    "duration_s": float(lane.duration_s),
                     "steps": 0,
                     "controlled_agents": 0,
                     "completed_agents": 0,
@@ -812,6 +1042,8 @@ def _evaluate_candidate(
             rows.append(
                 {
                     "candidate_id": str(candidate_id),
+                    "stage": str(stage),
+                    "trainable_parameters": str(trainable_parameters),
                     "generation": int(generation),
                     "candidate_index": int(candidate_index),
                     **row,
@@ -821,6 +1053,8 @@ def _evaluate_candidate(
     aggregate.update(
         {
             "candidate_id": str(candidate_id),
+            "stage": str(stage),
+            "trainable_parameters": str(trainable_parameters),
             "generation": int(generation),
             "candidate_index": int(candidate_index),
         }
@@ -836,6 +1070,19 @@ def _candidate_sort_key(row: dict[str, Any]) -> tuple[int, float, int, int, floa
         int(row.get("near_miss_ticks", 10**9)),
         -float(row.get("completion_rate_mean", 0.0) or 0.0),
     )
+
+
+def _candidate_id_for_search(
+    *,
+    stage: str,
+    generation: int,
+    candidate_index: int,
+    suffix: str,
+) -> str:
+    if stage == "single_stage" and not suffix:
+        return f"g{int(generation):03d}_c{int(candidate_index):03d}"
+    tail = f"_{suffix}" if suffix else ""
+    return f"{stage}_g{int(generation):03d}_c{int(candidate_index):03d}{tail}"
 
 
 def _policy_spec_payload(*, artifact_name: str, policy_name: str) -> dict[str, Any]:
@@ -861,11 +1108,20 @@ def _training_disclosure(
     candidate_count: int,
     accepted_count: int,
     trainable_parameters: str,
+    search_strategy: str,
+    search_plan: list[dict[str, Any]],
+    antithetic_sampling: bool,
+    require_per_lane_safety: bool,
     holdout_config: dict[str, Any],
 ) -> dict[str, Any]:
+    stage_trainables = {
+        str(stage.get("trainable_parameters", ""))
+        for stage in search_plan
+        if int(stage.get("generations", 0) or 0) > 0
+    }
     updated = (
         "MLP output layer weights and bias only; feature extractor and normalization are inherited"
-        if trainable_parameters == "output_head"
+        if "all_layers" not in stage_trainables and trainable_parameters == "output_head"
         else "all MLP layer weights and biases; feature normalization is inherited"
     )
     return {
@@ -886,6 +1142,10 @@ def _training_disclosure(
         "accepted_generation_count": int(accepted_count),
         "optimizer": "bounded evolutionary MLP parameter search",
         "trainable_parameters": str(trainable_parameters),
+        "search_strategy": str(search_strategy),
+        "search_plan": search_plan,
+        "antithetic_sampling": bool(antithetic_sampling),
+        "require_per_lane_safety": bool(require_per_lane_safety),
         "updated_parameters": updated,
         "holdout": holdout_config,
         "external_data": "none",
@@ -905,6 +1165,10 @@ def fine_tune_closed_loop_policy(
     generations: int = 2,
     population_size: int = 8,
     trainable_parameters: str = "output_head",
+    search_strategy: str = "single_stage",
+    stage1_generations: int | None = None,
+    stage2_generations: int | None = None,
+    antithetic_sampling: bool = False,
     sigma: float = 0.03,
     sigma_decay: float = 0.5,
     min_delta: float = 1e-6,
@@ -917,6 +1181,7 @@ def fine_tune_closed_loop_policy(
     max_collision_ticks: int = int(CLOSED_LOOP_OBJECTIVE_DEFAULTS["max_collision_ticks"]),
     max_near_miss_ticks: int | None = None,
     allow_near_miss_regression: bool = False,
+    require_per_lane_safety: bool = False,
     eval_lanes: tuple[str, ...] | list[str] | None = None,
     eval_max_steps: int | None = 12,
     holdout_profile: str = "none",
@@ -941,10 +1206,11 @@ def fine_tune_closed_loop_policy(
     report_path = out / "closed_loop_training_report.json"
     candidate_csv = out / "candidate_summary.csv"
     episode_csv = out / "candidate_episodes.csv"
+    lane_summary_csv = out / "candidate_lane_summary.csv"
     validation_dir = out / "rl_validation_matrix"
     holdout_dir = out / "broad_3d_holdout"
     if not bool(overwrite):
-        existing = [path for path in (model_path, spec_path, report_path, candidate_csv, episode_csv) if path.exists()]
+        existing = [path for path in (model_path, spec_path, report_path, candidate_csv, episode_csv, lane_summary_csv) if path.exists()]
         if validation_dir.exists():
             existing.append(validation_dir)
         if holdout_dir.exists():
@@ -952,7 +1218,7 @@ def fine_tune_closed_loop_policy(
         if existing:
             raise RuntimeError(f"closed-loop fine-tuning output already exists: {', '.join(str(path) for path in existing)}")
     elif out.exists():
-        for path in (model_path, spec_path, report_path, candidate_csv, episode_csv):
+        for path in (model_path, spec_path, report_path, candidate_csv, episode_csv, lane_summary_csv):
             if path.exists():
                 path.unlink()
         if validation_dir.exists():
@@ -975,6 +1241,14 @@ def fine_tune_closed_loop_policy(
         raise ValueError("holdout_score_tolerance must be finite and >= 0")
 
     trainable_parameters = _trainable_parameters(trainable_parameters)
+    search_strategy = _search_strategy(search_strategy)
+    planned_search = _search_plan(
+        search_strategy=search_strategy,
+        trainable_parameters=trainable_parameters,
+        generations=int(generations),
+        stage1_generations=stage1_generations,
+        stage2_generations=stage2_generations,
+    )
     holdout_profile = _holdout_profile(holdout_profile)
     selected_holdout_scenarios = _holdout_str_list(holdout_scenarios, CLOSED_LOOP_BROAD_3D_HOLDOUT_SCENARIOS)
     selected_holdout_seeds = _holdout_int_list(holdout_seeds, (0, 1, 2))
@@ -1007,11 +1281,11 @@ def fine_tune_closed_loop_policy(
     )
 
     rng = np.random.default_rng(int(seed) + 17041)
-    base_vector = _parameter_vector(base_spec, trainable_parameters)
-    best_vector = base_vector.copy()
-    best_spec = _copy_with_parameter_vector(base_spec, best_vector, trainable_parameters)
+    best_spec = copy.deepcopy(base_spec)
     base_metrics, base_episode_rows = _evaluate_candidate(
         candidate_id="base",
+        stage="base",
+        trainable_parameters=trainable_parameters,
         generation=0,
         candidate_index=0,
         spec=best_spec,
@@ -1031,76 +1305,127 @@ def fine_tune_closed_loop_policy(
     if objective.get("max_near_miss_ticks") is not None:
         base_metrics["feasible"] = bool(base_metrics["feasible"] and int(base_metrics["near_miss_ticks"]) <= int(objective["max_near_miss_ticks"]))
 
-    candidate_rows: list[dict[str, Any]] = [
-        {
-            **base_metrics,
-            "parent_candidate_id": "",
-            "accepted": True,
-            "score_delta_vs_best_before": 0.0,
-            "sigma": 0.0,
-        }
-    ]
+    base_candidate = {
+        **base_metrics,
+        "stage": "base",
+        "trainable_parameters": trainable_parameters,
+        "parent_candidate_id": "",
+        "accepted": True,
+        "score_delta_vs_best_before": 0.0,
+        "sigma": 0.0,
+    }
+    base_lane_rows = _candidate_lane_summary_rows(
+        candidate=base_candidate,
+        rows=base_episode_rows,
+        objective=objective,
+        base_by_lane=None,
+    )
+    _enrich_with_lane_summaries(base_candidate, base_lane_rows, require_per_lane_safety=False)
+    for lane_row in base_lane_rows:
+        lane_row["feasible"] = bool(base_candidate["feasible"])
+
+    base_metrics = dict(base_candidate)
+    base_lane_by_id = {str(row["lane_id"]): row for row in base_lane_rows}
+    candidate_rows: list[dict[str, Any]] = [base_candidate]
+    lane_summary_rows: list[dict[str, Any]] = list(base_lane_rows)
     episode_rows: list[dict[str, Any]] = [
         {**row, "accepted": True, "feasible": bool(base_metrics["feasible"])} for row in base_episode_rows
     ]
-    best_metrics = dict(base_metrics)
+    best_metrics = dict(base_candidate)
     best_candidate_id = "base"
     accepted_count = 0
-    current_sigma = float(sigma)
+    global_generation = 0
 
-    for generation in range(1, int(generations) + 1):
-        generation_rows: list[tuple[dict[str, Any], np.ndarray, list[dict[str, Any]]]] = []
-        best_score_before = float(best_metrics["score"])
-        for candidate_index in range(int(population_size)):
-            candidate_id = f"g{generation:03d}_c{candidate_index:03d}"
-            noise = rng.normal(0.0, current_sigma, size=best_vector.shape)
-            vector = best_vector + noise
-            candidate_spec = _copy_with_parameter_vector(base_spec, vector, trainable_parameters)
-            metrics, rows = _evaluate_candidate(
-                candidate_id=candidate_id,
-                generation=generation,
-                candidate_index=candidate_index,
-                spec=candidate_spec,
-                lanes=selected,
-                scenario_paths=scenario_paths,
-                seeds=seed_override,
-                max_steps=train_max_steps,
-                objective=objective,
-                base_metrics=base_metrics,
-            )
-            metrics.update(
-                {
-                    "parent_candidate_id": best_candidate_id,
-                    "accepted": False,
-                    "score_delta_vs_best_before": _round_or_none(float(metrics["score"]) - best_score_before),
-                    "sigma": _round_or_none(current_sigma),
-                }
-            )
-            generation_rows.append((metrics, vector, rows))
+    for stage_info in planned_search:
+        stage_name = str(stage_info["stage"])
+        stage_trainable = _trainable_parameters(str(stage_info["trainable_parameters"]))
+        stage_generations = int(stage_info["generations"])
+        current_sigma = float(sigma)
+        stage_vector = _parameter_vector(best_spec, stage_trainable)
+        for stage_generation in range(1, stage_generations + 1):
+            global_generation += 1
+            generation_rows: list[tuple[dict[str, Any], np.ndarray, list[dict[str, Any]], list[dict[str, Any]]]] = []
+            best_score_before = float(best_metrics["score"])
+            for candidate_index in range(int(population_size)):
+                noise = rng.normal(0.0, current_sigma, size=stage_vector.shape)
+                perturbations = [(candidate_index, noise, "")]
+                if bool(antithetic_sampling):
+                    perturbations.append((candidate_index + int(population_size), -noise, "anti"))
+                for eval_index, perturbation, suffix in perturbations:
+                    candidate_id = _candidate_id_for_search(
+                        stage=stage_name,
+                        generation=stage_generation,
+                        candidate_index=eval_index,
+                        suffix=suffix,
+                    )
+                    vector = stage_vector + perturbation
+                    candidate_spec = _copy_with_parameter_vector(best_spec, vector, stage_trainable)
+                    metrics, rows = _evaluate_candidate(
+                        candidate_id=candidate_id,
+                        stage=stage_name,
+                        trainable_parameters=stage_trainable,
+                        generation=global_generation,
+                        candidate_index=eval_index,
+                        spec=candidate_spec,
+                        lanes=selected,
+                        scenario_paths=scenario_paths,
+                        seeds=seed_override,
+                        max_steps=train_max_steps,
+                        objective=objective,
+                        base_metrics=base_metrics,
+                    )
+                    metrics.update(
+                        {
+                            "stage": stage_name,
+                            "trainable_parameters": stage_trainable,
+                            "parent_candidate_id": best_candidate_id,
+                            "accepted": False,
+                            "score_delta_vs_best_before": _round_or_none(float(metrics["score"]) - best_score_before),
+                            "sigma": _round_or_none(current_sigma),
+                        }
+                    )
+                    lane_rows = _candidate_lane_summary_rows(
+                        candidate=metrics,
+                        rows=rows,
+                        objective=objective,
+                        base_by_lane=base_lane_by_id,
+                    )
+                    _enrich_with_lane_summaries(
+                        metrics,
+                        lane_rows,
+                        require_per_lane_safety=bool(require_per_lane_safety),
+                    )
+                    for lane_row in lane_rows:
+                        lane_row["feasible"] = bool(metrics["feasible"])
+                    generation_rows.append((metrics, vector, rows, lane_rows))
 
-        chosen: tuple[dict[str, Any], np.ndarray, list[dict[str, Any]]] | None = None
-        for metrics, vector, rows in sorted(generation_rows, key=lambda item: _candidate_sort_key(item[0])):
-            if bool(metrics.get("feasible")) and float(metrics["score"]) < best_score_before - float(min_delta):
-                chosen = (metrics, vector, rows)
-                break
-        if chosen is not None:
-            chosen_metrics, chosen_vector, chosen_rows = chosen
-            best_vector = chosen_vector.copy()
-            best_spec = _copy_with_parameter_vector(base_spec, best_vector, trainable_parameters)
-            best_metrics = dict(chosen_metrics)
-            best_candidate_id = str(chosen_metrics["candidate_id"])
-            accepted_count += 1
-            for metrics, _vector, rows in generation_rows:
-                accepted = str(metrics["candidate_id"]) == best_candidate_id
-                metrics["accepted"] = bool(accepted)
-                candidate_rows.append(metrics)
-                episode_rows.extend({**row, "accepted": bool(accepted), "feasible": bool(metrics["feasible"])} for row in rows)
-            _ = chosen_rows
-        else:
-            candidate_rows.extend(metrics for metrics, _vector, _rows in generation_rows)
-            for metrics, _vector, rows in generation_rows:
-                episode_rows.extend({**row, "accepted": False, "feasible": bool(metrics["feasible"])} for row in rows)
-            current_sigma *= float(sigma_decay)
+            chosen: tuple[dict[str, Any], np.ndarray, list[dict[str, Any]], list[dict[str, Any]]] | None = None
+            for metrics, vector, rows, lane_rows in sorted(generation_rows, key=lambda item: _candidate_sort_key(item[0])):
+                if bool(metrics.get("feasible")) and float(metrics["score"]) < best_score_before - float(min_delta):
+                    chosen = (metrics, vector, rows, lane_rows)
+                    break
+            if chosen is not None:
+                chosen_metrics, chosen_vector, chosen_rows, chosen_lane_rows = chosen
+                stage_vector = chosen_vector.copy()
+                best_spec = _copy_with_parameter_vector(best_spec, stage_vector, stage_trainable)
+                best_candidate_id = str(chosen_metrics["candidate_id"])
+                accepted_count += 1
+                for metrics, _vector, rows, lane_rows in generation_rows:
+                    accepted = str(metrics["candidate_id"]) == best_candidate_id
+                    metrics["accepted"] = bool(accepted)
+                    for lane_row in lane_rows:
+                        lane_row["accepted"] = bool(accepted)
+                    candidate_rows.append(metrics)
+                    lane_summary_rows.extend(lane_rows)
+                    episode_rows.extend({**row, "accepted": bool(accepted), "feasible": bool(metrics["feasible"])} for row in rows)
+                _ = chosen_rows, chosen_lane_rows
+                best_metrics = dict(chosen_metrics)
+            else:
+                candidate_rows.extend(metrics for metrics, _vector, _rows, _lane_rows in generation_rows)
+                for metrics, _vector, rows, lane_rows in generation_rows:
+                    lane_summary_rows.extend(lane_rows)
+                    episode_rows.extend({**row, "accepted": False, "feasible": bool(metrics["feasible"])} for row in rows)
+                current_sigma *= float(sigma_decay)
 
     final_spec = copy.deepcopy(best_spec)
     final_spec["display_name"] = "Closed-loop fine-tuned MLP learned-policy baseline"
@@ -1114,6 +1439,10 @@ def fine_tune_closed_loop_policy(
         candidate_count=len(candidate_rows),
         accepted_count=accepted_count,
         trainable_parameters=trainable_parameters,
+        search_strategy=search_strategy,
+        search_plan=planned_search,
+        antithetic_sampling=bool(antithetic_sampling),
+        require_per_lane_safety=bool(require_per_lane_safety),
         holdout_config=holdout_config,
     )
     training.update(
@@ -1121,6 +1450,7 @@ def fine_tune_closed_loop_policy(
             "base_metrics": base_metrics,
             "best_metrics": best_metrics,
             "best_candidate_id": best_candidate_id,
+            "candidate_lane_summary_csv": str(lane_summary_csv),
             "base_policy_name": wrapper_spec.get("policy_name"),
         }
     )
@@ -1132,6 +1462,7 @@ def fine_tune_closed_loop_policy(
     _write_json(spec_path, _policy_spec_payload(artifact_name=model_path.name, policy_name=str(policy_name)))
     _write_csv(candidate_csv, candidate_rows, CLOSED_LOOP_CANDIDATE_FIELDS)
     _write_csv(episode_csv, episode_rows, CLOSED_LOOP_EPISODE_FIELDS)
+    _write_csv(lane_summary_csv, lane_summary_rows, CLOSED_LOOP_LANE_SUMMARY_FIELDS)
 
     validation_report = None
     if run_validation:
@@ -1177,6 +1508,11 @@ def fine_tune_closed_loop_policy(
             {"base_policy_spec": str(base_policy_spec), "base_model_artifact": str(base_artifact), "adapter": wrapper_spec.get("adapter")},
         ),
         _check("candidate_evaluations_ran", len(candidate_rows) >= 1, {"candidate_count": len(candidate_rows), "episode_rows": len(episode_rows)}),
+        _check(
+            "candidate_lane_summaries_written",
+            bool(lane_summary_csv.exists()) and len(lane_summary_rows) >= len(candidate_rows),
+            {"candidate_lane_summary_csv": str(lane_summary_csv), "lane_summary_rows": len(lane_summary_rows)},
+        ),
         _check("candidate_metrics_finite", all(math.isfinite(float(row.get("score", float("nan")))) for row in candidate_rows), {}),
         _check("output_policy_written", bool(model_path.exists() and spec_path.exists()), {"model_artifact": str(model_path), "policy_spec": str(spec_path)}),
         _check(
@@ -1232,6 +1568,7 @@ def fine_tune_closed_loop_policy(
         "training_report": str(report_path),
         "candidate_summary_csv": str(candidate_csv),
         "candidate_episodes_csv": str(episode_csv),
+        "candidate_lane_summary_csv": str(lane_summary_csv),
         "training_lanes": [asdict(lane) for lane in selected],
         "seeds": None if seed_override is None else [int(value) for value in seed_override],
         "lane_profile": str(lane_profile),
@@ -1239,6 +1576,10 @@ def fine_tune_closed_loop_policy(
         "generations": int(generations),
         "population_size": int(population_size),
         "trainable_parameters": str(trainable_parameters),
+        "search_strategy": str(search_strategy),
+        "search_plan": planned_search,
+        "antithetic_sampling": bool(antithetic_sampling),
+        "require_per_lane_safety": bool(require_per_lane_safety),
         "sigma": float(sigma),
         "sigma_decay": float(sigma_decay),
         "min_delta": float(min_delta),
@@ -1260,10 +1601,12 @@ __all__ = [
     "CLOSED_LOOP_CANDIDATE_FIELDS",
     "CLOSED_LOOP_BROAD_3D_HOLDOUT_SCENARIOS",
     "CLOSED_LOOP_EPISODE_FIELDS",
+    "CLOSED_LOOP_LANE_SUMMARY_FIELDS",
     "CLOSED_LOOP_HOLDOUT_PROFILE_CHOICES",
     "CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE",
     "CLOSED_LOOP_OBJECTIVE_DEFAULTS",
     "CLOSED_LOOP_POLICY_NAME",
+    "CLOSED_LOOP_SEARCH_STRATEGY_CHOICES",
     "CLOSED_LOOP_BROAD_3D_TRAINING_LANE_IDS",
     "CLOSED_LOOP_TRAINING_LANE_PROFILE_CHOICES",
     "CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES",

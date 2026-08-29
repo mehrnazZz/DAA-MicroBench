@@ -858,6 +858,9 @@ python -m microbench.cli learned-closed-loop-finetune \
   --base-policy-spec runs_bc_mlp_policy/policy_spec.json \
   --lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
   --trainable-parameters all_layers \
+  --search-strategy two_stage \
+  --antithetic-sampling \
+  --require-per-lane-safety \
   --generations 4 \
   --population-size 12 \
   --train-max-steps 24 \
@@ -869,7 +872,7 @@ python -m microbench.cli learned-closed-loop-finetune \
   --require-promotion
 ```
 
-This is benchmark-native closed-loop learned-policy infrastructure. `--require-promotion` requires the tuned policy to avoid safety, clearance, and `score_v0` regression against the base policy on the selected broad 3D holdout rows. It is not yet a claim that the shipped learned baseline is SOTA.
+This is benchmark-native closed-loop learned-policy infrastructure. It writes both aggregate candidate results and `candidate_lane_summary.csv`, which shows score, clearance, completion, and lane-level safety regression flags for every candidate. `--search-strategy two_stage` runs an output-head warmup before all-layer refinement, `--antithetic-sampling` evaluates plus/minus perturbation pairs, and `--require-per-lane-safety` rejects aggregate winners that regress an individual lane. `--require-promotion` requires the tuned policy to avoid safety, clearance, and `score_v0` regression against the base policy on the selected broad 3D holdout rows. It is not yet a claim that the shipped learned baseline is SOTA.
 
 When the goal is to reduce validation-lane overfit, use `--lane-profile validation_plus_broad_3d`. That profile trains on the canonical learned validation lanes plus broad 3D stress training lanes for sphere swap, dense swarm, merge, sensor-volume, and noncooperative-intruder geometry.
 
@@ -881,6 +884,9 @@ python -m microbench.cli learned-closed-loop-study \
   --base-policy-spec runs_bc_mlp_policy/policy_spec.json \
   --lane-profile validation_plus_broad_3d \
   --trainable-parameters all_layers \
+  --search-strategy two_stage \
+  --antithetic-sampling \
+  --require-per-lane-safety \
   --holdout-profile broad_3d_stress \
   --comparison-bundle runs_bc_mlp_evidence/bc_bundle \
   --bundle-max-runs 1 \

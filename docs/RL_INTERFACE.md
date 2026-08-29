@@ -437,6 +437,9 @@ python -m microbench.cli learned-closed-loop-finetune \
   --base-policy-spec runs_bc_mlp_policy/policy_spec.json \
   --lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge \
   --trainable-parameters all_layers \
+  --search-strategy two_stage \
+  --antithetic-sampling \
+  --require-per-lane-safety \
   --generations 4 \
   --population-size 12 \
   --train-max-steps 24 \
@@ -448,7 +451,7 @@ python -m microbench.cli learned-closed-loop-finetune \
   --require-promotion
 ```
 
-This evaluates perturbed MLP parameters through the same parallel RL wrapper, accepts only non-regressing candidates under collision, clearance, and near-miss guardrails, writes candidate rollout CSVs plus a new `mlp_json` policy spec, and can compare the final policy against its base on a broad 3D holdout before marking it as a promotion candidate.
+This evaluates perturbed MLP parameters through the same parallel RL wrapper, accepts only non-regressing candidates under collision, clearance, and near-miss guardrails, writes aggregate candidate rows plus `candidate_lane_summary.csv`, and can compare the final policy against its base on a broad 3D holdout before marking it as a promotion candidate. `--search-strategy two_stage` runs output-head warmup before all-layer refinement, while `--antithetic-sampling` and `--require-per-lane-safety` make the search less blind and easier to audit.
 
 For the full reproducible study path, use:
 
@@ -458,6 +461,9 @@ python -m microbench.cli learned-closed-loop-study \
   --base-policy-spec runs_bc_mlp_policy/policy_spec.json \
   --lane-profile validation_plus_broad_3d \
   --trainable-parameters all_layers \
+  --search-strategy two_stage \
+  --antithetic-sampling \
+  --require-per-lane-safety \
   --holdout-profile broad_3d_stress \
   --comparison-bundle runs_bc_mlp_evidence/bc_bundle \
   --bundle-max-runs 1 \

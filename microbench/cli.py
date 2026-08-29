@@ -26,6 +26,7 @@ from microbench.rl.closed_loop_training import (
     CLOSED_LOOP_HOLDOUT_PROFILE_CHOICES,
     CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE,
     CLOSED_LOOP_POLICY_NAME,
+    CLOSED_LOOP_SEARCH_STRATEGY_CHOICES,
     CLOSED_LOOP_TRAINING_LANE_PROFILE_CHOICES,
     CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES,
     fine_tune_closed_loop_policy,
@@ -1511,6 +1512,10 @@ def _learned_closed_loop_finetune(args) -> None:
         generations=int(args.generations),
         population_size=int(args.population_size),
         trainable_parameters=str(args.trainable_parameters),
+        search_strategy=str(args.search_strategy),
+        stage1_generations=args.stage1_generations,
+        stage2_generations=args.stage2_generations,
+        antithetic_sampling=bool(args.antithetic_sampling),
         sigma=float(args.sigma),
         sigma_decay=float(args.sigma_decay),
         min_delta=float(args.min_delta),
@@ -1523,6 +1528,7 @@ def _learned_closed_loop_finetune(args) -> None:
         max_collision_ticks=int(args.max_collision_ticks),
         max_near_miss_ticks=None if args.max_near_miss_ticks is None else int(args.max_near_miss_ticks),
         allow_near_miss_regression=bool(args.allow_near_miss_regression),
+        require_per_lane_safety=bool(args.require_per_lane_safety),
         eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
         eval_max_steps=args.eval_max_steps,
         holdout_profile=str(args.holdout_profile),
@@ -1556,6 +1562,7 @@ def _learned_closed_loop_finetune(args) -> None:
         print(f"  policy_spec: {report['policy_spec']}")
         print(f"  model_artifact: {report['model_artifact']}")
         print(f"  candidate_summary: {report['candidate_summary_csv']}")
+        print(f"  candidate_lane_summary: {report['candidate_lane_summary_csv']}")
         if report.get("holdout"):
             print(f"  holdout_comparison: {report['holdout']['comparison_csv']}")
 
@@ -1578,6 +1585,10 @@ def _learned_closed_loop_study(args) -> None:
         generations=int(args.generations),
         population_size=int(args.population_size),
         trainable_parameters=str(args.trainable_parameters),
+        search_strategy=str(args.search_strategy),
+        stage1_generations=args.stage1_generations,
+        stage2_generations=args.stage2_generations,
+        antithetic_sampling=bool(args.antithetic_sampling),
         sigma=float(args.sigma),
         sigma_decay=float(args.sigma_decay),
         min_delta=float(args.min_delta),
@@ -1590,6 +1601,7 @@ def _learned_closed_loop_study(args) -> None:
         max_collision_ticks=int(args.max_collision_ticks),
         max_near_miss_ticks=None if args.max_near_miss_ticks is None else int(args.max_near_miss_ticks),
         allow_near_miss_regression=bool(args.allow_near_miss_regression),
+        require_per_lane_safety=bool(args.require_per_lane_safety),
         eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
         eval_max_steps=args.eval_max_steps,
         holdout_profile=str(args.holdout_profile),
@@ -2953,6 +2965,29 @@ def build_parser() -> argparse.ArgumentParser:
         default="output_head",
         help="MLP parameter subset perturbed during closed-loop search",
     )
+    p_clft.add_argument(
+        "--search-strategy",
+        choices=CLOSED_LOOP_SEARCH_STRATEGY_CHOICES,
+        default="single_stage",
+        help="Candidate-search strategy; two_stage runs output-head warmup before all-layer refinement",
+    )
+    p_clft.add_argument(
+        "--stage1-generations",
+        type=int,
+        default=None,
+        help="Optional output-head warmup generation count for --search-strategy two_stage",
+    )
+    p_clft.add_argument(
+        "--stage2-generations",
+        type=int,
+        default=None,
+        help="Optional all-layer refinement generation count for --search-strategy two_stage",
+    )
+    p_clft.add_argument(
+        "--antithetic-sampling",
+        action="store_true",
+        help="Evaluate plus/minus perturbation pairs for each sampled candidate direction",
+    )
     p_clft.add_argument("--sigma", type=float, default=0.03, help="Gaussian perturbation scale for selected MLP parameters")
     p_clft.add_argument("--sigma-decay", type=float, default=0.5, help="Sigma multiplier after a generation with no accepted candidate")
     p_clft.add_argument("--min-delta", type=float, default=1e-6, help="Minimum score improvement required to accept a candidate")
@@ -2968,6 +3003,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--allow-near-miss-regression",
         action="store_true",
         help="Allow accepted candidates to exceed the base policy near-miss count",
+    )
+    p_clft.add_argument(
+        "--require-per-lane-safety",
+        action="store_true",
+        help="Reject candidates that improve overall score while regressing any individual training lane's safety",
     )
     p_clft.add_argument("--eval-lanes", default=None, help="Comma-separated validation lane ids for the final tuned spec")
     p_clft.add_argument("--eval-max-steps", type=int, default=12, help="Validation rollout step cap for the final tuned spec")
@@ -3037,6 +3077,29 @@ def build_parser() -> argparse.ArgumentParser:
         default="output_head",
         help="MLP parameter subset perturbed during closed-loop search",
     )
+    p_cls.add_argument(
+        "--search-strategy",
+        choices=CLOSED_LOOP_SEARCH_STRATEGY_CHOICES,
+        default="single_stage",
+        help="Candidate-search strategy; two_stage runs output-head warmup before all-layer refinement",
+    )
+    p_cls.add_argument(
+        "--stage1-generations",
+        type=int,
+        default=None,
+        help="Optional output-head warmup generation count for --search-strategy two_stage",
+    )
+    p_cls.add_argument(
+        "--stage2-generations",
+        type=int,
+        default=None,
+        help="Optional all-layer refinement generation count for --search-strategy two_stage",
+    )
+    p_cls.add_argument(
+        "--antithetic-sampling",
+        action="store_true",
+        help="Evaluate plus/minus perturbation pairs for each sampled candidate direction",
+    )
     p_cls.add_argument("--sigma", type=float, default=0.03, help="Gaussian perturbation scale for selected MLP parameters")
     p_cls.add_argument("--sigma-decay", type=float, default=0.5, help="Sigma multiplier after a generation with no accepted candidate")
     p_cls.add_argument("--min-delta", type=float, default=1e-6, help="Minimum score improvement required to accept a candidate")
@@ -3052,6 +3115,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--allow-near-miss-regression",
         action="store_true",
         help="Allow accepted candidates to exceed the base policy near-miss count",
+    )
+    p_cls.add_argument(
+        "--require-per-lane-safety",
+        action="store_true",
+        help="Reject candidates that improve overall score while regressing any individual training lane's safety",
     )
     p_cls.add_argument("--eval-lanes", default=None, help="Comma-separated validation lane ids for the final tuned spec")
     p_cls.add_argument("--eval-max-steps", type=int, default=12, help="Validation rollout step cap for the final tuned spec")

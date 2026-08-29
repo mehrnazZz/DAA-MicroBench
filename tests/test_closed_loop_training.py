@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 import subprocess
@@ -68,12 +69,16 @@ def test_closed_loop_finetune_writes_guarded_policy_spec(tmp_path: Path) -> None
     assert Path(report["model_artifact"]).exists()
     assert Path(report["candidate_summary_csv"]).exists()
     assert Path(report["candidate_episodes_csv"]).exists()
+    assert Path(report["candidate_lane_summary_csv"]).exists()
 
     model = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
     assert model["model_id"] == MLP_LEARNED_MODEL_ID
     assert model["training"]["recipe"] == "python -m microbench.cli learned-closed-loop-finetune"
     assert model["training"]["lane_profile"] == "validation"
     assert model["training"]["trainable_parameters"] == "all_layers"
+    assert model["training"]["search_strategy"] == "single_stage"
+    assert model["training"]["antithetic_sampling"] is False
+    assert model["training"]["require_per_lane_safety"] is False
     assert model["training"]["public_observations_only"] is True
     assert model["training"]["privileged_global_state"] is False
     assert model["training"]["base_policy_spec"] == str(base_spec)
@@ -84,6 +89,48 @@ def test_closed_loop_finetune_writes_guarded_policy_spec(tmp_path: Path) -> None
     assert loaded.policy_name == "closed_loop_mlp_learned"
     assert action.shape == (3,)
     assert np.all(np.isfinite(action))
+
+
+def test_closed_loop_finetune_reports_lanes_and_two_stage_antithetic_search(tmp_path: Path) -> None:
+    base_spec = _base_policy_spec(tmp_path)
+
+    report = fine_tune_closed_loop_policy(
+        out_dir=tmp_path / "closed_loop_two_stage",
+        base_policy_spec=base_spec,
+        lanes=["head_on"],
+        train_max_steps=2,
+        generations=2,
+        population_size=1,
+        trainable_parameters="all_layers",
+        search_strategy="two_stage",
+        stage1_generations=1,
+        stage2_generations=1,
+        antithetic_sampling=True,
+        require_per_lane_safety=True,
+        sigma=0.01,
+        eval_lanes=["head_on"],
+        eval_max_steps=2,
+        run_validation=False,
+    )
+
+    assert report["ok"] is True
+    assert report["candidate_count"] == 5
+    assert report["search_strategy"] == "two_stage"
+    assert report["antithetic_sampling"] is True
+    assert report["require_per_lane_safety"] is True
+    assert [stage["stage"] for stage in report["search_plan"]] == ["output_head_warmup", "all_layers_refine"]
+
+    with Path(report["candidate_summary_csv"]).open("r", newline="", encoding="utf-8") as f:
+        candidate_rows = list(csv.DictReader(f))
+    assert {row["stage"] for row in candidate_rows} >= {"base", "output_head_warmup", "all_layers_refine"}
+    assert {row["trainable_parameters"] for row in candidate_rows} >= {"output_head", "all_layers"}
+    assert any(row["candidate_id"].endswith("_anti") for row in candidate_rows)
+
+    with Path(report["candidate_lane_summary_csv"]).open("r", newline="", encoding="utf-8") as f:
+        lane_rows = list(csv.DictReader(f))
+    assert len(lane_rows) == report["candidate_count"]
+    assert {row["lane_id"] for row in lane_rows} == {"head_on"}
+    assert all(row["score"] for row in lane_rows)
 
 
 def test_closed_loop_training_lane_profile_adds_broad_3d_lanes() -> None:
