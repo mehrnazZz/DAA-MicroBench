@@ -17,6 +17,7 @@ from microbench.rl import (
     selected_closed_loop_training_lanes,
     train_behavior_cloned_policy,
 )
+from microbench.rl.closed_loop_training import _candidate_acceptance_decision
 from microbench.rl.schema import OBS_A_MAX_INDEX, OBS_GOAL_DIR_SLICE, OBS_RADIUS_INDEX, OBS_V_MAX_INDEX
 
 
@@ -43,6 +44,114 @@ def _observation() -> np.ndarray:
     obs[OBS_V_MAX_INDEX] = 3.0
     obs[OBS_A_MAX_INDEX] = 2.0
     return obs
+
+
+def _closed_loop_metrics(
+    *,
+    score: float,
+    feasible: bool,
+    collision_ticks: int,
+    near_miss_ticks: int,
+    min_clearance_m: float,
+    lane_safety_regression_count: int = 0,
+) -> dict[str, object]:
+    return {
+        "score": score,
+        "feasible": feasible,
+        "collision_ticks": collision_ticks,
+        "near_miss_ticks": near_miss_ticks,
+        "min_clearance_m": min_clearance_m,
+        "api_error_count": 0,
+        "finite": True,
+        "lane_safety_regression_count": lane_safety_regression_count,
+    }
+
+
+def test_closed_loop_safety_improvement_acceptance_keeps_nonpromotable_stepping_stone() -> None:
+    best = _closed_loop_metrics(
+        score=100.0,
+        feasible=False,
+        collision_ticks=4,
+        near_miss_ticks=12,
+        min_clearance_m=-0.4,
+    )
+    candidate = _closed_loop_metrics(
+        score=90.0,
+        feasible=False,
+        collision_ticks=4,
+        near_miss_ticks=9,
+        min_clearance_m=-0.395,
+    )
+
+    strict = _candidate_acceptance_decision(
+        candidate,
+        best,
+        acceptance_mode="strict_feasible",
+        min_delta=1e-6,
+        require_per_lane_safety=True,
+        per_lane_clearance_tolerance_m=0.01,
+    )
+    curriculum = _candidate_acceptance_decision(
+        candidate,
+        best,
+        acceptance_mode="safety_improvement",
+        min_delta=1e-6,
+        require_per_lane_safety=True,
+        per_lane_clearance_tolerance_m=0.01,
+    )
+
+    assert strict == {
+        "accepted": False,
+        "reason": "candidate_infeasible",
+        "accepted_infeasible_improvement": False,
+    }
+    assert curriculum == {
+        "accepted": True,
+        "reason": "infeasible_near_miss_reduction",
+        "accepted_infeasible_improvement": True,
+    }
+
+
+def test_closed_loop_safety_improvement_rejects_lane_and_clearance_regressions() -> None:
+    best = _closed_loop_metrics(
+        score=100.0,
+        feasible=False,
+        collision_ticks=4,
+        near_miss_ticks=12,
+        min_clearance_m=-0.4,
+    )
+    lane_regression = _closed_loop_metrics(
+        score=90.0,
+        feasible=False,
+        collision_ticks=4,
+        near_miss_ticks=9,
+        min_clearance_m=-0.395,
+        lane_safety_regression_count=1,
+    )
+    clearance_regression = _closed_loop_metrics(
+        score=90.0,
+        feasible=False,
+        collision_ticks=4,
+        near_miss_ticks=9,
+        min_clearance_m=-0.42,
+    )
+
+    assert _candidate_acceptance_decision(
+        lane_regression,
+        best,
+        acceptance_mode="safety_improvement",
+        min_delta=1e-6,
+        require_per_lane_safety=False,
+        per_lane_clearance_tolerance_m=0.01,
+    )["reason"] == "lane_safety_regression"
+    assert _candidate_acceptance_decision(
+        clearance_regression,
+        best,
+        acceptance_mode="safety_improvement",
+        min_delta=1e-6,
+        require_per_lane_safety=True,
+        per_lane_clearance_tolerance_m=0.01,
+    )["reason"] == "clearance_regression_vs_best"
 
 
 def test_closed_loop_finetune_writes_guarded_policy_spec(tmp_path: Path) -> None:
@@ -78,6 +187,7 @@ def test_closed_loop_finetune_writes_guarded_policy_spec(tmp_path: Path) -> None
     assert model["training"]["trainable_parameters"] == "all_layers"
     assert model["training"]["search_strategy"] == "single_stage"
     assert model["training"]["antithetic_sampling"] is False
+    assert model["training"]["acceptance_mode"] == "strict_feasible"
     assert model["training"]["require_per_lane_safety"] is False
     assert model["training"]["per_lane_clearance_tolerance_m"] == 0.001
     assert model["training"]["public_observations_only"] is True
@@ -107,6 +217,7 @@ def test_closed_loop_finetune_reports_lanes_and_two_stage_antithetic_search(tmp_
         stage1_generations=1,
         stage2_generations=1,
         antithetic_sampling=True,
+        acceptance_mode="safety_improvement",
         require_per_lane_safety=True,
         per_lane_clearance_tolerance_m=0.01,
         sigma=0.01,
@@ -119,6 +230,7 @@ def test_closed_loop_finetune_reports_lanes_and_two_stage_antithetic_search(tmp_
     assert report["candidate_count"] == 5
     assert report["search_strategy"] == "two_stage"
     assert report["antithetic_sampling"] is True
+    assert report["acceptance_mode"] == "safety_improvement"
     assert report["require_per_lane_safety"] is True
     assert report["per_lane_clearance_tolerance_m"] == 0.01
     assert [stage["stage"] for stage in report["search_plan"]] == ["output_head_warmup", "all_layers_refine"]
@@ -128,6 +240,7 @@ def test_closed_loop_finetune_reports_lanes_and_two_stage_antithetic_search(tmp_
     assert {row["stage"] for row in candidate_rows} >= {"base", "output_head_warmup", "all_layers_refine"}
     assert {row["trainable_parameters"] for row in candidate_rows} >= {"output_head", "all_layers"}
     assert any(row["candidate_id"].endswith("_anti") for row in candidate_rows)
+    assert set(candidate_rows[0]) >= {"candidate_acceptable", "accepted_infeasible_improvement", "acceptance_mode", "acceptance_reason"}
 
     with Path(report["candidate_lane_summary_csv"]).open("r", newline="", encoding="utf-8") as f:
         lane_rows = list(csv.DictReader(f))
@@ -135,6 +248,7 @@ def test_closed_loop_finetune_reports_lanes_and_two_stage_antithetic_search(tmp_
     assert {row["lane_id"] for row in lane_rows} == {"head_on"}
     assert all(row["score"] for row in lane_rows)
     assert all(row["per_lane_clearance_tolerance_m"] == "0.01" for row in lane_rows)
+    assert all(row["acceptance_mode"] == "safety_improvement" for row in lane_rows)
 
 
 def test_closed_loop_training_lane_profile_adds_broad_3d_lanes() -> None:

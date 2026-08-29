@@ -6,6 +6,7 @@ import shutil
 from typing import Any
 
 from microbench.rl.closed_loop_training import (
+    CLOSED_LOOP_ACCEPTANCE_MODE_CHOICES,
     CLOSED_LOOP_BROAD_3D_HOLDOUT_SCENARIOS,
     CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE,
     CLOSED_LOOP_OBJECTIVE_DEFAULTS,
@@ -137,6 +138,7 @@ def _training_summary(training: dict[str, Any]) -> dict[str, Any]:
         "search_strategy": training.get("search_strategy"),
         "search_plan": training.get("search_plan"),
         "antithetic_sampling": training.get("antithetic_sampling"),
+        "acceptance_mode": training.get("acceptance_mode"),
         "require_per_lane_safety": training.get("require_per_lane_safety"),
         "per_lane_clearance_tolerance_m": training.get("per_lane_clearance_tolerance_m"),
         "base_metrics": _summary_metrics(training.get("base_metrics")),
@@ -209,6 +211,7 @@ def run_learned_closed_loop_study(
     stage1_generations: int | None = None,
     stage2_generations: int | None = None,
     antithetic_sampling: bool = False,
+    acceptance_mode: str = "strict_feasible",
     sigma: float = 0.03,
     sigma_decay: float = 0.5,
     min_delta: float = 1e-6,
@@ -284,6 +287,7 @@ def run_learned_closed_loop_study(
         stage1_generations=stage1_generations,
         stage2_generations=stage2_generations,
         antithetic_sampling=bool(antithetic_sampling),
+        acceptance_mode=str(acceptance_mode),
         sigma=float(sigma),
         sigma_decay=float(sigma_decay),
         min_delta=float(min_delta),
@@ -408,6 +412,7 @@ def run_learned_closed_loop_study(
         "stage1_generations": None if stage1_generations is None else int(stage1_generations),
         "stage2_generations": None if stage2_generations is None else int(stage2_generations),
         "antithetic_sampling": bool(antithetic_sampling),
+        "acceptance_mode": str(acceptance_mode),
         "require_per_lane_safety": bool(require_per_lane_safety),
         "per_lane_clearance_tolerance_m": float(per_lane_clearance_tolerance_m),
         "holdout_profile": str(holdout_profile),
@@ -500,6 +505,7 @@ __all__ = [
     "LEARNED_CLOSED_LOOP_STUDY_MANIFEST_FILENAME",
     "LEARNED_CLOSED_LOOP_STUDY_REPORT_FILENAME",
     "LEARNED_CLOSED_LOOP_STUDY_SCHEMA_VERSION",
+    "CLOSED_LOOP_ACCEPTANCE_MODE_CHOICES",
     "CLOSED_LOOP_TRAINING_LANE_PROFILE_CHOICES",
     "run_learned_closed_loop_study",
 ]

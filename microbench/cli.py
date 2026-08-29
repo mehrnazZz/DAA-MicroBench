@@ -22,6 +22,7 @@ from microbench.logging import wandb_logger
 from microbench.rl.calibration import run_rl_policy_calibration
 from microbench.rl.bc_training import BC_FEATURE_NORMALIZATION_CHOICES, build_behavior_cloned_policy_evidence, train_behavior_cloned_policy
 from microbench.rl.closed_loop_training import (
+    CLOSED_LOOP_ACCEPTANCE_MODE_CHOICES,
     CLOSED_LOOP_BROAD_3D_HOLDOUT_SCENARIOS,
     CLOSED_LOOP_HOLDOUT_PROFILE_CHOICES,
     CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE,
@@ -1517,6 +1518,7 @@ def _learned_closed_loop_finetune(args) -> None:
         stage1_generations=args.stage1_generations,
         stage2_generations=args.stage2_generations,
         antithetic_sampling=bool(args.antithetic_sampling),
+        acceptance_mode=str(args.acceptance_mode),
         sigma=float(args.sigma),
         sigma_decay=float(args.sigma_decay),
         min_delta=float(args.min_delta),
@@ -1559,7 +1561,7 @@ def _learned_closed_loop_finetune(args) -> None:
             f"learned-closed-loop-finetune: {status} behavior={behavior} "
             f"promotion_candidate={promotion} policy={report['policy_name']} candidates={report['candidate_count']} "
             f"accepted={report['accepted_generation_count']} best={report['best_candidate_id']} "
-            f"score={best.get('score')}"
+            f"score={best.get('score')} acceptance_mode={report.get('acceptance_mode')}"
         )
         print(f"  policy_spec: {report['policy_spec']}")
         print(f"  model_artifact: {report['model_artifact']}")
@@ -1591,6 +1593,7 @@ def _learned_closed_loop_study(args) -> None:
         stage1_generations=args.stage1_generations,
         stage2_generations=args.stage2_generations,
         antithetic_sampling=bool(args.antithetic_sampling),
+        acceptance_mode=str(args.acceptance_mode),
         sigma=float(args.sigma),
         sigma_decay=float(args.sigma_decay),
         min_delta=float(args.min_delta),
@@ -1640,7 +1643,8 @@ def _learned_closed_loop_study(args) -> None:
         training = report.get("training", {})
         print(
             f"learned-closed-loop-study: {status} recommendation={report.get('recommendation')} "
-            f"promotion_candidate={promotion} policy={training.get('policy_name')}"
+            f"promotion_candidate={promotion} policy={training.get('policy_name')} "
+            f"acceptance_mode={training.get('acceptance_mode')}"
         )
         print(f"  study_manifest: {report['artifacts']['study_manifest']}")
         print(f"  training_report: {report['artifacts']['training_report']}")
@@ -2991,6 +2995,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Evaluate plus/minus perturbation pairs for each sampled candidate direction",
     )
+    p_clft.add_argument(
+        "--acceptance-mode",
+        choices=CLOSED_LOOP_ACCEPTANCE_MODE_CHOICES,
+        default="strict_feasible",
+        help="Candidate acceptance rule; safety_improvement keeps non-promotable safer stepping-stone candidates",
+    )
     p_clft.add_argument("--sigma", type=float, default=0.03, help="Gaussian perturbation scale for selected MLP parameters")
     p_clft.add_argument("--sigma-decay", type=float, default=0.5, help="Sigma multiplier after a generation with no accepted candidate")
     p_clft.add_argument("--min-delta", type=float, default=1e-6, help="Minimum score improvement required to accept a candidate")
@@ -3108,6 +3118,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--antithetic-sampling",
         action="store_true",
         help="Evaluate plus/minus perturbation pairs for each sampled candidate direction",
+    )
+    p_cls.add_argument(
+        "--acceptance-mode",
+        choices=CLOSED_LOOP_ACCEPTANCE_MODE_CHOICES,
+        default="strict_feasible",
+        help="Candidate acceptance rule; safety_improvement keeps non-promotable safer stepping-stone candidates",
     )
     p_cls.add_argument("--sigma", type=float, default=0.03, help="Gaussian perturbation scale for selected MLP parameters")
     p_cls.add_argument("--sigma-decay", type=float, default=0.5, help="Sigma multiplier after a generation with no accepted candidate")

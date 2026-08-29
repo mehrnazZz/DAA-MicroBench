@@ -850,7 +850,7 @@ python -m microbench.cli learned-hard-lane-loop \
   --require-pass
 ```
 
-For rollout-aware learned-policy iteration, `learned-closed-loop-finetune` starts from an existing portable `mlp_json` policy spec, evaluates perturbed MLP parameters through the PettingZoo-style environment, and accepts only candidates that improve the configured closed-loop objective without collision, clearance, or near-miss guardrail regression.
+For rollout-aware learned-policy iteration, `learned-closed-loop-finetune` starts from an existing portable `mlp_json` policy spec, evaluates perturbed MLP parameters through the PettingZoo-style environment, and accepts candidates according to a recorded acceptance mode. The default `strict_feasible` mode accepts only candidates that improve the configured closed-loop objective without collision, clearance, or near-miss guardrail regression.
 
 ```bash
 python -m microbench.cli learned-closed-loop-finetune \
@@ -873,7 +873,7 @@ python -m microbench.cli learned-closed-loop-finetune \
   --require-promotion
 ```
 
-This is benchmark-native closed-loop learned-policy infrastructure. It writes both aggregate candidate results and `candidate_lane_summary.csv`, which shows score, clearance, completion, and lane-level safety regression flags for every candidate. `--search-strategy two_stage` runs an output-head warmup before all-layer refinement, `--antithetic-sampling` evaluates plus/minus perturbation pairs, and `--require-per-lane-safety` rejects aggregate winners that regress an individual lane beyond the recorded `--per-lane-clearance-tolerance-m`. `--require-promotion` requires the tuned policy to avoid safety, clearance, and `score_v0` regression against the base policy on the selected broad 3D holdout rows. It is not yet a claim that the shipped learned baseline is SOTA.
+This is benchmark-native closed-loop learned-policy infrastructure. It writes both aggregate candidate results and `candidate_lane_summary.csv`, which shows score, clearance, completion, candidate-acceptance reasons, and lane-level safety regression flags for every candidate. `--search-strategy two_stage` runs an output-head warmup before all-layer refinement, `--antithetic-sampling` evaluates plus/minus perturbation pairs, and `--require-per-lane-safety` rejects aggregate winners that regress an individual lane beyond the recorded `--per-lane-clearance-tolerance-m`. Use `--acceptance-mode safety_improvement` for curriculum development when the current parent is still unsafe: it can keep a non-promotable intermediate candidate only if score improves and collision, near-miss, or clearance behavior improves without lane-level safety regression. `--require-promotion` still requires final training feasibility and broad-holdout safety, clearance, and `score_v0` non-regression against the base policy. It is not yet a claim that the shipped learned baseline is SOTA.
 
 When the goal is to reduce validation-lane overfit, use `--lane-profile validation_plus_broad_3d`. That profile trains on the canonical learned validation lanes plus broad 3D stress training lanes for sphere swap, dense swarm, merge, sensor-volume, and noncooperative-intruder geometry.
 

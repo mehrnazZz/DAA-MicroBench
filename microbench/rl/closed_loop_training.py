@@ -39,6 +39,7 @@ CLOSED_LOOP_TRAINING_SCHEMA_VERSION = "0.1"
 CLOSED_LOOP_POLICY_NAME = "closed_loop_mlp_learned"
 CLOSED_LOOP_TRAINABLE_PARAMETER_CHOICES = ("output_head", "all_layers")
 CLOSED_LOOP_SEARCH_STRATEGY_CHOICES = ("single_stage", "two_stage")
+CLOSED_LOOP_ACCEPTANCE_MODE_CHOICES = ("strict_feasible", "safety_improvement")
 CLOSED_LOOP_TRAINING_LANE_PROFILE_CHOICES = ("validation", "broad_3d_stress", "validation_plus_broad_3d")
 CLOSED_LOOP_HOLDOUT_PROFILE_CHOICES = ("none", "broad_3d_stress")
 CLOSED_LOOP_HOLDOUT_SCORE_TOLERANCE = 1.0
@@ -131,6 +132,10 @@ CLOSED_LOOP_CANDIDATE_FIELDS = (
     "candidate_index",
     "parent_candidate_id",
     "accepted",
+    "candidate_acceptable",
+    "accepted_infeasible_improvement",
+    "acceptance_mode",
+    "acceptance_reason",
     "feasible",
     "score",
     "score_delta_vs_best_before",
@@ -169,6 +174,10 @@ CLOSED_LOOP_LANE_SUMMARY_FIELDS = (
     "candidate_index",
     "parent_candidate_id",
     "accepted",
+    "candidate_acceptable",
+    "accepted_infeasible_improvement",
+    "acceptance_mode",
+    "acceptance_reason",
     "feasible",
     "lane_id",
     "category",
@@ -654,6 +663,13 @@ def _search_strategy(value: str) -> str:
     return normalized
 
 
+def _acceptance_mode(value: str) -> str:
+    normalized = str(value).strip()
+    if normalized not in CLOSED_LOOP_ACCEPTANCE_MODE_CHOICES:
+        raise ValueError("acceptance_mode must be one of " + ",".join(CLOSED_LOOP_ACCEPTANCE_MODE_CHOICES))
+    return normalized
+
+
 def _nonnegative_int_or_none(value: int | None, name: str) -> int | None:
     if value is None:
         return None
@@ -913,6 +929,10 @@ def _candidate_lane_summary_rows(
                 "candidate_index": int(candidate.get("candidate_index", 0) or 0),
                 "parent_candidate_id": str(candidate.get("parent_candidate_id", "")),
                 "accepted": bool(candidate.get("accepted", False)),
+                "candidate_acceptable": bool(candidate.get("candidate_acceptable", False)),
+                "accepted_infeasible_improvement": bool(candidate.get("accepted_infeasible_improvement", False)),
+                "acceptance_mode": str(candidate.get("acceptance_mode", "")),
+                "acceptance_reason": str(candidate.get("acceptance_reason", "")),
                 "feasible": bool(candidate.get("feasible", False)),
                 "lane_id": lane_id,
                 "category": str(first.get("category", "")),
@@ -979,6 +999,80 @@ def _enrich_with_lane_summaries(
     )
     if bool(require_per_lane_safety) and regression_count > 0:
         metrics["feasible"] = False
+
+
+def _candidate_safety_relation(
+    metrics: dict[str, Any],
+    reference: dict[str, Any],
+    *,
+    clearance_tolerance_m: float,
+) -> tuple[str, str]:
+    collision_ticks = int(metrics.get("collision_ticks", 0) or 0)
+    reference_collision_ticks = int(reference.get("collision_ticks", 0) or 0)
+    near_miss_ticks = int(metrics.get("near_miss_ticks", 0) or 0)
+    reference_near_miss_ticks = int(reference.get("near_miss_ticks", 0) or 0)
+    clearance = _finite_float(metrics.get("min_clearance_m"))
+    reference_clearance = _finite_float(reference.get("min_clearance_m"))
+    tolerance = max(0.0, float(clearance_tolerance_m))
+
+    if collision_ticks > reference_collision_ticks:
+        return "regressed", "collision_regression_vs_best"
+    if reference_clearance is not None and (clearance is None or clearance < reference_clearance - tolerance - 1e-9):
+        return "regressed", "clearance_regression_vs_best"
+    if collision_ticks < reference_collision_ticks:
+        return "improved", "collision_reduction"
+    if near_miss_ticks > reference_near_miss_ticks:
+        return "regressed", "near_miss_regression_vs_best"
+    if near_miss_ticks < reference_near_miss_ticks:
+        return "improved", "near_miss_reduction"
+    if clearance is not None and reference_clearance is not None and clearance > reference_clearance + tolerance:
+        return "improved", "clearance_improvement"
+    return "same", "safety_unchanged"
+
+
+def _candidate_acceptance_decision(
+    metrics: dict[str, Any],
+    best_metrics: dict[str, Any],
+    *,
+    acceptance_mode: str,
+    min_delta: float,
+    require_per_lane_safety: bool,
+    per_lane_clearance_tolerance_m: float,
+) -> dict[str, Any]:
+    """Return the closed-loop search acceptance verdict for a candidate."""
+
+    mode = _acceptance_mode(acceptance_mode)
+    score = _finite_float(metrics.get("score"))
+    best_score = _finite_float(best_metrics.get("score"))
+    if score is None:
+        return {"accepted": False, "reason": "score_not_finite", "accepted_infeasible_improvement": False}
+    if best_score is None:
+        return {"accepted": False, "reason": "best_score_not_finite", "accepted_infeasible_improvement": False}
+    if int(metrics.get("api_error_count", 0) or 0) > 0:
+        return {"accepted": False, "reason": "api_error", "accepted_infeasible_improvement": False}
+    if not bool(metrics.get("finite", False)):
+        return {"accepted": False, "reason": "nonfinite_rollout", "accepted_infeasible_improvement": False}
+    if score >= best_score - float(min_delta):
+        return {"accepted": False, "reason": "score_not_improved", "accepted_infeasible_improvement": False}
+    if int(metrics.get("lane_safety_regression_count", 0) or 0) > 0 and (
+        mode == "safety_improvement" or bool(require_per_lane_safety)
+    ):
+        return {"accepted": False, "reason": "lane_safety_regression", "accepted_infeasible_improvement": False}
+    if bool(metrics.get("feasible")):
+        return {"accepted": True, "reason": "feasible_score_improvement", "accepted_infeasible_improvement": False}
+    if mode == "strict_feasible":
+        return {"accepted": False, "reason": "candidate_infeasible", "accepted_infeasible_improvement": False}
+
+    relation, reason = _candidate_safety_relation(
+        metrics,
+        best_metrics,
+        clearance_tolerance_m=float(per_lane_clearance_tolerance_m),
+    )
+    if relation == "regressed":
+        return {"accepted": False, "reason": reason, "accepted_infeasible_improvement": False}
+    if relation != "improved":
+        return {"accepted": False, "reason": "no_safety_improvement", "accepted_infeasible_improvement": False}
+    return {"accepted": True, "reason": f"infeasible_{reason}", "accepted_infeasible_improvement": True}
 
 
 def _evaluate_candidate(
@@ -1124,6 +1218,7 @@ def _training_disclosure(
     search_strategy: str,
     search_plan: list[dict[str, Any]],
     antithetic_sampling: bool,
+    acceptance_mode: str,
     require_per_lane_safety: bool,
     per_lane_clearance_tolerance_m: float,
     holdout_config: dict[str, Any],
@@ -1159,6 +1254,7 @@ def _training_disclosure(
         "search_strategy": str(search_strategy),
         "search_plan": search_plan,
         "antithetic_sampling": bool(antithetic_sampling),
+        "acceptance_mode": str(acceptance_mode),
         "require_per_lane_safety": bool(require_per_lane_safety),
         "per_lane_clearance_tolerance_m": float(per_lane_clearance_tolerance_m),
         "updated_parameters": updated,
@@ -1184,6 +1280,7 @@ def fine_tune_closed_loop_policy(
     stage1_generations: int | None = None,
     stage2_generations: int | None = None,
     antithetic_sampling: bool = False,
+    acceptance_mode: str = "strict_feasible",
     sigma: float = 0.03,
     sigma_decay: float = 0.5,
     min_delta: float = 1e-6,
@@ -1260,6 +1357,7 @@ def fine_tune_closed_loop_policy(
 
     trainable_parameters = _trainable_parameters(trainable_parameters)
     search_strategy = _search_strategy(search_strategy)
+    acceptance_mode = _acceptance_mode(acceptance_mode)
     planned_search = _search_plan(
         search_strategy=search_strategy,
         trainable_parameters=trainable_parameters,
@@ -1329,6 +1427,10 @@ def fine_tune_closed_loop_policy(
         "trainable_parameters": trainable_parameters,
         "parent_candidate_id": "",
         "accepted": True,
+        "candidate_acceptable": True,
+        "accepted_infeasible_improvement": False,
+        "acceptance_mode": str(acceptance_mode),
+        "acceptance_reason": "base_policy",
         "score_delta_vs_best_before": 0.0,
         "sigma": 0.0,
     }
@@ -1415,13 +1517,33 @@ def fine_tune_closed_loop_policy(
                         lane_rows,
                         require_per_lane_safety=bool(require_per_lane_safety),
                     )
+                    decision = _candidate_acceptance_decision(
+                        metrics,
+                        best_metrics,
+                        acceptance_mode=str(acceptance_mode),
+                        min_delta=float(min_delta),
+                        require_per_lane_safety=bool(require_per_lane_safety),
+                        per_lane_clearance_tolerance_m=float(per_lane_clearance_tolerance_m),
+                    )
+                    metrics.update(
+                        {
+                            "candidate_acceptable": bool(decision["accepted"]),
+                            "accepted_infeasible_improvement": bool(decision["accepted_infeasible_improvement"]),
+                            "acceptance_mode": str(acceptance_mode),
+                            "acceptance_reason": str(decision["reason"]),
+                        }
+                    )
                     for lane_row in lane_rows:
                         lane_row["feasible"] = bool(metrics["feasible"])
+                        lane_row["candidate_acceptable"] = bool(metrics["candidate_acceptable"])
+                        lane_row["accepted_infeasible_improvement"] = bool(metrics["accepted_infeasible_improvement"])
+                        lane_row["acceptance_mode"] = str(metrics["acceptance_mode"])
+                        lane_row["acceptance_reason"] = str(metrics["acceptance_reason"])
                     generation_rows.append((metrics, vector, rows, lane_rows))
 
             chosen: tuple[dict[str, Any], np.ndarray, list[dict[str, Any]], list[dict[str, Any]]] | None = None
             for metrics, vector, rows, lane_rows in sorted(generation_rows, key=lambda item: _candidate_sort_key(item[0])):
-                if bool(metrics.get("feasible")) and float(metrics["score"]) < best_score_before - float(min_delta):
+                if bool(metrics.get("candidate_acceptable")):
                     chosen = (metrics, vector, rows, lane_rows)
                     break
             if chosen is not None:
@@ -1462,6 +1584,7 @@ def fine_tune_closed_loop_policy(
         search_strategy=search_strategy,
         search_plan=planned_search,
         antithetic_sampling=bool(antithetic_sampling),
+        acceptance_mode=str(acceptance_mode),
         require_per_lane_safety=bool(require_per_lane_safety),
         per_lane_clearance_tolerance_m=float(per_lane_clearance_tolerance_m),
         holdout_config=holdout_config,
@@ -1615,6 +1738,7 @@ def fine_tune_closed_loop_policy(
         "search_strategy": str(search_strategy),
         "search_plan": planned_search,
         "antithetic_sampling": bool(antithetic_sampling),
+        "acceptance_mode": str(acceptance_mode),
         "require_per_lane_safety": bool(require_per_lane_safety),
         "per_lane_clearance_tolerance_m": float(per_lane_clearance_tolerance_m),
         "sigma": float(sigma),
@@ -1636,6 +1760,7 @@ def fine_tune_closed_loop_policy(
 
 __all__ = [
     "CLOSED_LOOP_CANDIDATE_FIELDS",
+    "CLOSED_LOOP_ACCEPTANCE_MODE_CHOICES",
     "CLOSED_LOOP_BROAD_3D_HOLDOUT_SCENARIOS",
     "CLOSED_LOOP_EPISODE_FIELDS",
     "CLOSED_LOOP_LANE_SUMMARY_FIELDS",
