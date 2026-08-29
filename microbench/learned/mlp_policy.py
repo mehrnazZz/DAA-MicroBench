@@ -16,12 +16,59 @@ from microbench.learned.tiny_linear import (
     observation_to_tiny_features,
     planner_input_to_tiny_features,
 )
+from microbench.learned.rl_bridge import planner_input_to_rl_observation
 from microbench.types import PlannerInput
 
 
 MLP_LEARNED_MODEL_ID = "mlp_goal_avoidance_v0"
+MLP_LEARNED_PUBLIC_OBS_MODEL_ID = "mlp_goal_avoidance_public_obs_v1"
+MLP_LEARNED_MODEL_IDS = (MLP_LEARNED_MODEL_ID, MLP_LEARNED_PUBLIC_OBS_MODEL_ID)
 MLP_LEARNED_POLICY_NAME = "mlp_learned"
+MLP_LEARNED_COMPACT_FEATURE_SET = "compact_v0"
+MLP_LEARNED_PUBLIC_OBS_FEATURE_SET = "public_obs_v1"
+MLP_LEARNED_FEATURE_SET_CHOICES = (MLP_LEARNED_COMPACT_FEATURE_SET, MLP_LEARNED_PUBLIC_OBS_FEATURE_SET)
 MLP_LEARNED_FEATURE_NAMES = TINY_LEARNED_FEATURE_NAMES
+MLP_LEARNED_PUBLIC_OBS_TOP_K = 8
+
+
+def _public_obs_feature_names(top_k: int = MLP_LEARNED_PUBLIC_OBS_TOP_K) -> tuple[str, ...]:
+    base = (
+        "ego_pos_x",
+        "ego_pos_y",
+        "ego_pos_z",
+        "ego_vel_x",
+        "ego_vel_y",
+        "ego_vel_z",
+        "goal_dir_x",
+        "goal_dir_y",
+        "goal_dir_z",
+        "goal_dist_m",
+        "done",
+        "time_s",
+        "agent_id_norm",
+        "priority",
+        "radius_m",
+        "v_max_mps",
+        "a_max_mps2",
+    )
+    neighbor_fields = (
+        "present",
+        "rel_pos_x",
+        "rel_pos_y",
+        "rel_pos_z",
+        "rel_vel_x",
+        "rel_vel_y",
+        "rel_vel_z",
+        "radius_m",
+        "msg_age_s",
+    )
+    names = list(base)
+    for idx in range(max(0, int(top_k))):
+        names.extend(f"neighbor_{idx}_{field}" for field in neighbor_fields)
+    return tuple(names)
+
+
+MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES = _public_obs_feature_names(MLP_LEARNED_PUBLIC_OBS_TOP_K)
 
 
 def _mlp_model_resource():
@@ -30,6 +77,42 @@ def _mlp_model_resource():
 
 def mlp_learned_model_path() -> str:
     return str(_mlp_model_resource())
+
+
+def _mlp_feature_set(value: str | None) -> str:
+    normalized = str(value or MLP_LEARNED_COMPACT_FEATURE_SET).strip()
+    if normalized not in MLP_LEARNED_FEATURE_SET_CHOICES:
+        raise ValueError(
+            f"Unsupported MLP learned feature set {value!r}; "
+            f"expected one of {','.join(MLP_LEARNED_FEATURE_SET_CHOICES)}"
+        )
+    return normalized
+
+
+def mlp_feature_names(feature_set: str = MLP_LEARNED_COMPACT_FEATURE_SET, *, top_k: int = MLP_LEARNED_PUBLIC_OBS_TOP_K) -> tuple[str, ...]:
+    mode = _mlp_feature_set(feature_set)
+    if mode == MLP_LEARNED_COMPACT_FEATURE_SET:
+        return MLP_LEARNED_FEATURE_NAMES
+    return _public_obs_feature_names(top_k)
+
+
+def mlp_model_id_for_feature_set(feature_set: str = MLP_LEARNED_COMPACT_FEATURE_SET) -> str:
+    mode = _mlp_feature_set(feature_set)
+    if mode == MLP_LEARNED_PUBLIC_OBS_FEATURE_SET:
+        return MLP_LEARNED_PUBLIC_OBS_MODEL_ID
+    return MLP_LEARNED_MODEL_ID
+
+
+def mlp_feature_set_from_spec(spec: dict[str, Any]) -> str:
+    declared = spec.get("feature_set")
+    if declared is not None:
+        return _mlp_feature_set(str(declared))
+    features = tuple(spec.get("input_features", ()))
+    if features == MLP_LEARNED_FEATURE_NAMES:
+        return MLP_LEARNED_COMPACT_FEATURE_SET
+    if features == MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES:
+        return MLP_LEARNED_PUBLIC_OBS_FEATURE_SET
+    raise ValueError("MLP learned baseline feature list does not match a supported public feature contract")
 
 
 def load_mlp_learned_spec(path: str | Path | None = None) -> dict[str, Any]:
@@ -43,19 +126,51 @@ def load_mlp_learned_spec(path: str | Path | None = None) -> dict[str, Any]:
             f"Unsupported learned baseline schema {spec.get('schema_version')!r}; "
             f"expected {LEARNED_BASELINE_SCHEMA_VERSION!r}"
         )
-    if spec.get("model_id") != MLP_LEARNED_MODEL_ID:
-        raise ValueError(f"Unsupported MLP learned model id {spec.get('model_id')!r}")
-    if tuple(spec.get("input_features", ())) != MLP_LEARNED_FEATURE_NAMES:
+    feature_set = mlp_feature_set_from_spec(spec)
+    expected_model_id = mlp_model_id_for_feature_set(feature_set)
+    if spec.get("model_id") != expected_model_id:
+        raise ValueError(f"Unsupported MLP learned model id {spec.get('model_id')!r}; expected {expected_model_id!r}")
+    feature_top_k = int(spec.get("feature_top_k", MLP_LEARNED_PUBLIC_OBS_TOP_K))
+    expected_features = mlp_feature_names(feature_set, top_k=feature_top_k)
+    if tuple(spec.get("input_features", ())) != expected_features:
         raise ValueError("MLP learned baseline feature list does not match the public learned-policy contract")
     return spec
 
 
-def planner_input_to_mlp_features(planner_input: PlannerInput, *, max_neighbors: int = 8) -> np.ndarray:
-    return planner_input_to_tiny_features(planner_input, max_neighbors=max_neighbors)
+def planner_input_to_mlp_features(
+    planner_input: PlannerInput,
+    *,
+    max_neighbors: int = 8,
+    feature_set: str = MLP_LEARNED_COMPACT_FEATURE_SET,
+) -> np.ndarray:
+    mode = _mlp_feature_set(feature_set)
+    if mode == MLP_LEARNED_COMPACT_FEATURE_SET:
+        return planner_input_to_tiny_features(planner_input, max_neighbors=max_neighbors)
+    return planner_input_to_rl_observation(planner_input, top_k=max_neighbors)
 
 
-def observation_to_mlp_features(observation: np.ndarray, *, top_k: int = 8) -> np.ndarray:
-    return observation_to_tiny_features(observation, top_k=top_k)
+def _observation_to_public_obs_features(observation: np.ndarray, *, top_k: int = MLP_LEARNED_PUBLIC_OBS_TOP_K) -> np.ndarray:
+    obs = np.asarray(observation, dtype=np.float32).reshape(-1)
+    expected = OBS_BASE_DIM + max(0, int(top_k)) * OBS_NEIGHBOR_DIM
+    if obs.shape[0] < OBS_BASE_DIM:
+        raise ValueError(f"RL observation has length {obs.shape[0]}, expected at least {OBS_BASE_DIM}")
+    if obs.shape[0] >= expected:
+        return obs[:expected].astype(np.float32, copy=False)
+    out = np.zeros((expected,), dtype=np.float32)
+    out[: obs.shape[0]] = obs
+    return out
+
+
+def observation_to_mlp_features(
+    observation: np.ndarray,
+    *,
+    top_k: int = 8,
+    feature_set: str = MLP_LEARNED_COMPACT_FEATURE_SET,
+) -> np.ndarray:
+    mode = _mlp_feature_set(feature_set)
+    if mode == MLP_LEARNED_COMPACT_FEATURE_SET:
+        return observation_to_tiny_features(observation, top_k=top_k)
+    return _observation_to_public_obs_features(observation, top_k=top_k)
 
 
 def _normalize(v: np.ndarray) -> np.ndarray:
@@ -99,6 +214,20 @@ class FrozenMlpPolicyModel:
         return str(self.spec["model_id"])
 
     @property
+    def feature_set(self) -> str:
+        return mlp_feature_set_from_spec(self.spec)
+
+    @property
+    def feature_top_k(self) -> int:
+        if self.feature_set == MLP_LEARNED_PUBLIC_OBS_FEATURE_SET:
+            return int(self.spec.get("feature_top_k", MLP_LEARNED_PUBLIC_OBS_TOP_K))
+        return MLP_LEARNED_PUBLIC_OBS_TOP_K
+
+    @property
+    def feature_names(self) -> tuple[str, ...]:
+        return mlp_feature_names(self.feature_set, top_k=self.feature_top_k)
+
+    @property
     def training_metadata(self) -> dict[str, Any]:
         return dict(self.spec.get("training", {}))
 
@@ -112,9 +241,14 @@ class FrozenMlpPolicyModel:
             return np.asarray(action, dtype=np.float32)
 
         out = np.asarray(action, dtype=np.float32).reshape(3)
-        goal = _normalize(np.asarray(features[0:3], dtype=np.float32))
-        if bool(postprocess.get("goal_forward_floor", False)) and float(np.linalg.norm(goal)) > 1e-9:
+        if self.feature_set == MLP_LEARNED_PUBLIC_OBS_FEATURE_SET:
+            goal = _normalize(np.asarray(features[6:9], dtype=np.float32))
+            threat_features = observation_to_tiny_features(features, top_k=self.feature_top_k)
+            threat = float(np.clip(threat_features[-2], 0.0, 1.0))
+        else:
+            goal = _normalize(np.asarray(features[0:3], dtype=np.float32))
             threat = float(np.clip(features[-2], 0.0, 1.0))
+        if bool(postprocess.get("goal_forward_floor", False)) and float(np.linalg.norm(goal)) > 1e-9:
             base = float(postprocess.get("min_forward_base", 0.2))
             free_boost = float(postprocess.get("min_forward_free_boost", 0.25))
             min_forward = base + free_boost * (1.0 - threat)
@@ -135,12 +269,13 @@ class FrozenMlpPolicyModel:
         b1 = np.asarray(self.spec["layer1_bias"], dtype=np.float32)
         w2 = np.asarray(self.spec["layer2_weights"], dtype=np.float32)
         b2 = np.asarray(self.spec["layer2_bias"], dtype=np.float32)
-        if x.shape != (len(MLP_LEARNED_FEATURE_NAMES),):
-            raise ValueError(f"MLP learned features must have shape {(len(MLP_LEARNED_FEATURE_NAMES),)}, got {x.shape}")
-        if w1.shape != (self.hidden_dim, len(MLP_LEARNED_FEATURE_NAMES)):
+        feature_dim = len(self.feature_names)
+        if x.shape != (feature_dim,):
+            raise ValueError(f"MLP learned features must have shape {(feature_dim,)}, got {x.shape}")
+        if w1.shape != (self.hidden_dim, feature_dim):
             raise ValueError(
                 f"MLP layer1 weights have shape {w1.shape}, "
-                f"expected {(self.hidden_dim, len(MLP_LEARNED_FEATURE_NAMES))}"
+                f"expected {(self.hidden_dim, feature_dim)}"
             )
         if b1.shape != (self.hidden_dim,):
             raise ValueError(f"MLP layer1 bias has shape {b1.shape}, expected {(self.hidden_dim,)}")
@@ -153,10 +288,19 @@ class FrozenMlpPolicyModel:
         return self._postprocess_action(np.tanh(raw), x)
 
     def action_from_planner_input(self, planner_input: PlannerInput, *, max_neighbors: int = 8) -> np.ndarray:
-        return self.action_from_features(planner_input_to_mlp_features(planner_input, max_neighbors=max_neighbors))
+        top_k = self.feature_top_k if self.feature_set == MLP_LEARNED_PUBLIC_OBS_FEATURE_SET else int(max_neighbors)
+        return self.action_from_features(
+            planner_input_to_mlp_features(
+                planner_input,
+                max_neighbors=top_k,
+                feature_set=self.feature_set,
+            )
+        )
 
     def predict(self, observation: np.ndarray, deterministic: bool = True):
         _ = deterministic
         obs = np.asarray(observation, dtype=np.float32).reshape(-1)
-        top_k = max(0, (obs.shape[0] - OBS_BASE_DIM) // OBS_NEIGHBOR_DIM)
-        return self.action_from_features(observation_to_mlp_features(obs, top_k=top_k)), None
+        top_k = self.feature_top_k if self.feature_set == MLP_LEARNED_PUBLIC_OBS_FEATURE_SET else max(0, (obs.shape[0] - OBS_BASE_DIM) // OBS_NEIGHBOR_DIM)
+        return self.action_from_features(
+            observation_to_mlp_features(obs, top_k=top_k, feature_set=self.feature_set)
+        ), None

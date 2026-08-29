@@ -335,9 +335,9 @@ The trainer rolls out a transparent local DAA teacher over the public RL observa
 
 - `bc_mlp_policy.json`: frozen MLP JSON weights using the same model contract as `mlp_learned`
 - `policy_spec.json`: portable `mlp_json` policy spec for `rl-smoke`, `rl-validation-matrix`, `learned_policy_spec`, and learned-submission bundles
-- `bc_training_report.json`: sample counts, lane/seed provenance, fit error, and optional validation-matrix evidence
+- `bc_training_report.json`: sample counts, lane/seed provenance, feature set, fit error, and optional validation-matrix evidence
 
-Generated BC artifacts also declare a small inference guardrail: a goal-direction forward-progress floor plus a unit-norm action clamp before normal action-space clipping. This is disclosed in the model JSON and learned-submission manifest. The workflow is behavior cloning from a local teacher, not an upper-bound oracle or a certified DAA controller.
+Generated BC artifacts also declare a small inference guardrail: a goal-direction forward-progress floor plus a unit-norm action clamp before normal action-space clipping. Pass `--mlp-feature-set public_obs_v1` to train the portable JSON MLP on the full 89-dimensional public RL observation with top-8 neighbor track slots; the default `compact_v0` keeps compatibility with earlier aggregate-feature MLP artifacts. This is disclosed in the model JSON and learned-submission manifest. The workflow is behavior cloning from a local teacher, not an upper-bound oracle or a certified DAA controller.
 
 Create a reviewer-facing bundle and learned-policy leaderboard comparison against the frozen tiny/MLP fixtures:
 
@@ -427,7 +427,7 @@ python -m microbench.cli learned-hard-lane-loop \
   --require-pass
 ```
 
-This command selects canonical weak validation lanes from learned diagnostics, exports public dataset shards, trains the same portable BC MLP from those shards, packages the trained spec, and writes a fresh learned leaderboard plus diagnostics report. `--mix-lanes` keeps broad replay in the dataset beside the selected hard lanes, `dense_swarm_hard_negative` adds an explicit dense 3D swarm hard-negative training lane when requested, `--sample-weighting safety` emphasizes collision, near-miss, and low-clearance samples, `--sample-selection hard_negative_windows` trims configured hard-negative lanes to hard-event or closest-approach windows, and generated BC JSON artifacts store the training feature mean/std transform plus weighting and selection recipes for deterministic inference.
+This command selects canonical weak validation lanes from learned diagnostics, exports public dataset shards, trains the same portable BC MLP from those shards, packages the trained spec, and writes a fresh learned leaderboard plus diagnostics report. `--mix-lanes` keeps broad replay in the dataset beside the selected hard lanes, `--mlp-feature-set public_obs_v1` preserves the individual public neighbor slots for richer learned-policy experiments, `dense_swarm_hard_negative` adds an explicit dense 3D swarm hard-negative training lane when requested, `--sample-weighting safety` emphasizes collision, near-miss, and low-clearance samples, `--sample-selection hard_negative_windows` trims configured hard-negative lanes to hard-event or closest-approach windows, and generated BC JSON artifacts store the training feature mean/std transform plus weighting and selection recipes for deterministic inference.
 
 Run a closed-loop fine-tune over an existing portable MLP policy:
 

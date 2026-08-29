@@ -7,6 +7,11 @@ import sys
 
 import numpy as np
 
+from microbench.learned import (
+    MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES,
+    MLP_LEARNED_PUBLIC_OBS_FEATURE_SET,
+    MLP_LEARNED_PUBLIC_OBS_MODEL_ID,
+)
 from microbench.rl import (
     LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID,
     LEARNED_DATASET_BC_TRAINING_SOURCE,
@@ -186,6 +191,33 @@ def test_dataset_shard_training_writes_portable_policy(tmp_path: Path) -> None:
     assert model["training"]["sample_weighting"]["mode"] == "none"
     assert model["training"]["source_dataset_manifest"] == dataset["manifest"]
     assert model["training"]["source_policy"] == "local_lateral_avoidance_teacher_v0"
+
+
+def test_dataset_shard_training_can_use_public_obs_feature_set(tmp_path: Path) -> None:
+    dataset = export_learned_policy_dataset(
+        out_dir=tmp_path / "dataset",
+        lanes=["head_on"],
+        max_steps=2,
+        shard_size=4,
+    )
+
+    report = train_behavior_cloned_policy_from_dataset(
+        out_dir=tmp_path / "training_public_obs",
+        dataset_manifest=dataset["manifest"],
+        hidden_dim=8,
+        feature_set=MLP_LEARNED_PUBLIC_OBS_FEATURE_SET,
+        eval_lanes=["head_on"],
+        eval_max_steps=2,
+    )
+
+    assert report["ok"] is True
+    assert report["feature_set"] == MLP_LEARNED_PUBLIC_OBS_FEATURE_SET
+    assert report["feature_dim"] == len(MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES)
+    model = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
+    assert model["model_id"] == MLP_LEARNED_PUBLIC_OBS_MODEL_ID
+    assert model["feature_set"] == MLP_LEARNED_PUBLIC_OBS_FEATURE_SET
+    assert tuple(model["input_features"]) == MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES
+    assert model["training"]["feature_set"] == MLP_LEARNED_PUBLIC_OBS_FEATURE_SET
 
 
 def test_dataset_shard_training_records_safety_sample_weighting(tmp_path: Path) -> None:

@@ -14,8 +14,7 @@ import numpy as np
 from microbench.learned import (
     FrozenMlpPolicyModel,
     LEARNED_BASELINE_SCHEMA_VERSION,
-    MLP_LEARNED_FEATURE_NAMES,
-    MLP_LEARNED_MODEL_ID,
+    MLP_LEARNED_MODEL_IDS,
     load_mlp_learned_spec,
 )
 from microbench.rl.adapters import ModelPredictPolicyAdapter
@@ -1597,6 +1596,9 @@ def fine_tune_closed_loop_policy(
             "candidate_lane_summary_csv": str(lane_summary_csv),
             "per_lane_clearance_tolerance_m": float(per_lane_clearance_tolerance_m),
             "base_policy_name": wrapper_spec.get("policy_name"),
+            "base_model_id": base_spec.get("model_id"),
+            "base_feature_set": base_spec.get("feature_set", "compact_v0"),
+            "base_feature_dim": len(base_spec.get("input_features", [])),
         }
     )
     prior_training = final_spec.get("training")
@@ -1649,7 +1651,7 @@ def fine_tune_closed_loop_policy(
     checks = [
         _check(
             "base_policy_supported",
-            base_spec.get("schema_version") == LEARNED_BASELINE_SCHEMA_VERSION and base_spec.get("model_id") == MLP_LEARNED_MODEL_ID,
+            base_spec.get("schema_version") == LEARNED_BASELINE_SCHEMA_VERSION and base_spec.get("model_id") in MLP_LEARNED_MODEL_IDS,
             {"base_policy_spec": str(base_policy_spec), "base_model_artifact": str(base_artifact), "adapter": wrapper_spec.get("adapter")},
         ),
         _check("candidate_evaluations_ran", len(candidate_rows) >= 1, {"candidate_count": len(candidate_rows), "episode_rows": len(episode_rows)}),

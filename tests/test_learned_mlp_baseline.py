@@ -12,7 +12,13 @@ from microbench.rl import (
     FrozenMlpPolicyModel,
     MLP_LEARNED_FEATURE_NAMES,
     MLP_LEARNED_MODEL_ID,
+    MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES,
+    MLP_LEARNED_PUBLIC_OBS_FEATURE_SET,
+    MLP_LEARNED_PUBLIC_OBS_MODEL_ID,
     load_mlp_learned_spec,
+    mlp_feature_names,
+    observation_to_mlp_features,
+    planner_input_to_mlp_features,
     run_rl_policy_smoke,
     run_rl_validation_matrix,
 )
@@ -71,6 +77,40 @@ def test_mlp_learned_model_artifact_loads_and_predicts() -> None:
     assert action.shape == (3,)
     assert np.all(np.isfinite(action))
     assert float(np.linalg.norm(action)) <= np.sqrt(3.0) + 1e-6
+
+
+def test_mlp_public_obs_feature_set_matches_rl_observation_contract() -> None:
+    obs = np.zeros(len(MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES), dtype=np.float32)
+    obs[0:3] = np.asarray([1.0, 2.0, 3.0], dtype=np.float32)
+    obs[6:9] = np.asarray([1.0, 0.0, 0.0], dtype=np.float32)
+    obs[9] = 10.0
+    obs[12] = 0.25
+    obs[13] = 2.0
+    obs[14] = 0.5
+    obs[15] = 3.0
+    obs[16] = 2.0
+    obs[17] = 1.0
+    obs[18:21] = np.asarray([2.0, -1.0, 0.5], dtype=np.float32)
+    obs[21:24] = np.asarray([-0.5, 0.0, 0.25], dtype=np.float32)
+    obs[24] = 0.4
+    obs[25] = 0.1
+
+    features = observation_to_mlp_features(obs, feature_set=MLP_LEARNED_PUBLIC_OBS_FEATURE_SET)
+
+    assert features.shape == (len(MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES),)
+    assert tuple(MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES) == mlp_feature_names(MLP_LEARNED_PUBLIC_OBS_FEATURE_SET)
+    assert MLP_LEARNED_PUBLIC_OBS_MODEL_ID != MLP_LEARNED_MODEL_ID
+    assert np.allclose(features, obs)
+    assert features[17] == 1.0
+    assert np.allclose(features[18:21], [2.0, -1.0, 0.5])
+
+    planner_features = planner_input_to_mlp_features(
+        _planner_input(neighbors=[_head_on_neighbor()]),
+        feature_set=MLP_LEARNED_PUBLIC_OBS_FEATURE_SET,
+    )
+    assert planner_features.shape == (len(MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES),)
+    assert planner_features[17] == 1.0
+    assert np.allclose(planner_features[18:21], [1.0, 0.0, 0.0])
 
 
 def test_learned_mlp_planner_uses_public_neighbor_features() -> None:

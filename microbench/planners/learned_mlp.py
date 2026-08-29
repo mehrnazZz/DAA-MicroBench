@@ -4,8 +4,8 @@ import numpy as np
 
 from microbench.learned import (
     FrozenMlpPolicyModel,
-    MLP_LEARNED_MODEL_ID,
     mlp_learned_model_path,
+    mlp_model_id_for_feature_set,
     planner_input_to_mlp_features,
 )
 from microbench.planners.base import ILocalPlanner
@@ -23,8 +23,8 @@ class LearnedMlpPlanner(ILocalPlanner):
         self.seed = int(seed)
 
     def compute_cmd(self, planner_input: PlannerInput) -> PlannerOutput:
-        features = planner_input_to_mlp_features(planner_input)
-        action = self.model.action_from_features(features)
+        action = self.model.action_from_planner_input(planner_input)
+        debug_features = planner_input_to_mlp_features(planner_input)
         if planner_input.planar:
             action[1] = 0.0
         v_cmd = np.asarray(action, dtype=np.float32) * float(planner_input.ego.v_max)
@@ -37,12 +37,14 @@ class LearnedMlpPlanner(ILocalPlanner):
             debug_info={
                 "learned_model": True,
                 "learned_model_id": self.model.model_id,
-                "learned_model_expected_id": MLP_LEARNED_MODEL_ID,
+                "learned_model_expected_id": mlp_model_id_for_feature_set(self.model.feature_set),
                 "learned_weight_artifact": mlp_learned_model_path(),
                 "learned_policy_architecture": "mlp_tanh",
+                "learned_policy_feature_set": self.model.feature_set,
+                "learned_policy_feature_dim": int(len(self.model.feature_names)),
                 "learned_policy_hidden_dim": int(self.model.hidden_dim),
                 "learned_policy_action_norm": float(np.linalg.norm(action)),
-                "learned_policy_threat_scalar": float(features[-2]),
-                "learned_policy_neighbor_count_frac": float(features[-1]),
+                "learned_policy_threat_scalar": float(debug_features[-2]),
+                "learned_policy_neighbor_count_frac": float(debug_features[-1]),
             },
         )

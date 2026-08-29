@@ -8,7 +8,11 @@ from typing import Any
 
 import numpy as np
 
-from microbench.learned import observation_to_mlp_features
+from microbench.learned import (
+    MLP_LEARNED_COMPACT_FEATURE_SET,
+    MLP_LEARNED_FEATURE_SET_CHOICES,
+    observation_to_mlp_features,
+)
 from microbench.learned.tiny_linear import OBS_BASE_DIM, OBS_NEIGHBOR_DIM
 from microbench.rl.bc_training import (
     BC_FIXTURE_BUNDLE_CONFIGS,
@@ -62,6 +66,13 @@ SCENARIO_FAMILY_LANE_ALIASES = (
     (("sensor", "sensing", "degraded", "stale", "occlusion", "fused"), "communication_delay"),
     (("merge", "sphere_swap", "dense", "swarm", "funnel", "bottleneck"), "high_n_dense_merge"),
 )
+
+
+def _mlp_feature_set(value: str) -> str:
+    normalized = str(value or MLP_LEARNED_COMPACT_FEATURE_SET).strip()
+    if normalized not in MLP_LEARNED_FEATURE_SET_CHOICES:
+        raise ValueError(f"mlp_feature_set must be one of {','.join(MLP_LEARNED_FEATURE_SET_CHOICES)}")
+    return normalized
 
 
 def _json_default(value: Any) -> Any:
@@ -618,6 +629,7 @@ def _load_shard_features_and_labels(
     report: dict[str, Any],
     *,
     root: Path,
+    feature_set: str = MLP_LEARNED_COMPACT_FEATURE_SET,
 ) -> tuple[np.ndarray, np.ndarray, list[dict[str, Any]], list[Path], dict[str, np.ndarray]]:
     feature_rows: list[np.ndarray] = []
     label_rows: list[np.ndarray] = []
@@ -668,7 +680,7 @@ def _load_shard_features_and_labels(
                 valid_dim = int(valid_dims[idx])
                 obs = observations[idx, :valid_dim]
                 top_k = max(0, (valid_dim - OBS_BASE_DIM) // OBS_NEIGHBOR_DIM)
-                feature_rows.append(observation_to_mlp_features(obs, top_k=top_k))
+                feature_rows.append(observation_to_mlp_features(obs, top_k=top_k, feature_set=str(feature_set)))
                 label_rows.append(np.clip(actions[idx], -1.0, 1.0).astype(np.float32))
                 collision_rows.append(bool(collisions[idx]))
                 near_miss_rows.append(bool(near_misses[idx]))
@@ -784,6 +796,7 @@ def _manifest_overlay_from_dataset_training_report(report: dict[str, Any]) -> di
             "action_source": report.get("action_source"),
             "source_dataset_manifest": report.get("dataset_manifest"),
             "agent_samples": samples,
+            "model_feature_set": report.get("feature_set", MLP_LEARNED_COMPACT_FEATURE_SET),
             "public_observations_only": bool(report.get("public_observations_only", True)),
             "privileged_global_state": bool(report.get("privileged_global_state", False)),
         },
@@ -807,6 +820,7 @@ def train_behavior_cloned_policy_from_dataset(
     hidden_dim: int = 32,
     ridge: float = 1e-4,
     feature_normalization: str = "standard",
+    feature_set: str = MLP_LEARNED_COMPACT_FEATURE_SET,
     sample_weighting: str = "none",
     collision_sample_weight: float = DEFAULT_COLLISION_SAMPLE_WEIGHT,
     near_miss_sample_weight: float = DEFAULT_NEAR_MISS_SAMPLE_WEIGHT,
@@ -845,7 +859,12 @@ def train_behavior_cloned_policy_from_dataset(
         shutil.rmtree(validation_dir)
 
     report, manifest_path, dataset_root = _load_dataset_manifest(dataset_manifest)
-    features, labels, sample_rows, loaded_shards, sample_diagnostics = _load_shard_features_and_labels(report, root=dataset_root)
+    feature_set = _mlp_feature_set(feature_set)
+    features, labels, sample_rows, loaded_shards, sample_diagnostics = _load_shard_features_and_labels(
+        report,
+        root=dataset_root,
+        feature_set=str(feature_set),
+    )
     loaded_sample_count = int(features.shape[0])
     sample_selection_config = _sample_selection_config(
         mode=str(sample_selection),
@@ -906,6 +925,7 @@ def train_behavior_cloned_policy_from_dataset(
         max_steps=int(max_steps),
         rollout_noise_std=0.0,
         sample_count=int(features.shape[0]),
+        feature_set=str(feature_set),
         feature_normalization=normalization_payload,
     )
     training_block = model_payload["training"]
@@ -1010,6 +1030,7 @@ def train_behavior_cloned_policy_from_dataset(
         "sample_count": int(features.shape[0]),
         "loaded_sample_count": loaded_sample_count,
         "feature_dim": int(features.shape[1]),
+        "feature_set": str(feature_set),
         "label_dim": int(labels.shape[1]),
         "hidden_dim": int(hidden_dim),
         "feature_normalization": normalization_payload,
@@ -1043,6 +1064,7 @@ def run_learned_hard_lane_loop(
     hidden_dim: int = 32,
     ridge: float = 1e-4,
     feature_normalization: str = "standard",
+    feature_set: str = MLP_LEARNED_COMPACT_FEATURE_SET,
     sample_weighting: str = "none",
     collision_sample_weight: float = DEFAULT_COLLISION_SAMPLE_WEIGHT,
     near_miss_sample_weight: float = DEFAULT_NEAR_MISS_SAMPLE_WEIGHT,
@@ -1115,6 +1137,7 @@ def run_learned_hard_lane_loop(
         hidden_dim=int(hidden_dim),
         ridge=float(ridge),
         feature_normalization=str(feature_normalization),
+        feature_set=str(feature_set),
         sample_weighting=str(sample_weighting),
         collision_sample_weight=float(collision_sample_weight),
         near_miss_sample_weight=float(near_miss_sample_weight),
@@ -1212,6 +1235,7 @@ def run_learned_hard_lane_loop(
             "sample_count": training.get("sample_count"),
             "fit_rmse": training.get("fit_rmse"),
             "training_source": training.get("training_source"),
+            "feature_set": training.get("feature_set"),
             "feature_normalization": training.get("feature_normalization", {}).get("mode"),
             "sample_selection": training.get("sample_selection", {}).get("mode"),
             "sample_weighting": training.get("sample_weighting", {}).get("mode"),

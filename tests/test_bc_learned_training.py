@@ -7,7 +7,12 @@ import sys
 
 import numpy as np
 
-from microbench.learned import MLP_LEARNED_MODEL_ID
+from microbench.learned import (
+    MLP_LEARNED_MODEL_ID,
+    MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES,
+    MLP_LEARNED_PUBLIC_OBS_FEATURE_SET,
+    MLP_LEARNED_PUBLIC_OBS_MODEL_ID,
+)
 from microbench.rl import build_behavior_cloned_policy_evidence, load_policy_from_spec, train_behavior_cloned_policy
 from microbench.rl.schema import OBS_A_MAX_INDEX, OBS_GOAL_DIR_SLICE, OBS_RADIUS_INDEX, OBS_V_MAX_INDEX
 from microbench.runner import run_episode
@@ -104,6 +109,8 @@ def test_train_learned_bc_cli_smoke(tmp_path: Path) -> None:
             "0.0",
             "--feature-normalization",
             "none",
+            "--mlp-feature-set",
+            MLP_LEARNED_PUBLIC_OBS_FEATURE_SET,
             "--require-pass",
             "--json",
         ],
@@ -116,10 +123,44 @@ def test_train_learned_bc_cli_smoke(tmp_path: Path) -> None:
     report = json.loads(proc.stdout)
     assert report["ok"] is True
     assert report["sample_count"] == 8
+    assert report["feature_set"] == MLP_LEARNED_PUBLIC_OBS_FEATURE_SET
+    assert report["feature_dim"] == len(MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES)
     assert report["feature_normalization"]["mode"] == "none"
     assert Path(report["policy_spec"]).exists()
     assert Path(report["model_artifact"]).exists()
     assert (out_dir / "bc_training_report.json").exists()
+
+
+def test_behavior_cloned_training_can_use_public_obs_mlp_feature_set(tmp_path: Path) -> None:
+    report = train_behavior_cloned_policy(
+        out_dir=tmp_path / "bc_train_public_obs",
+        lanes=["head_on"],
+        max_steps=2,
+        hidden_dim=8,
+        rollout_noise_std=0.0,
+        feature_set=MLP_LEARNED_PUBLIC_OBS_FEATURE_SET,
+        eval_lanes=["head_on"],
+        eval_max_steps=2,
+    )
+
+    assert report["ok"] is True
+    assert report["feature_set"] == MLP_LEARNED_PUBLIC_OBS_FEATURE_SET
+    assert report["feature_dim"] == len(MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES)
+    assert report["validation_matrix"]["ok"] is True
+
+    model_payload = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
+    assert model_payload["model_id"] == MLP_LEARNED_PUBLIC_OBS_MODEL_ID
+    assert model_payload["feature_set"] == MLP_LEARNED_PUBLIC_OBS_FEATURE_SET
+    assert model_payload["feature_top_k"] == 8
+    assert tuple(model_payload["input_features"]) == MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES
+    assert model_payload["training"]["feature_set"] == MLP_LEARNED_PUBLIC_OBS_FEATURE_SET
+    assert model_payload["training"]["feature_dim"] == len(MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES)
+
+    loaded = load_policy_from_spec(report["policy_spec"], seed=3)
+    action = loaded.policy.action("agent_0", _observation(), None, {})
+    assert loaded.summary["adapter"] == "mlp_json"
+    assert action.shape == (3,)
+    assert np.all(np.isfinite(action))
 
 
 def test_behavior_cloned_evidence_builds_bundles_and_leaderboard(tmp_path: Path) -> None:

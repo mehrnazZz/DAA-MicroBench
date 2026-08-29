@@ -10,8 +10,12 @@ import numpy as np
 
 from microbench.learned import (
     LEARNED_BASELINE_SCHEMA_VERSION,
-    MLP_LEARNED_FEATURE_NAMES,
-    MLP_LEARNED_MODEL_ID,
+    MLP_LEARNED_COMPACT_FEATURE_SET,
+    MLP_LEARNED_FEATURE_SET_CHOICES,
+    MLP_LEARNED_PUBLIC_OBS_FEATURE_SET,
+    MLP_LEARNED_PUBLIC_OBS_TOP_K,
+    mlp_feature_names,
+    mlp_model_id_for_feature_set,
     observation_to_mlp_features,
 )
 from microbench.rl.envs import DaaParallelEnv
@@ -42,6 +46,13 @@ BC_FIXTURE_BUNDLE_CONFIGS = (
 BC_FEATURE_NORMALIZATION_CHOICES = ("standard", "none")
 BC_FEATURE_NORMALIZATION_CLIP = 5.0
 BC_FEATURE_NORMALIZATION_EPS = 1e-6
+
+
+def _mlp_feature_set(value: str) -> str:
+    normalized = str(value or MLP_LEARNED_COMPACT_FEATURE_SET).strip()
+    if normalized not in MLP_LEARNED_FEATURE_SET_CHOICES:
+        raise ValueError(f"mlp_feature_set must be one of {','.join(MLP_LEARNED_FEATURE_SET_CHOICES)}")
+    return normalized
 
 
 def _normalize(v: np.ndarray) -> np.ndarray:
@@ -93,11 +104,17 @@ def _teacher_action_from_features(features: np.ndarray) -> np.ndarray:
     return np.clip(action, -1.0, 1.0).astype(np.float32)
 
 
-def _teacher_action_from_observation(observation: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _teacher_action_from_observation(
+    observation: np.ndarray,
+    *,
+    feature_set: str = MLP_LEARNED_COMPACT_FEATURE_SET,
+) -> tuple[np.ndarray, np.ndarray]:
     obs = np.asarray(observation, dtype=np.float32).reshape(-1)
     top_k = max(0, (obs.shape[0] - 17) // 9)
-    features = observation_to_mlp_features(obs, top_k=top_k)
-    return features, _teacher_action_from_features(features)
+    teacher_features = observation_to_mlp_features(obs, top_k=top_k, feature_set=MLP_LEARNED_COMPACT_FEATURE_SET)
+    train_top_k = MLP_LEARNED_PUBLIC_OBS_TOP_K if _mlp_feature_set(feature_set) == MLP_LEARNED_PUBLIC_OBS_FEATURE_SET else top_k
+    features = observation_to_mlp_features(obs, top_k=train_top_k, feature_set=feature_set)
+    return features, _teacher_action_from_features(teacher_features)
 
 
 def _feature_normalization_payload(features: np.ndarray, *, mode: str = "standard") -> dict[str, Any]:
@@ -201,6 +218,7 @@ def _rollout_training_lane(
     seed: int,
     max_steps: int,
     rollout_noise_std: float,
+    feature_set: str,
 ) -> tuple[list[np.ndarray], list[np.ndarray], dict[str, Any]]:
     rng = np.random.default_rng(int(seed) + 7301)
     env = DaaParallelEnv(
@@ -218,7 +236,7 @@ def _rollout_training_lane(
         while env.agents and steps < int(max_steps):
             actions: dict[str, np.ndarray] = {}
             for agent in env.agents:
-                x, label = _teacher_action_from_observation(observations[agent])
+                x, label = _teacher_action_from_observation(observations[agent], feature_set=str(feature_set))
                 features.append(x)
                 labels.append(label)
                 action = label
@@ -244,6 +262,7 @@ def _rollout_training_lane(
         "comm_profile": lane.comm_profile,
         "steps": int(steps),
         "samples": int(len(features)),
+        "feature_set": _mlp_feature_set(feature_set),
     }
 
 
@@ -290,20 +309,26 @@ def _model_spec(
     max_steps: int,
     rollout_noise_std: float,
     sample_count: int,
+    feature_set: str = MLP_LEARNED_COMPACT_FEATURE_SET,
     feature_normalization: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    selected_feature_set = _mlp_feature_set(feature_set)
+    feature_top_k = MLP_LEARNED_PUBLIC_OBS_TOP_K
+    feature_names = mlp_feature_names(selected_feature_set, top_k=feature_top_k)
     normalization_payload = feature_normalization or _feature_normalization_payload(
-        np.zeros((1, len(MLP_LEARNED_FEATURE_NAMES)), dtype=np.float32),
+        np.zeros((1, len(feature_names)), dtype=np.float32),
         mode="none",
     )
     return {
         "schema_version": LEARNED_BASELINE_SCHEMA_VERSION,
-        "model_id": MLP_LEARNED_MODEL_ID,
+        "model_id": mlp_model_id_for_feature_set(selected_feature_set),
         "display_name": "Behavior-cloned MLP learned-policy baseline",
         "model_type": "mlp_tanh_policy",
+        "feature_set": selected_feature_set,
+        "feature_top_k": feature_top_k,
         "hidden_dim": int(hidden_dim),
         "action_shape": [3],
-        "input_features": list(MLP_LEARNED_FEATURE_NAMES),
+        "input_features": list(feature_names),
         "feature_normalization": normalization_payload,
         "hidden_activation": "tanh",
         "output_activation": "tanh",
@@ -335,7 +360,9 @@ def _model_spec(
             "random_feature_seed": int(seed),
             "samples": int(sample_count),
             "episodes": int(len(training_rows)),
-            "feature_dim": int(len(MLP_LEARNED_FEATURE_NAMES)),
+            "feature_set": selected_feature_set,
+            "feature_top_k": feature_top_k,
+            "feature_dim": int(len(feature_names)),
             "hidden_dim": int(hidden_dim),
             "ridge": float(ridge),
             "fit_rmse": round(float(fit_rmse), 8),
@@ -393,6 +420,7 @@ def _manifest_overlay_from_training_report(report: dict[str, Any]) -> dict[str, 
             "hardware": "local CPU",
             "teacher_policy": BC_TEACHER_NAME,
             "agent_samples": samples,
+            "model_feature_set": report.get("feature_set", MLP_LEARNED_COMPACT_FEATURE_SET),
             "public_observations_only": bool(report.get("public_observations_only", True)),
             "privileged_global_state": bool(report.get("privileged_global_state", False)),
         },
@@ -419,6 +447,7 @@ def train_behavior_cloned_policy(
     ridge: float = 1e-4,
     rollout_noise_std: float = 0.03,
     feature_normalization: str = "standard",
+    feature_set: str = MLP_LEARNED_COMPACT_FEATURE_SET,
     eval_lanes: tuple[str, ...] | list[str] | None = None,
     eval_max_steps: int | None = 12,
     policy_name: str = BC_POLICY_NAME,
@@ -448,6 +477,7 @@ def train_behavior_cloned_policy(
 
     selected = selected_validation_lanes(list(lanes) if lanes is not None else list(DEFAULT_BC_LANES))
     seed_override = None if seeds is None else [int(seed_value) for seed_value in seeds]
+    feature_set = _mlp_feature_set(feature_set)
     scenario_paths = prepare_validation_lane_scenarios(out_dir=out / "_bc_training_scenarios", lanes=selected)
 
     feature_rows: list[np.ndarray] = []
@@ -461,6 +491,7 @@ def train_behavior_cloned_policy(
                 seed=int(seed_value),
                 max_steps=int(max_steps),
                 rollout_noise_std=float(rollout_noise_std),
+                feature_set=str(feature_set),
             )
             feature_rows.extend(lane_features)
             label_rows.extend(lane_labels)
@@ -495,6 +526,7 @@ def train_behavior_cloned_policy(
         max_steps=int(max_steps),
         rollout_noise_std=float(rollout_noise_std),
         sample_count=int(features.shape[0]),
+        feature_set=str(feature_set),
         feature_normalization=normalization_payload,
     )
     spec_payload = _policy_spec(artifact_name=model_path.name, policy_name=str(policy_name))
@@ -562,6 +594,7 @@ def train_behavior_cloned_policy(
         "training_report": str(report_path),
         "sample_count": int(features.shape[0]),
         "feature_dim": int(features.shape[1]),
+        "feature_set": str(feature_set),
         "label_dim": int(labels.shape[1]),
         "hidden_dim": int(hidden_dim),
         "feature_normalization": normalization_payload,
@@ -584,6 +617,7 @@ def build_behavior_cloned_policy_evidence(
     ridge: float = 1e-4,
     rollout_noise_std: float = 0.03,
     feature_normalization: str = "standard",
+    feature_set: str = MLP_LEARNED_COMPACT_FEATURE_SET,
     eval_lanes: tuple[str, ...] | list[str] | None = None,
     eval_max_steps: int | None = 12,
     policy_name: str = BC_POLICY_NAME,
@@ -619,6 +653,7 @@ def build_behavior_cloned_policy_evidence(
         ridge=float(ridge),
         rollout_noise_std=float(rollout_noise_std),
         feature_normalization=str(feature_normalization),
+        feature_set=str(feature_set),
         eval_lanes=eval_lanes,
         eval_max_steps=eval_max_steps,
         policy_name=str(policy_name),
@@ -719,6 +754,7 @@ def build_behavior_cloned_policy_evidence(
             "model_artifact": training.get("model_artifact"),
             "sample_count": training.get("sample_count"),
             "fit_rmse": training.get("fit_rmse"),
+            "feature_set": training.get("feature_set"),
             "feature_normalization": training.get("feature_normalization", {}).get("mode"),
         },
         "manifest_overlay": str(manifest_overlay_path),

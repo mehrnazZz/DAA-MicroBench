@@ -19,6 +19,7 @@ from microbench.metrics import append_result, write_summary
 from microbench.replay import export_foxglove_comparison_mcap, export_foxglove_mcap, render_episode_report
 from microbench.dataset import generate_dataset, expand_scenarios, expand_list, sanity_check_shard
 from microbench.logging import wandb_logger
+from microbench.learned import MLP_LEARNED_FEATURE_SET_CHOICES
 from microbench.rl.calibration import run_rl_policy_calibration
 from microbench.rl.bc_training import BC_FEATURE_NORMALIZATION_CHOICES, build_behavior_cloned_policy_evidence, train_behavior_cloned_policy
 from microbench.rl.closed_loop_training import (
@@ -1355,6 +1356,7 @@ def _train_learned_bc(args) -> None:
         ridge=float(args.ridge),
         rollout_noise_std=float(args.rollout_noise_std),
         feature_normalization=str(args.feature_normalization),
+        feature_set=str(args.mlp_feature_set),
         eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
         eval_max_steps=args.eval_max_steps,
         policy_name=str(args.policy_name),
@@ -1371,7 +1373,7 @@ def _train_learned_bc(args) -> None:
         print(
             f"train-learned-bc: {status} policy={report['policy_name']} "
             f"samples={report['sample_count']} hidden_dim={report['hidden_dim']} "
-            f"fit_rmse={report['fit_rmse']}"
+            f"feature_set={report.get('feature_set')} fit_rmse={report['fit_rmse']}"
         )
         print(f"  policy_spec: {report['policy_spec']}")
         print(f"  model_artifact: {report['model_artifact']}")
@@ -1397,6 +1399,7 @@ def _learned_bc_evidence(args) -> None:
         ridge=float(args.ridge),
         rollout_noise_std=float(args.rollout_noise_std),
         feature_normalization=str(args.feature_normalization),
+        feature_set=str(args.mlp_feature_set),
         eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
         eval_max_steps=args.eval_max_steps,
         policy_name=str(args.policy_name),
@@ -1418,7 +1421,8 @@ def _learned_bc_evidence(args) -> None:
         leaderboard = report.get("leaderboard", {})
         print(
             f"learned-bc-evidence: {status} policy={args.policy_name} "
-            f"samples={training.get('sample_count')} fit_rmse={training.get('fit_rmse')} "
+            f"samples={training.get('sample_count')} feature_set={training.get('feature_set')} "
+            f"fit_rmse={training.get('fit_rmse')} "
             f"bundles={leaderboard.get('bundle_count')}"
         )
         print(f"  policy_spec: {training.get('policy_spec')}")
@@ -1450,6 +1454,7 @@ def _learned_hard_lane_loop(args) -> None:
         hidden_dim=int(args.hidden_dim),
         ridge=float(args.ridge),
         feature_normalization=str(args.feature_normalization),
+        feature_set=str(args.mlp_feature_set),
         sample_weighting=str(args.sample_weighting),
         collision_sample_weight=float(args.collision_sample_weight),
         near_miss_sample_weight=float(args.near_miss_sample_weight),
@@ -1483,7 +1488,8 @@ def _learned_hard_lane_loop(args) -> None:
         leaderboard = report.get("leaderboard", {})
         print(
             f"learned-hard-lane-loop: {status} lanes={','.join(selection.get('selected_lanes', []))} "
-            f"samples={dataset.get('sample_count')} fit_rmse={training.get('fit_rmse')} "
+            f"samples={dataset.get('sample_count')} feature_set={training.get('feature_set')} "
+            f"fit_rmse={training.get('fit_rmse')} "
             f"bundles={leaderboard.get('bundle_count')}"
         )
         if report.get("dataset_lanes"):
@@ -2768,6 +2774,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Feature transform stored in the portable MLP artifact",
     )
     p_bc.add_argument(
+        "--mlp-feature-set",
+        choices=MLP_LEARNED_FEATURE_SET_CHOICES,
+        default="compact_v0",
+        help="MLP feature contract stored in the portable artifact; public_obs_v1 uses the full public RL observation",
+    )
+    p_bc.add_argument(
         "--rollout-noise-std",
         type=float,
         default=0.03,
@@ -2805,6 +2817,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=BC_FEATURE_NORMALIZATION_CHOICES,
         default="standard",
         help="Feature transform stored in the portable MLP artifact",
+    )
+    p_bce.add_argument(
+        "--mlp-feature-set",
+        choices=MLP_LEARNED_FEATURE_SET_CHOICES,
+        default="compact_v0",
+        help="MLP feature contract stored in the portable artifact; public_obs_v1 uses the full public RL observation",
     )
     p_bce.add_argument("--rollout-noise-std", type=float, default=0.03, help="Clipped Gaussian teacher-rollout action noise")
     p_bce.add_argument("--eval-lanes", default=None, help="Comma-separated validation lane ids for the trained spec")
@@ -2871,6 +2889,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=BC_FEATURE_NORMALIZATION_CHOICES,
         default="standard",
         help="Feature transform stored in the portable MLP artifact",
+    )
+    p_hlt.add_argument(
+        "--mlp-feature-set",
+        choices=MLP_LEARNED_FEATURE_SET_CHOICES,
+        default="compact_v0",
+        help="MLP feature contract stored in the portable artifact; public_obs_v1 uses the full public RL observation",
     )
     p_hlt.add_argument(
         "--sample-weighting",
