@@ -7,6 +7,8 @@ import sys
 
 from microbench.rl import (
     LEARNED_CLOSED_LOOP_STUDY_SCHEMA_VERSION,
+    MLP_LEARNED_COMPACT_FEATURE_SET,
+    MLP_LEARNED_MODEL_ID,
     run_learned_closed_loop_study,
     train_behavior_cloned_policy,
 )
@@ -57,6 +59,9 @@ def test_learned_closed_loop_study_writes_bundle_and_review_artifacts(tmp_path: 
     assert report["promotion_candidate"] is True
     assert report["recommendation"] == "holdout_passed_no_update"
     assert report["configuration"]["lane_profile"] == "broad_3d_stress"
+    assert report["training"]["base_model_id"] == MLP_LEARNED_MODEL_ID
+    assert report["training"]["base_feature_set"] == MLP_LEARNED_COMPACT_FEATURE_SET
+    assert report["training"]["base_feature_dim"] == 14
     assert report["training"]["holdout"]["promotion_candidate"] is True
     assert report["bundle"]["ok"] is True
     assert report["leaderboard"]["ok"] is True

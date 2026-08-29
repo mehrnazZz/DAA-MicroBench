@@ -1714,16 +1714,33 @@ def fine_tune_closed_loop_policy(
         and holdout_report is not None
         and bool(holdout_report.get("promotion_candidate"))
     )
+    promotion_status = "candidate" if promotion_candidate else ("not_evaluated_without_holdout" if holdout_report is None else "review_required")
+    failed_gate_checks = [check["name"] for check in checks if check["severity"] == "gate" and not check["ok"]]
+    failed_behavior_checks = [check["name"] for check in checks if check["severity"] == "behavior" and not check["ok"]]
+    final_spec["training"].update(
+        {
+            "gate_pass": bool(gate_pass),
+            "behavior_pass": bool(behavior_pass),
+            "promotion_candidate": bool(promotion_candidate),
+            "promotion_status": promotion_status,
+            "failed_gate_checks": failed_gate_checks,
+            "failed_behavior_checks": failed_behavior_checks,
+        }
+    )
+    _write_json(model_path, final_spec)
     report = {
         "schema_version": CLOSED_LOOP_TRAINING_SCHEMA_VERSION,
         "ok": bool(gate_pass),
         "behavior_pass": bool(behavior_pass),
         "promotion_candidate": bool(promotion_candidate),
-        "promotion_status": "candidate" if promotion_candidate else ("not_evaluated_without_holdout" if holdout_report is None else "review_required"),
+        "promotion_status": promotion_status,
         "policy_name": str(policy_name),
         "out_dir": str(out),
         "base_policy_spec": str(base_policy_spec),
         "base_model_artifact": str(base_artifact),
+        "base_model_id": base_spec.get("model_id"),
+        "base_feature_set": base_spec.get("feature_set", "compact_v0"),
+        "base_feature_dim": len(base_spec.get("input_features", [])),
         "model_artifact": str(model_path),
         "policy_spec": str(spec_path),
         "training_report": str(report_path),
@@ -1754,6 +1771,8 @@ def fine_tune_closed_loop_policy(
         "best_metrics": best_metrics,
         "validation_matrix": validation_report,
         "holdout": holdout_report,
+        "failed_gate_checks": failed_gate_checks,
+        "failed_behavior_checks": failed_behavior_checks,
         "checks": checks,
     }
     _write_json(report_path, report)

@@ -225,6 +225,9 @@ def test_closed_loop_finetune_accepts_public_obs_mlp_base(tmp_path: Path) -> Non
     assert report["schema_version"] == CLOSED_LOOP_TRAINING_SCHEMA_VERSION
     assert report["ok"] is True
     assert report["candidate_count"] == 1
+    assert report["base_model_id"] == MLP_LEARNED_PUBLIC_OBS_MODEL_ID
+    assert report["base_feature_set"] == MLP_LEARNED_PUBLIC_OBS_FEATURE_SET
+    assert report["base_feature_dim"] == 89
 
     model = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
     assert model["model_id"] == MLP_LEARNED_PUBLIC_OBS_MODEL_ID
@@ -343,6 +346,8 @@ def test_closed_loop_finetune_broad_3d_holdout_promotion_gate(tmp_path: Path) ->
     assert report["behavior_pass"] is True
     assert report["promotion_candidate"] is True
     assert report["promotion_status"] == "candidate"
+    assert report["failed_gate_checks"] == []
+    assert report["failed_behavior_checks"] == []
     assert report["holdout"]["profile"] == "broad_3d_stress"
     assert report["holdout"]["expected_runs_per_policy"] == 1
     assert report["holdout"]["base"]["collision_episodes"] == 0
@@ -359,6 +364,9 @@ def test_closed_loop_finetune_broad_3d_holdout_promotion_gate(tmp_path: Path) ->
     model = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
     assert model["training"]["holdout"]["profile"] == "broad_3d_stress"
     assert model["training"]["holdout_result"]["promotion_candidate"] is True
+    assert model["training"]["promotion_candidate"] is True
+    assert model["training"]["promotion_status"] == "candidate"
+    assert model["training"]["failed_behavior_checks"] == []
 
 
 def test_closed_loop_finetune_cli_smoke(tmp_path: Path) -> None:

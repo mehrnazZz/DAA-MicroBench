@@ -90,11 +90,12 @@ def classify_learned_policy_lineage(*, bundle: str | Path, review: dict[str, Any
     holdout_config = training.get("holdout") if isinstance(training.get("holdout"), dict) else {}
     holdout_profile = holdout_result.get("profile") or holdout_config.get("profile")
     holdout_promotion = holdout_result.get("promotion_candidate")
+    overall_promotion = training.get("promotion_candidate")
     sample_selection = _mode(training.get("sample_selection"))
     sample_weighting = _mode(training.get("sample_weighting"))
 
     if "learned-closed-loop-finetune" in recipe or policy == "closed_loop_mlp_learned":
-        if holdout_promotion is True:
+        if overall_promotion is True or (overall_promotion is None and holdout_promotion is True):
             lineage_label = "closed_loop_holdout_passed"
             promotion_stage = "holdout_passed"
         elif holdout_result:

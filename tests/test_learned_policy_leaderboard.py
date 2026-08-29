@@ -152,6 +152,17 @@ def test_learned_policy_leaderboard_labels_training_lineage(tmp_path: Path, monk
             "holdout_result": {"profile": "broad_3d_stress", "promotion_candidate": True},
         },
     )
+    closed_loop_review_artifact = _write_policy_artifact(
+        tmp_path,
+        "closed_loop_review",
+        {
+            "recipe": "python -m microbench.cli learned-closed-loop-finetune",
+            "holdout_result": {"profile": "broad_3d_stress", "promotion_candidate": True},
+            "promotion_candidate": False,
+            "promotion_status": "review_required",
+            "failed_behavior_checks": ["final_training_objective_feasible"],
+        },
+    )
     reviews = {
         "bc": _fake_review(
             method="learned_policy_spec",
@@ -171,13 +182,19 @@ def test_learned_policy_leaderboard_labels_training_lineage(tmp_path: Path, monk
             score=8.0,
             policy_artifact=closed_loop_artifact,
         ),
+        "closed_loop_review": _fake_review(
+            method="learned_policy_spec",
+            policy="closed_loop_mlp_learned_review",
+            score=9.0,
+            policy_artifact=closed_loop_review_artifact,
+        ),
     }
     monkeypatch.setattr(
         "microbench.rl.learned_leaderboard.review_learned_policy_submission_bundle",
         lambda bundle: reviews[str(bundle)],
     )
 
-    report = build_learned_policy_leaderboard(bundles=["bc", "hard", "closed_loop"])
+    report = build_learned_policy_leaderboard(bundles=["bc", "hard", "closed_loop", "closed_loop_review"])
     by_policy = {row["policy"]: row for row in report["rows"]}
 
     assert by_policy["bc_mlp_learned"]["lineage_label"] == "bc_only"
@@ -187,6 +204,9 @@ def test_learned_policy_leaderboard_labels_training_lineage(tmp_path: Path, monk
     assert by_policy["closed_loop_mlp_learned"]["promotion_stage"] == "holdout_passed"
     assert by_policy["closed_loop_mlp_learned"]["holdout_profile"] == "broad_3d_stress"
     assert by_policy["closed_loop_mlp_learned"]["holdout_promotion_candidate"] is True
+    assert by_policy["closed_loop_mlp_learned_review"]["lineage_label"] == "closed_loop_holdout_review"
+    assert by_policy["closed_loop_mlp_learned_review"]["promotion_stage"] == "holdout_review_required"
+    assert by_policy["closed_loop_mlp_learned_review"]["holdout_promotion_candidate"] is True
 
 
 def test_learned_policy_leaderboard_cli_compares_bundles(tmp_path: Path) -> None:
