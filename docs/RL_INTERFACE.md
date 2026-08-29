@@ -431,6 +431,7 @@ python -m microbench.cli learned-hard-lane-loop \
   --out-dir runs_hard_lane_loop \
   --diagnostics runs_bc_mlp_evidence/learned_policy_diagnostics.json \
   --mix-lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge,dense_swarm_hard_negative \
+  --dataset-seeds 0:2 \
   --sample-weighting safety \
   --sample-selection hard_negative_windows \
   --max-lanes 3 \
@@ -438,7 +439,7 @@ python -m microbench.cli learned-hard-lane-loop \
   --require-pass
 ```
 
-This command selects canonical weak validation lanes from learned diagnostics, exports public dataset shards, trains the same portable BC MLP from those shards, packages the trained spec, and writes a fresh learned leaderboard plus diagnostics report. `--mix-lanes` keeps broad replay in the dataset beside the selected hard lanes, `--mlp-feature-set public_obs_v1` preserves the individual public neighbor slots for richer learned-policy experiments, `dense_swarm_hard_negative` adds an explicit dense 3D swarm hard-negative training lane when requested, `--sample-weighting safety` emphasizes collision, near-miss, and low-clearance samples, `--sample-selection hard_negative_windows` trims configured hard-negative lanes to hard-event or closest-approach windows, and generated BC JSON artifacts store the training feature mean/std transform plus weighting and selection recipes for deterministic inference.
+This command selects canonical weak validation lanes from learned diagnostics, exports public dataset shards, trains the same portable BC MLP from those shards, packages the trained spec, and writes a fresh learned leaderboard plus diagnostics report. `--mix-lanes` keeps broad replay in the dataset beside the selected hard lanes, `--dataset-seeds 0:2` repeats each lane across explicit seeds for less brittle distillation, `--mlp-feature-set public_obs_v1` preserves the individual public neighbor slots for richer learned-policy experiments, `dense_swarm_hard_negative` adds an explicit dense 3D swarm hard-negative training lane when requested, `--sample-weighting safety` emphasizes collision, near-miss, and low-clearance samples, `--sample-selection hard_negative_windows` trims configured hard-negative lanes to hard-event or closest-approach windows, and generated BC JSON artifacts store the training feature mean/std transform plus weighting, selection, and seed recipes for deterministic inference.
 
 Run a closed-loop fine-tune over an existing portable MLP policy:
 

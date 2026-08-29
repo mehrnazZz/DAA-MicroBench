@@ -1146,6 +1146,7 @@ python -m microbench.cli learned-hard-lane-loop \
   --target-policy bc_mlp_learned \
   --fallback-lanes urban_obstacle,communication_delay,high_n_dense_merge \
   --mix-lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge,dense_swarm_hard_negative \
+  --dataset-seeds 0:2 \
   --sample-weighting safety \
   --sample-selection hard_negative_windows \
   --max-lanes 3 \
@@ -1153,7 +1154,7 @@ python -m microbench.cli learned-hard-lane-loop \
   --require-pass
 ```
 
-The top-level `learned_hard_lane_loop.json` records the selected lanes, mixed dataset lanes, dataset manifest, training report, policy spec, bundle paths, learned leaderboard, and final diagnostics. New BC artifacts store per-feature mean/std normalization by default; pass `--feature-normalization none` only for ablations. Use `--mlp-feature-set public_obs_v1` when you want the portable MLP to consume the full 89-dimensional public RL observation, including the top-8 neighbor track slots; the default `compact_v0` preserves compatibility with older compact MLP artifacts. `--dataset-planner-expert dynamic_tube_dmpc` trains from optimizer-generated action labels instead of the default BC teacher. `--sample-weighting safety` gives collision, near-miss, and low-clearance shard samples more influence in the supervised fit while logging the exact weighting recipe in the model artifact and manifest overlay. `--sample-selection hard_negative_windows` keeps all non-hard lanes but filters configured hard-negative lanes down to collision, near-miss, low-clearance, or closest-approach windows; tune `--sample-selection-clearance-threshold-m` and `--sample-selection-context-steps` for dense-swarm replay studies. Use this for development iteration; final learned-policy claims should still keep the uncapped bundle artifacts and training disclosure.
+The top-level `learned_hard_lane_loop.json` records the selected lanes, mixed dataset lanes, dataset seeds, dataset manifest, training report, policy spec, bundle paths, learned leaderboard, and final diagnostics. New BC artifacts store per-feature mean/std normalization by default; pass `--feature-normalization none` only for ablations. Use `--mlp-feature-set public_obs_v1` when you want the portable MLP to consume the full 89-dimensional public RL observation, including the top-8 neighbor track slots; the default `compact_v0` preserves compatibility with older compact MLP artifacts. `--dataset-planner-expert dynamic_tube_dmpc` trains from optimizer-generated action labels instead of the default BC teacher. `--dataset-seeds 0:2` repeats each selected/mixed lane across explicit seeds for broader optimizer distillation. `--sample-weighting safety` gives collision, near-miss, and low-clearance shard samples more influence in the supervised fit while logging the exact weighting recipe in the model artifact and manifest overlay. `--sample-selection hard_negative_windows` keeps all non-hard lanes but filters configured hard-negative lanes down to collision, near-miss, low-clearance, or closest-approach windows; tune `--sample-selection-clearance-threshold-m` and `--sample-selection-context-steps` for dense-swarm replay studies. Use this for development iteration; final learned-policy claims should still keep the uncapped bundle artifacts and training disclosure.
 
 ## 11.3) Closed-Loop Learned Fine-Tuning
 

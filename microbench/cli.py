@@ -1467,6 +1467,7 @@ def _learned_hard_lane_loop(args) -> None:
         dataset_policy=str(args.dataset_policy),
         dataset_policy_spec=args.dataset_policy_spec,
         dataset_planner_expert=args.dataset_planner_expert,
+        dataset_seeds=_parse_int_list(args.dataset_seeds) if args.dataset_seeds else None,
         dataset_max_steps=args.dataset_max_steps,
         dataset_shard_size=int(args.dataset_shard_size),
         save_replay=bool(args.save_replay),
@@ -1513,6 +1514,8 @@ def _learned_hard_lane_loop(args) -> None:
         )
         if report.get("dataset_lanes"):
             print(f"  dataset_lanes: {','.join(report.get('dataset_lanes', []))}")
+        if report.get("dataset_seeds"):
+            print(f"  dataset_seeds: {','.join(str(seed) for seed in report.get('dataset_seeds', []))}")
         if training.get("sample_weighting"):
             print(f"  sample_weighting: {training.get('sample_weighting')}")
         if training.get("sample_selection"):
@@ -2916,6 +2919,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Use a registered local planner as the hard-lane action-label expert",
     )
     p_hlt.add_argument("--dataset-max-steps", type=int, default=64, help="Step cap for each hard-lane dataset episode")
+    p_hlt.add_argument(
+        "--dataset-seeds",
+        default=None,
+        help="Optional comma/range seed override for hard-lane dataset episodes, e.g. 0,2,4 or 0:4",
+    )
     p_hlt.add_argument("--dataset-shard-size", type=int, default=50000, help="Samples per compressed dataset shard")
     p_hlt.add_argument("--save-replay", action="store_true", help="Write lightweight per-step dataset replay JSONL files")
     p_hlt.add_argument("--hidden-dim", type=int, default=32, help="Random-feature MLP hidden dimension")

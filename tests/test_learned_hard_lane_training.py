@@ -397,6 +397,31 @@ def test_learned_hard_lane_loop_smoke_without_fixtures(tmp_path: Path) -> None:
     assert (tmp_path / "loop" / "learned_hard_lane_loop.json").exists()
 
 
+def test_learned_hard_lane_loop_honors_dataset_seed_override(tmp_path: Path) -> None:
+    report = run_learned_hard_lane_loop(
+        out_dir=tmp_path / "seeded_loop",
+        fallback_lanes=["head_on"],
+        max_lanes=1,
+        dataset_seeds=[0, 1],
+        dataset_max_steps=1,
+        dataset_shard_size=4,
+        hidden_dim=8,
+        eval_lanes=["head_on"],
+        eval_max_steps=1,
+        bundle_max_steps=1,
+        bundle_max_runs=1,
+        include_fixture_bundles=False,
+    )
+
+    assert report["ok"] is True
+    assert report["selection"]["selected_lanes"] == ["head_on"]
+    assert report["dataset_lanes"] == ["head_on"]
+    assert report["dataset_seeds"] == [0, 1]
+    assert report["dataset"]["planned_episode_count"] == 2
+    assert report["dataset"]["episode_count"] == 2
+    assert report["dataset"]["sample_count"] == 8
+
+
 def test_learned_hard_lane_loop_cli_smoke(tmp_path: Path) -> None:
     diagnostics = tmp_path / "diagnostics_cli.json"
     diagnostics.write_text(
@@ -433,6 +458,8 @@ def test_learned_hard_lane_loop_cli_smoke(tmp_path: Path) -> None:
             "crossing",
             "--dataset-max-steps",
             "2",
+            "--dataset-seeds",
+            "0:1",
             "--dataset-shard-size",
             "4",
             "--hidden-dim",
@@ -463,7 +490,9 @@ def test_learned_hard_lane_loop_cli_smoke(tmp_path: Path) -> None:
     assert report["ok"] is True
     assert report["selection"]["selected_lanes"] == ["head_on"]
     assert report["dataset_lanes"] == ["head_on", "crossing"]
-    assert report["dataset"]["sample_count"] == 20
+    assert report["dataset_seeds"] == [0, 1]
+    assert report["dataset"]["planned_episode_count"] == 4
+    assert report["dataset"]["sample_count"] == 40
     assert report["training"]["sample_selection"] == "hard_negative_windows"
     assert report["training"]["sample_weighting"] == "safety"
     assert (out_dir / "learned_hard_lane_loop.json").exists()
