@@ -445,6 +445,21 @@ python -m microbench.cli learned-hard-lane-loop \
 
 This command selects canonical weak validation lanes from learned diagnostics, exports public dataset shards, trains the same portable BC MLP from those shards, packages the trained spec, and writes a fresh learned leaderboard plus diagnostics report. `--mix-lanes` keeps broad replay in the dataset beside the selected hard lanes, `--dataset-seeds 0:2` repeats each lane across explicit seeds for less brittle distillation, `--mlp-feature-set public_obs_v1` preserves the individual public neighbor slots for richer learned-policy experiments, `--model-architecture temporal_mlp` adds short per-agent observation history, `dense_swarm_hard_negative` adds an explicit dense 3D swarm hard-negative training lane when requested, `--sample-weighting safety` emphasizes collision, near-miss, and low-clearance samples, `--sample-selection hard_negative_windows` trims configured hard-negative lanes to hard-event or closest-approach windows, and generated BC JSON artifacts store the training feature mean/std transform plus weighting, selection, seed, and architecture recipes for deterministic inference.
 
+Run a learned-policy holdout comparison against optimizer references:
+
+```bash
+python -m microbench.cli learned-holdout-eval \
+  --out-dir runs_learned_holdout_eval \
+  --policy-spec temporal=runs_hard_lane_loop/training/policy_spec.json \
+  --reference-methods dynamic_tube_dmpc,ego_swarm_opt \
+  --scenarios sphere_swap_3d_medium,dense_swarm_3d_hard,merge_3d_hard,sensor_volume_3d_hard,noncooperative_intruder_3d_hard \
+  --seeds 0:2 \
+  --comm ideal_50hz,degraded_20hz \
+  --n 6
+```
+
+`learned-holdout-eval` accepts the same `policy_spec.json` adapters as `rl-smoke` and `learned_policy_spec`, including `temporal_mlp_json`, then writes learned-minus-reference deltas for `score_v0`, collisions, near misses, clearance, completion, and planner latency. It is holdout comparison evidence, not a promotion gate.
+
 Run a closed-loop fine-tune over an existing portable MLP policy:
 
 ```bash

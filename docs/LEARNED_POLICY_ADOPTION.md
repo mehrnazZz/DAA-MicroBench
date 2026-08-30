@@ -105,6 +105,9 @@ python -m microbench.cli learned-hard-lane-loop \
   --fallback-lanes urban_obstacle,communication_delay,high_n_dense_merge \
   --mix-lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge,dense_swarm_hard_negative \
   --dataset-seeds 0:2 \
+  --mlp-feature-set public_obs_v1 \
+  --model-architecture temporal_mlp \
+  --history-len 3 \
   --sample-weighting safety \
   --sample-selection hard_negative_windows \
   --max-lanes 3 \
@@ -113,6 +116,21 @@ python -m microbench.cli learned-hard-lane-loop \
 ```
 
 The hard-lane loop selects canonical validation lanes from `unsafe`, `needs_training`, `fast_but_close`, `safe_but_slow`, and limited-evidence diagnostics, exports `learned-dataset-export` shards, trains the BC MLP from those shards, packages the trained policy, and writes a fresh learned leaderboard plus diagnostics report. Use `--target-policy` when the diagnostics file contains comparison fixtures but you only want to retrain one policy; `--fallback-lanes` can fill the remaining hard-lane budget with richer 3D/degraded lanes, `--mix-lanes` adds broad replay lanes so focused retraining does not erase general behavior, `--dataset-seeds 0:2` repeats each selected/mixed lane across explicit seeds, and `--dataset-planner-expert dynamic_tube_dmpc` distills optimizer-generated action labels instead of the default BC teacher. `--sample-weighting safety` emphasizes collision, near-miss, and low-clearance samples in the supervised fit. Add `--mlp-feature-set public_obs_v1` for richer learned-policy experiments that should preserve individual neighbor slots instead of compacting them into aggregate avoidance features. Add `--model-architecture temporal_mlp --history-len 3` when the learned baseline should use a short per-agent observation history while remaining a portable dependency-free JSON artifact. Add `dense_swarm_hard_negative` to `--mix-lanes` only when you intentionally want the generated dense 3D swarm hard-negative training lane; it is not part of the default validation matrix. Use `--sample-selection hard_negative_windows` with that lane to keep only its hard-event or closest-approach temporal windows. New BC artifacts store per-feature mean/std normalization plus the label source, sample-weighting, sample-selection recipes, dataset seed list, and model architecture by default.
+
+Before spending time on a new closed-loop search, compare the trained spec directly against optimizer references on broad 3D holdout rows:
+
+```bash
+python -m microbench.cli learned-holdout-eval \
+  --out-dir runs_learned_holdout_eval \
+  --policy-spec temporal=runs_hard_lane_loop/training/policy_spec.json \
+  --reference-methods dynamic_tube_dmpc,ego_swarm_opt \
+  --scenarios sphere_swap_3d_medium,dense_swarm_3d_hard,merge_3d_hard,sensor_volume_3d_hard,noncooperative_intruder_3d_hard \
+  --seeds 0:2 \
+  --comm ideal_50hz,degraded_20hz \
+  --n 6
+```
+
+`learned-holdout-eval` supports every policy-spec adapter, including `temporal_mlp_json`, and writes `learned_holdout_eval.json`, `learned_holdout_table.csv`, and `learned_holdout_deltas.csv`. Deltas are learned minus reference; negative `score_v0` deltas and positive clearance/completion deltas are better. Treat this as holdout evidence for iteration, not as a promotion gate by itself.
 
 For a closed-loop learned-policy iteration path, start from any portable `mlp_json` policy and run:
 
@@ -312,6 +330,17 @@ python -m microbench.cli learned-diagnostics \
 ```
 
 The leaderboard command writes JSON plus a sibling CSV and combines planner `summary.csv` score fields with RL validation-matrix lane evidence. It also reports true row-level clearance (`min_sep_min_m`, `min_sep_p05_min_m`, `min_sep_min_row_m`, `min_sep_p05_row_min_m`) next to summary-derived clearance (`min_sep_min_summary_mean_min_m`, `min_sep_p05_summary_mean_min_m`) so a single close or colliding run is visible during review. The diagnostics command writes JSON/CSV/Markdown labels such as `safe_but_slow`, `fast_but_close`, and `balanced`, including the weakest scenario/lane and next suggested action. Both tables include `lineage_label`, `training_lineage`, and `promotion_stage`, so `bc_only`, `hard_lane_bc`, full-gate `closed_loop_holdout_passed`, closed-loop review, frozen fixture, and external/unknown policies are not mixed without context. Treat both as reviewer evidence; final learned-policy claims should still include the underlying bundle artifacts.
+
+For direct optimizer-reference comparison without building bundles, use:
+
+```bash
+python -m microbench.cli learned-holdout-eval \
+  --out-dir runs_learned_holdout_eval \
+  --policy-spec candidate=runs_external_model_predict_bundle/policy_spec.json \
+  --reference-methods dynamic_tube_dmpc,ego_swarm_opt
+```
+
+This reruns the candidate and references on matching broad 3D rows and writes learned-minus-reference deltas for the same `score_v0`, collision, near-miss, clearance, completion, and planner-latency fields used elsewhere in DAA Microbench.
 
 ## Submission Manifest Checklist
 

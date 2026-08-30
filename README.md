@@ -136,6 +136,7 @@ python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --
 python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --require-pass
 python -m microbench.cli learned-leaderboard --bundle runs_learned_bundle --bundle runs_external_learned_bundle --out runs_learned_leaderboard/learned_policy_leaderboard.json --require-pass
 python -m microbench.cli learned-diagnostics --bundle runs_learned_bundle --bundle runs_external_learned_bundle --out runs_learned_diagnostics/learned_policy_diagnostics.json --require-pass
+python -m microbench.cli learned-holdout-eval --out-dir runs_learned_holdout_eval --policy-spec temporal=runs_hard_lane_loop/training/policy_spec.json --reference-methods dynamic_tube_dmpc,ego_swarm_opt --scenarios sphere_swap_3d_medium,dense_swarm_3d_hard,merge_3d_hard,sensor_volume_3d_hard,noncooperative_intruder_3d_hard --seeds 0:2 --comm ideal_50hz,degraded_20hz --n 6
 ```
 
 You can also inspect `microbench/planners/` (each planner module maps to a method name in the planner registry).
@@ -1149,6 +1150,9 @@ python -m microbench.cli learned-hard-lane-loop \
   --fallback-lanes urban_obstacle,communication_delay,high_n_dense_merge \
   --mix-lanes head_on,crossing,urban_obstacle,communication_delay,high_n_dense_merge,dense_swarm_hard_negative \
   --dataset-seeds 0:2 \
+  --mlp-feature-set public_obs_v1 \
+  --model-architecture temporal_mlp \
+  --history-len 3 \
   --sample-weighting safety \
   --sample-selection hard_negative_windows \
   --max-lanes 3 \
@@ -1158,7 +1162,24 @@ python -m microbench.cli learned-hard-lane-loop \
 
 The top-level `learned_hard_lane_loop.json` records the selected lanes, mixed dataset lanes, dataset seeds, dataset manifest, training report, policy spec, bundle paths, learned leaderboard, and final diagnostics. New BC artifacts store per-feature mean/std normalization by default; pass `--feature-normalization none` only for ablations. Use `--mlp-feature-set public_obs_v1` when you want the portable MLP to consume the full 89-dimensional public RL observation, including the top-8 neighbor track slots; the default `compact_v0` preserves compatibility with older compact MLP artifacts. Add `--model-architecture temporal_mlp --history-len 3` to train a dependency-free `temporal_mlp_json` policy that stacks recent public observations per agent before inference. `--dataset-planner-expert dynamic_tube_dmpc` trains from optimizer-generated action labels instead of the default BC teacher. `--dataset-seeds 0:2` repeats each selected/mixed lane across explicit seeds for broader optimizer distillation. `--sample-weighting safety` gives collision, near-miss, and low-clearance shard samples more influence in the supervised fit while logging the exact weighting recipe in the model artifact and manifest overlay. `--sample-selection hard_negative_windows` keeps all non-hard lanes but filters configured hard-negative lanes down to collision, near-miss, low-clearance, or closest-approach windows; tune `--sample-selection-clearance-threshold-m` and `--sample-selection-context-steps` for dense-swarm replay studies. Use this for development iteration; final learned-policy claims should still keep the uncapped bundle artifacts and training disclosure.
 
-## 11.3) Closed-Loop Learned Fine-Tuning
+## 11.3) Learned Holdout Evaluation
+
+`learned-holdout-eval` runs one or more learned policy specs against optimizer references on the same broad 3D holdout rows. It supports every `policy_spec.json` adapter, including `mlp_json`, `temporal_mlp_json`, `tiny_linear_json`, `callable`, and `model_predict`.
+
+```bash
+python -m microbench.cli learned-holdout-eval \
+  --out-dir runs_learned_holdout_eval \
+  --policy-spec temporal=runs_hard_lane_loop/training/policy_spec.json \
+  --reference-methods dynamic_tube_dmpc,ego_swarm_opt \
+  --scenarios sphere_swap_3d_medium,dense_swarm_3d_hard,merge_3d_hard,sensor_volume_3d_hard,noncooperative_intruder_3d_hard \
+  --seeds 0:2 \
+  --comm ideal_50hz,degraded_20hz \
+  --n 6
+```
+
+This writes `learned_holdout_eval.json`, `learned_holdout_table.csv`, and `learned_holdout_deltas.csv`, plus per-entry `results.csv`, `summary.csv`, and `baseline_report.json`. Pairwise deltas are learned minus reference, so lower `score_v0` deltas and higher clearance/completion deltas are better. This is a comparison aid for learned-policy development, not a promotion gate by itself.
+
+## 11.4) Closed-Loop Learned Fine-Tuning
 
 `learned-closed-loop-finetune` is the first rollout-aware learned-policy optimizer. It starts from an existing portable `mlp_json` policy spec, perturbs either the MLP output head or all MLP layers, evaluates candidates through the PettingZoo-style `DaaParallelEnv`, and accepts candidates according to an explicit acceptance mode. The default `--acceptance-mode strict_feasible` accepts only candidates that improve the closed-loop objective without violating collision, clearance, or near-miss guardrails.
 
@@ -1188,7 +1209,7 @@ This writes `closed_loop_mlp_policy.json`, `policy_spec.json`, `candidate_summar
 
 Use `--lane-profile validation_plus_broad_3d` when you want closed-loop training to include the canonical validation lanes plus broad 3D stress training lanes (`sphere_swap_3d_training`, `dense_swarm_3d_training`, `merge_3d_training`, `sensor_volume_3d_training`, and `noncooperative_intruder_3d_training`). Explicit `--lanes` still overrides the profile.
 
-## 11.4) Closed-Loop Learned Study Workflow
+## 11.5) Closed-Loop Learned Study Workflow
 
 `learned-closed-loop-study` wraps the full learned-policy development loop into one auditable command: closed-loop fine-tuning, broad 3D holdout comparison, learned submission bundle, learned leaderboard, learned diagnostics, and a final promotion recommendation.
 

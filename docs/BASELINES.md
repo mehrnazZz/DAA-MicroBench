@@ -854,6 +854,21 @@ python -m microbench.cli learned-hard-lane-loop \
   --require-pass
 ```
 
+Use `learned-holdout-eval` when a learned spec should be compared directly to optimizer-grade baselines on matching broad 3D rows:
+
+```bash
+python -m microbench.cli learned-holdout-eval \
+  --out-dir runs_learned_holdout_eval \
+  --policy-spec temporal=runs_hard_lane_loop/training/policy_spec.json \
+  --reference-methods dynamic_tube_dmpc,ego_swarm_opt \
+  --scenarios sphere_swap_3d_medium,dense_swarm_3d_hard,merge_3d_hard,sensor_volume_3d_hard,noncooperative_intruder_3d_hard \
+  --seeds 0:2 \
+  --comm ideal_50hz,degraded_20hz \
+  --n 6
+```
+
+This writes `learned_holdout_eval.json`, `learned_holdout_table.csv`, and `learned_holdout_deltas.csv`. Pairwise deltas are learned minus reference, so lower `score_v0` and collision deltas are better while higher clearance/completion deltas are better. This command supports all policy-spec adapters, including `temporal_mlp_json`, but it does not make promotion claims by itself.
+
 For rollout-aware learned-policy iteration, `learned-closed-loop-finetune` starts from an existing portable `mlp_json` policy spec, evaluates perturbed MLP parameters through the PettingZoo-style environment, and accepts candidates according to a recorded acceptance mode. The default `strict_feasible` mode accepts only candidates that improve the configured closed-loop objective without collision, clearance, or near-miss guardrail regression.
 
 ```bash

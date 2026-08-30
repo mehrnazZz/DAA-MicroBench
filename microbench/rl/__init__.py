@@ -82,6 +82,12 @@ from microbench.rl.learned_diagnostics import (
     build_learned_policy_diagnostics,
     write_learned_policy_diagnostics,
 )
+from microbench.rl.learned_holdout import (
+    DEFAULT_LEARNED_HOLDOUT_REFERENCE_METHODS,
+    LEARNED_HOLDOUT_EVAL_SCHEMA_VERSION,
+    parse_learned_policy_spec_entries,
+    run_learned_holdout_eval,
+)
 from microbench.rl.learned_dataset import (
     LEARNED_DATASET_EXTRA_LANE_IDS,
     LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID,
@@ -227,6 +233,8 @@ __all__ = [
     "LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID",
     "LEARNED_DATASET_SCHEMA_VERSION",
     "LEARNED_DATASET_TEACHER_POLICY",
+    "LEARNED_HOLDOUT_EVAL_SCHEMA_VERSION",
+    "DEFAULT_LEARNED_HOLDOUT_REFERENCE_METHODS",
     "DEFAULT_HARD_LANE_FALLBACK",
     "HARD_DIAGNOSTIC_LABELS",
     "LEARNED_DATASET_BC_TRAINING_SOURCE",
@@ -284,6 +292,7 @@ __all__ = [
     "observation_to_mlp_features",
     "observation_to_tiny_features",
     "parallel_env",
+    "parse_learned_policy_spec_entries",
     "policy_factory_from_spec",
     "planner_input_to_mlp_features",
     "planner_input_to_tiny_features",
@@ -297,6 +306,7 @@ __all__ = [
     "run_learned_policy_submission_bundle",
     "run_learned_hard_lane_loop",
     "run_learned_closed_loop_study",
+    "run_learned_holdout_eval",
     "run_learned_submission_schema_check",
     "run_rl_freeze_check",
     "run_rl_policy_calibration",

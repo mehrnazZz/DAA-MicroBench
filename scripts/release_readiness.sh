@@ -44,6 +44,7 @@ python -m microbench.cli validate-learned-bundle --bundle "${WORK_DIR}/learned_s
 python -m microbench.cli review-learned-bundle --bundle "${WORK_DIR}/learned_submission_bundle" --require-pass --json >"${WORK_DIR}/learned_bundle_review.json"
 python -m microbench.cli learned-leaderboard --bundle "${WORK_DIR}/learned_submission_bundle" --bundle "${WORK_DIR}/learned_submission_policy_spec_bundle" --out "${WORK_DIR}/learned_policy_leaderboard.json" --require-pass --json >"${WORK_DIR}/learned_policy_leaderboard.stdout.json"
 python -m microbench.cli learned-diagnostics --bundle "${WORK_DIR}/learned_submission_bundle" --bundle "${WORK_DIR}/learned_submission_policy_spec_bundle" --out "${WORK_DIR}/learned_policy_diagnostics.json" --require-pass --json >"${WORK_DIR}/learned_policy_diagnostics.stdout.json"
+python -m microbench.cli learned-holdout-eval --out-dir "${WORK_DIR}/learned_holdout_eval" --policy-spec "external_fixture=${WORK_DIR}/learned_submission_policy_spec_bundle/policy_spec.json" --reference-methods baseline_goal --scenarios sphere_swap_3d_medium --seeds 0 --comm ideal_50hz --n 3 --max-runs 1 --json >"${WORK_DIR}/learned_holdout_eval.stdout.json"
 python -m microbench.cli list-suites --json >"${WORK_DIR}/suites.json"
 python -m microbench.cli list-methods --json --include-aliases >"${WORK_DIR}/methods.json"
 

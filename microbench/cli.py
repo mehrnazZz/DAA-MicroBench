@@ -62,6 +62,10 @@ from microbench.rl.learned_dataset import (
     export_learned_policy_dataset,
 )
 from microbench.rl.learned_diagnostics import write_learned_policy_diagnostics
+from microbench.rl.learned_holdout import (
+    DEFAULT_LEARNED_HOLDOUT_REFERENCE_METHODS,
+    run_learned_holdout_eval,
+)
 from microbench.rl.learned_leaderboard import write_learned_policy_leaderboard
 from microbench.rl.policies import POLICY_NAMES
 from microbench.rl.schema import interface_contract
@@ -1966,6 +1970,43 @@ def _learned_diagnostics(args) -> None:
         raise SystemExit(f"learned diagnostics failed bundles: {','.join(failed)}")
 
 
+def _learned_holdout_eval(args) -> None:
+    report = run_learned_holdout_eval(
+        out_dir=args.out_dir,
+        policy_specs=list(args.policy_spec),
+        reference_methods=_parse_str_list(args.reference_methods) if args.reference_methods else None,
+        scenarios=_parse_str_list(args.scenarios) if args.scenarios else None,
+        seeds=_parse_int_list(args.seeds) if args.seeds else None,
+        comm_profiles=_parse_str_list(args.comm) if args.comm else None,
+        n_agents=int(args.n),
+        max_runs=args.max_runs,
+        require_no_collision=bool(args.require_no_collision),
+        overwrite=bool(args.overwrite),
+    )
+
+    if args.json:
+        print(json.dumps(report, allow_nan=False, indent=2, sort_keys=True))
+    else:
+        status = "PASS" if report["ok"] else "REVIEW"
+        print(
+            "learned-holdout-eval: "
+            f"{status} entries={len(report['rows'])} runs_per_entry={report['expected_runs_per_entry']} "
+            f"scenarios={len(report['scenarios'])} report={report['report_path']}"
+        )
+        for row in report["rows"]:
+            print(
+                f"  rank={row['rank']} {row['kind']} label={row['label']} "
+                f"score={row.get('score_v0_mean')} collisions={row.get('collision_episodes')} "
+                f"near_misses={row.get('near_miss_episodes')} completion={row.get('completion_rate_mean')}"
+            )
+        print(f"  table_csv: {report['table_csv']}")
+        print(f"  delta_csv: {report['delta_csv']}")
+
+    if args.require_pass and not report["ok"]:
+        failed = [check["name"] for check in report["checks"] if not check.get("ok")]
+        raise SystemExit(f"learned holdout eval failed: {','.join(failed)}")
+
+
 def _golden_current_schema(args) -> None:
     if args.update and args.candidate:
         raise SystemExit("--update cannot be combined with --candidate")
@@ -3398,6 +3439,40 @@ def build_parser() -> argparse.ArgumentParser:
     p_ld.add_argument("--json", action="store_true", help="Emit machine-readable diagnostics report")
     p_ld.add_argument("--require-pass", action="store_true", help="Fail if any bundle cannot be diagnosed")
 
+    p_lhe = sub.add_parser(
+        "learned-holdout-eval",
+        help="Run learned policy specs against optimizer references on broad 3D holdout rows",
+    )
+    p_lhe.add_argument("--out-dir", required=True, help="Fresh output directory for holdout artifacts")
+    p_lhe.add_argument(
+        "--policy-spec",
+        action="append",
+        required=True,
+        help="Policy spec in path or label=path form; repeat for multiple learned policies",
+    )
+    p_lhe.add_argument(
+        "--reference-methods",
+        default=",".join(DEFAULT_LEARNED_HOLDOUT_REFERENCE_METHODS),
+        help="Comma-separated optimizer reference methods",
+    )
+    p_lhe.add_argument(
+        "--scenarios",
+        default=None,
+        help="Comma-separated official_3d_stress scenario ids; defaults to the broad 3D holdout set",
+    )
+    p_lhe.add_argument("--seeds", default="0:2", help="Seed list/range, e.g. 0:2")
+    p_lhe.add_argument("--comm", default="ideal_50hz,degraded_20hz", help="Comma-separated comm profiles")
+    p_lhe.add_argument("--n", type=int, default=6, help="Agent count for each holdout run")
+    p_lhe.add_argument("--max-runs", type=int, default=None, help="Optional per-entry run cap for smoke checks")
+    p_lhe.add_argument("--overwrite", action="store_true", help="Overwrite an existing holdout output directory")
+    p_lhe.add_argument(
+        "--require-no-collision",
+        action="store_true",
+        help="Add a learned-policy behavior gate requiring zero collision episodes",
+    )
+    p_lhe.add_argument("--json", action="store_true", help="Emit machine-readable holdout report")
+    p_lhe.add_argument("--require-pass", action="store_true", help="Fail if structural holdout checks fail")
+
     p_golden = sub.add_parser("golden-current-schema", help="Check or regenerate the current result-schema fixture")
     p_golden.add_argument("--golden-dir", default="golden/current_schema", help="Path to checked-in fixture")
     p_golden.add_argument("--candidate", default=None, help="Compare an existing candidate directory instead of running")
@@ -3631,6 +3706,9 @@ def main() -> None:
         return
     if args.cmd == "learned-diagnostics":
         _learned_diagnostics(args)
+        return
+    if args.cmd == "learned-holdout-eval":
+        _learned_holdout_eval(args)
         return
     if args.cmd == "golden-current-schema":
         _golden_current_schema(args)
