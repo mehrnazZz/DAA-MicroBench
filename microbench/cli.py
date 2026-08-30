@@ -1980,6 +1980,9 @@ def _learned_holdout_eval(args) -> None:
         comm_profiles=_parse_str_list(args.comm) if args.comm else None,
         n_agents=int(args.n),
         max_runs=args.max_runs,
+        resume=bool(args.resume),
+        run_timeout_s=args.run_timeout_s,
+        max_timeouts_per_entry=args.max_timeouts_per_entry,
         require_no_collision=bool(args.require_no_collision),
         overwrite=bool(args.overwrite),
     )
@@ -1991,7 +1994,8 @@ def _learned_holdout_eval(args) -> None:
         print(
             "learned-holdout-eval: "
             f"{status} entries={len(report['rows'])} runs_per_entry={report['expected_runs_per_entry']} "
-            f"scenarios={len(report['scenarios'])} report={report['report_path']}"
+            f"scenarios={len(report['scenarios'])} timeouts={sum(int(row.get('planner_timeout_count') or 0) for row in report['rows'])} "
+            f"report={report['report_path']}"
         )
         for row in report["rows"]:
             print(
@@ -3464,6 +3468,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_lhe.add_argument("--comm", default="ideal_50hz,degraded_20hz", help="Comma-separated comm profiles")
     p_lhe.add_argument("--n", type=int, default=6, help="Agent count for each holdout run")
     p_lhe.add_argument("--max-runs", type=int, default=None, help="Optional per-entry run cap for smoke checks")
+    p_lhe.add_argument("--resume", action="store_true", help="Resume from existing per-entry results.csv rows")
+    p_lhe.add_argument(
+        "--run-timeout-s",
+        type=float,
+        default=None,
+        help="Optional hard per-episode wall-clock timeout for learned/reference holdout jobs",
+    )
+    p_lhe.add_argument(
+        "--max-timeouts-per-entry",
+        type=int,
+        default=None,
+        help="Stop running a learned/reference entry after this many newly timed-out rows",
+    )
     p_lhe.add_argument("--overwrite", action="store_true", help="Overwrite an existing holdout output directory")
     p_lhe.add_argument(
         "--require-no-collision",

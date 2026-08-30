@@ -65,6 +65,7 @@ def test_release_readiness_script_runs_expected_checks() -> None:
     assert "learned-diagnostics --bundle" in script
     assert "learned-holdout-eval --out-dir" in script
     assert "--reference-methods baseline_goal" in script
+    assert "--run-timeout-s 60" in script
     assert "golden-current-schema" in script
     assert "validate-scenarios --all-builtins --all-generated-suites --quiet" in script
     assert "DAA_REQUIRE_CLEAN" in script
@@ -99,6 +100,7 @@ def test_docs_index_and_checklist_reference_alpha_notes_and_dry_run() -> None:
     assert "learned-leaderboard --bundle" in docs_index
     assert "learned-diagnostics --bundle" in docs_index
     assert "learned-holdout-eval --out-dir" in docs_index
+    assert "--run-timeout-s 60" in docs_index
     assert "LEARNED_POLICY_ADOPTION.md" in docs_index
     assert "LEARNED_SUBMISSION_SCHEMAS.md" in docs_index
     assert "bash scripts/release_readiness.sh" in docs_index
@@ -127,5 +129,8 @@ def test_docs_index_and_checklist_reference_alpha_notes_and_dry_run() -> None:
     assert "learned-diagnostics --bundle" in checklist
     assert "learned-holdout-eval --out-dir" in checklist
     assert "--reference-methods dynamic_tube_dmpc,ego_swarm_opt" in checklist
+    assert "--run-timeout-s 180" in checklist
+    assert "--max-timeouts-per-entry 1" in checklist
+    assert "--resume" in checklist
     assert "tests/test_rl_optional_integrations.py" in checklist
     assert "DAA_REQUIRE_CLEAN=1 bash scripts/release_readiness.sh" in checklist

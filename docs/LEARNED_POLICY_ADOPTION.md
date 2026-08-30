@@ -127,10 +127,13 @@ python -m microbench.cli learned-holdout-eval \
   --scenarios sphere_swap_3d_medium,dense_swarm_3d_hard,merge_3d_hard,sensor_volume_3d_hard,noncooperative_intruder_3d_hard \
   --seeds 0:2 \
   --comm ideal_50hz,degraded_20hz \
-  --n 6
+  --n 6 \
+  --run-timeout-s 180 \
+  --max-timeouts-per-entry 1 \
+  --resume
 ```
 
-`learned-holdout-eval` supports every policy-spec adapter, including `temporal_mlp_json`, and writes `learned_holdout_eval.json`, `learned_holdout_table.csv`, and `learned_holdout_deltas.csv`. Deltas are learned minus reference; negative `score_v0` deltas and positive clearance/completion deltas are better. Treat this as holdout evidence for iteration, not as a promotion gate by itself.
+`learned-holdout-eval` supports every policy-spec adapter, including `temporal_mlp_json`, and writes `learned_holdout_eval.json`, `learned_holdout_table.csv`, and `learned_holdout_deltas.csv`. Deltas are learned minus reference; negative `score_v0` deltas and positive clearance/completion deltas are better. Use `--run-timeout-s`, `--max-timeouts-per-entry`, and `--resume` for heavy optimizer references so slow rows are recorded, one slow method cannot block the whole comparison, and partial output can be continued. Treat this as holdout evidence for iteration, not as a promotion gate by itself.
 
 For a closed-loop learned-policy iteration path, start from any portable `mlp_json` policy and run:
 
@@ -337,7 +340,10 @@ For direct optimizer-reference comparison without building bundles, use:
 python -m microbench.cli learned-holdout-eval \
   --out-dir runs_learned_holdout_eval \
   --policy-spec candidate=runs_external_model_predict_bundle/policy_spec.json \
-  --reference-methods dynamic_tube_dmpc,ego_swarm_opt
+  --reference-methods dynamic_tube_dmpc,ego_swarm_opt \
+  --run-timeout-s 180 \
+  --max-timeouts-per-entry 1 \
+  --resume
 ```
 
 This reruns the candidate and references on matching broad 3D rows and writes learned-minus-reference deltas for the same `score_v0`, collision, near-miss, clearance, completion, and planner-latency fields used elsewhere in DAA Microbench.

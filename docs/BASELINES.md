@@ -864,10 +864,13 @@ python -m microbench.cli learned-holdout-eval \
   --scenarios sphere_swap_3d_medium,dense_swarm_3d_hard,merge_3d_hard,sensor_volume_3d_hard,noncooperative_intruder_3d_hard \
   --seeds 0:2 \
   --comm ideal_50hz,degraded_20hz \
-  --n 6
+  --n 6 \
+  --run-timeout-s 180 \
+  --max-timeouts-per-entry 1 \
+  --resume
 ```
 
-This writes `learned_holdout_eval.json`, `learned_holdout_table.csv`, and `learned_holdout_deltas.csv`. Pairwise deltas are learned minus reference, so lower `score_v0` and collision deltas are better while higher clearance/completion deltas are better. This command supports all policy-spec adapters, including `temporal_mlp_json`, but it does not make promotion claims by itself.
+This writes `learned_holdout_eval.json`, `learned_holdout_table.csv`, and `learned_holdout_deltas.csv`. Pairwise deltas are learned minus reference, so lower `score_v0` and collision deltas are better while higher clearance/completion deltas are better. `--run-timeout-s` records slow optimizer rows as timeout rows, `--max-timeouts-per-entry` stops one slow method from blocking all later entries, and `--resume` continues partial comparisons. This command supports all policy-spec adapters, including `temporal_mlp_json`, but it does not make promotion claims by itself.
 
 For rollout-aware learned-policy iteration, `learned-closed-loop-finetune` starts from an existing portable `mlp_json` policy spec, evaluates perturbed MLP parameters through the PettingZoo-style environment, and accepts candidates according to a recorded acceptance mode. The default `strict_feasible` mode accepts only candidates that improve the configured closed-loop objective without collision, clearance, or near-miss guardrail regression.
 

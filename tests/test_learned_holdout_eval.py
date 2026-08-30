@@ -8,6 +8,7 @@ import sys
 from microbench.rl.learned_holdout import (
     DEFAULT_LEARNED_HOLDOUT_REFERENCE_METHODS,
     LEARNED_HOLDOUT_EVAL_SCHEMA_VERSION,
+    LearnedHoldoutRunTimeout,
     parse_learned_policy_spec_entries,
     run_learned_holdout_eval,
 )
@@ -172,6 +173,34 @@ def test_learned_holdout_eval_collision_gate_can_fail(tmp_path: Path, monkeypatc
 
     assert report["ok"] is False
     assert any(check["name"] == "learned_policies_collision_free" and not check["ok"] for check in report["checks"])
+
+
+def test_learned_holdout_eval_records_timeout_rows(tmp_path: Path, monkeypatch) -> None:
+    spec_path = _policy_spec(tmp_path / "policy_spec.json")
+
+    def fake_run_episode(spec):
+        if spec.method == "baseline_goal":
+            raise LearnedHoldoutRunTimeout("synthetic timeout")
+        return _fake_result_row(spec, collision_episode=0, min_sep=1.0, completion=1.0, p95_ms=2.0)
+
+    monkeypatch.setattr("microbench.rl.learned_holdout.run_episode", fake_run_episode)
+
+    report = run_learned_holdout_eval(
+        out_dir=tmp_path / "holdout_timeout",
+        policy_specs=[str(spec_path)],
+        reference_methods=["baseline_goal"],
+        scenarios=["sphere_swap_3d_medium"],
+        seeds=[0],
+        comm_profiles=["ideal_50hz"],
+        n_agents=3,
+        run_timeout_s=0.5,
+    )
+
+    assert report["ok"] is False
+    assert report["run_timeout_s"] == 0.5
+    assert report["reference_rows"][0]["planner_timeout_count"] == 1
+    assert report["execution"]["baseline_goal"]["timeout_run_count"] == 1
+    assert any(check["name"] == "no_planner_timeouts" and not check["ok"] for check in report["checks"])
 
 
 def test_learned_holdout_eval_cli_smoke_max_runs_zero(tmp_path: Path) -> None:

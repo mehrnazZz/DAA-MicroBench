@@ -455,10 +455,13 @@ python -m microbench.cli learned-holdout-eval \
   --scenarios sphere_swap_3d_medium,dense_swarm_3d_hard,merge_3d_hard,sensor_volume_3d_hard,noncooperative_intruder_3d_hard \
   --seeds 0:2 \
   --comm ideal_50hz,degraded_20hz \
-  --n 6
+  --n 6 \
+  --run-timeout-s 180 \
+  --max-timeouts-per-entry 1 \
+  --resume
 ```
 
-`learned-holdout-eval` accepts the same `policy_spec.json` adapters as `rl-smoke` and `learned_policy_spec`, including `temporal_mlp_json`, then writes learned-minus-reference deltas for `score_v0`, collisions, near misses, clearance, completion, and planner latency. It is holdout comparison evidence, not a promotion gate.
+`learned-holdout-eval` accepts the same `policy_spec.json` adapters as `rl-smoke` and `learned_policy_spec`, including `temporal_mlp_json`, then writes learned-minus-reference deltas for `score_v0`, collisions, near misses, clearance, completion, planner latency, and timeout counts. It is holdout comparison evidence, not a promotion gate.
 
 Run a closed-loop fine-tune over an existing portable MLP policy:
 

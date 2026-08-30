@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import csv
+from contextlib import contextmanager
 from dataclasses import dataclass
 import json
 import math
 from pathlib import Path
+import signal
 import shutil
+import threading
+import time
 from typing import Any
 
 from microbench.metrics import append_result, write_result_schema_manifest, write_summary
@@ -39,6 +43,9 @@ LEARNED_HOLDOUT_TABLE_FIELDS = (
     "score_v0_mean",
     "score_v0_worst",
     "planner_ms_p95_max",
+    "planner_timeout_count",
+    "planner_error_count",
+    "planner_fallback_count",
     "results_csv",
     "summary_csv",
 )
@@ -55,6 +62,9 @@ LEARNED_HOLDOUT_DELTA_FIELDS = (
     "min_sep_p05_row_min_m_delta",
     "score_v0_mean_delta",
     "planner_ms_p95_max_delta",
+    "planner_timeout_count_delta",
+    "planner_error_count_delta",
+    "planner_fallback_count_delta",
 )
 
 
@@ -65,6 +75,10 @@ class LearnedPolicyEntry:
     policy_name: str
     adapter: str
     summary: dict[str, Any]
+
+
+class LearnedHoldoutRunTimeout(BaseException):
+    pass
 
 
 def _round_or_none(value: Any, *, digits: int = 6) -> float | None:
@@ -96,6 +110,14 @@ def _finite_values(rows: list[dict[str, Any]], field: str) -> list[float]:
     return values
 
 
+def _row_timeout_count(row: dict[str, Any]) -> int:
+    return int(_finite_float(row.get("planner_timeout_count")) or 0)
+
+
+def _row_error_count(row: dict[str, Any]) -> int:
+    return int(_finite_float(row.get("planner_error_count")) or 0)
+
+
 def _mean_or_none(values: list[float]) -> float | None:
     if not values:
         return None
@@ -119,6 +141,29 @@ def _read_csv_rows(path: Path) -> list[dict[str, str]]:
         return []
     with path.open("r", newline="", encoding="utf-8") as f:
         return list(csv.DictReader(f))
+
+
+def _spec_key(spec: RunSpec) -> tuple[str, str, str, str, str]:
+    method = str(spec.method)
+    if spec.agent_methods:
+        method = "mixed[" + "+".join(str(m) for m in spec.agent_methods) + "]"
+    return (
+        Path(spec.scenario_path).stem,
+        method,
+        str(spec.comm_profile),
+        str(int(spec.n_agents)),
+        str(int(spec.seed)),
+    )
+
+
+def _row_key(row: dict[str, Any]) -> tuple[str, str, str, str, str]:
+    return (
+        str(row.get("scenario", "")),
+        str(row.get("method", "")),
+        str(row.get("comm_profile", "")),
+        str(row.get("N", "")),
+        str(row.get("seed", "")),
+    )
 
 
 def _write_csv(path: Path, rows: list[dict[str, Any]], fields: tuple[str, ...]) -> Path:
@@ -246,18 +291,137 @@ def _run_specs(
     return specs[: max(0, int(max_runs))]
 
 
-def _run_specs_to_csv(specs: list[RunSpec], run_dir: Path) -> None:
-    run_dir.mkdir(parents=True, exist_ok=True)
-    if not specs:
-        write_result_schema_manifest(run_dir)
-        with (run_dir / "results.csv").open("w", newline="", encoding="utf-8") as f:
-            csv.DictWriter(f, fieldnames=RESULT_FIELDS).writeheader()
-        with (run_dir / "summary.csv").open("w", newline="", encoding="utf-8") as f:
-            csv.DictWriter(f, fieldnames=SUMMARY_FIELDS).writeheader()
+def _hard_timeout_supported() -> bool:
+    return (
+        hasattr(signal, "SIGALRM")
+        and hasattr(signal, "ITIMER_REAL")
+        and threading.current_thread() is threading.main_thread()
+    )
+
+
+@contextmanager
+def _episode_time_limit(timeout_s: float | None):
+    if timeout_s is None:
+        yield
         return
+    timeout = float(timeout_s)
+    if timeout <= 0.0:
+        raise LearnedHoldoutRunTimeout("episode exceeded run timeout before launch")
+    if not _hard_timeout_supported():
+        yield
+        return
+
+    def _raise_timeout(signum, frame):
+        _ = signum, frame
+        raise LearnedHoldoutRunTimeout(f"episode exceeded run timeout of {timeout:.3f}s")
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    signal.signal(signal.SIGALRM, _raise_timeout)
+    signal.setitimer(signal.ITIMER_REAL, timeout)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0.0)
+        signal.signal(signal.SIGALRM, previous_handler)
+
+
+def _timeout_row(spec: RunSpec, *, elapsed_s: float, timeout_s: float | None) -> dict[str, Any]:
+    row = {field: float("nan") for field in RESULT_FIELDS}
+    row.update(
+        {
+            "run_id": Path(spec.out_dir).name,
+            "method": str(spec.method),
+            "scenario": Path(spec.scenario_path).stem,
+            "comm_profile": str(spec.comm_profile),
+            "N": int(spec.n_agents),
+            "seed": int(spec.seed),
+            "planner_timeout_count": 1,
+            "planner_error_count": 1,
+            "planner_fallback_count": 0,
+            "episode_runtime_s": float(elapsed_s),
+        }
+    )
+    if timeout_s is not None:
+        row["planner_ms_per_tick_per_agent_p95"] = float(timeout_s) * 1000.0
+    return row
+
+
+def _run_episode_checked(spec: RunSpec, *, run_timeout_s: float | None) -> tuple[dict[str, Any], bool]:
+    started = time.perf_counter()
+    try:
+        with _episode_time_limit(run_timeout_s):
+            return run_episode(spec), False
+    except LearnedHoldoutRunTimeout:
+        elapsed = time.perf_counter() - started
+        return _timeout_row(spec, elapsed_s=elapsed, timeout_s=run_timeout_s), True
+
+
+def _run_specs_to_csv_checked(
+    specs: list[RunSpec],
+    run_dir: Path,
+    *,
+    resume: bool = False,
+    run_timeout_s: float | None = None,
+    max_timeouts_per_entry: int | None = None,
+) -> dict[str, Any]:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    results_csv = run_dir / "results.csv"
+    if not specs:
+        if not results_csv.exists():
+            write_result_schema_manifest(run_dir)
+            with (run_dir / "results.csv").open("w", newline="", encoding="utf-8") as f:
+                csv.DictWriter(f, fieldnames=RESULT_FIELDS).writeheader()
+            with (run_dir / "summary.csv").open("w", newline="", encoding="utf-8") as f:
+                csv.DictWriter(f, fieldnames=SUMMARY_FIELDS).writeheader()
+        return {
+            "selected_run_count": 0,
+            "new_run_count": 0,
+            "skipped_existing_count": 0,
+            "timeout_run_count": 0,
+        }
+    existing_rows = _read_csv_rows(results_csv) if resume else []
+    completed_keys = {_row_key(row) for row in existing_rows} if resume else set()
+    existing_timeout_count = sum(_row_timeout_count(row) for row in existing_rows)
+    if max_timeouts_per_entry is not None and existing_timeout_count >= int(max_timeouts_per_entry):
+        write_summary(run_dir)
+        selected_keys = {_spec_key(spec) for spec in specs}
+        return {
+            "selected_run_count": int(len(specs)),
+            "new_run_count": 0,
+            "skipped_existing_count": int(len(selected_keys & completed_keys)),
+            "timeout_run_count": int(existing_timeout_count),
+            "new_timeout_run_count": 0,
+            "stopped_by_timeout_budget": True,
+        }
+    skipped_existing = 0
+    newly_run = 0
+    newly_timed_out = 0
+    stopped_by_timeout_budget = False
     for spec in specs:
-        append_result(run_dir, run_episode(spec))
+        if _spec_key(spec) in completed_keys:
+            skipped_existing += 1
+            continue
+        row, timed_out = _run_episode_checked(spec, run_timeout_s=run_timeout_s)
+        append_result(run_dir, row)
+        completed_keys.add(_spec_key(spec))
+        newly_run += 1
+        newly_timed_out += int(timed_out)
+        if max_timeouts_per_entry is not None and existing_timeout_count + newly_timed_out >= int(max_timeouts_per_entry):
+            stopped_by_timeout_budget = True
+            break
     write_summary(run_dir)
+    timeout_count = sum(
+        int(_finite_float(row.get("planner_timeout_count")) or 0)
+        for row in _read_csv_rows(results_csv)
+    )
+    return {
+        "selected_run_count": int(len(specs)),
+        "new_run_count": int(newly_run),
+        "skipped_existing_count": int(skipped_existing),
+        "timeout_run_count": int(timeout_count),
+        "new_timeout_run_count": int(newly_timed_out),
+        "stopped_by_timeout_budget": bool(stopped_by_timeout_budget),
+    }
 
 
 def _summary_from_run_dir(
@@ -287,6 +451,14 @@ def _summary_from_run_dir(
 
     collision_episodes = sum(int(_finite_float(row.get("collision_episode")) or 0) for row in result_rows)
     near_miss_episodes = sum(int(_finite_float(row.get("near_miss_episode")) or 0) for row in result_rows)
+    planner_timeout_count = sum(_row_timeout_count(row) for row in result_rows)
+    planner_error_count = sum(_row_error_count(row) for row in result_rows)
+    planner_fallback_count = sum(int(_finite_float(row.get("planner_fallback_count")) or 0) for row in result_rows)
+    completed_rows = [
+        row
+        for row in result_rows
+        if _row_timeout_count(row) <= 0 and _row_error_count(row) <= 0
+    ]
     collision_rates = _finite_values(summary_rows, "collision_episode_rate")
     completion_rates = _finite_values(result_rows, "completion_rate")
     return {
@@ -307,7 +479,10 @@ def _summary_from_run_dir(
         "min_sep_p05_row_min_m": _min_or_none(_finite_values(result_rows, "min_sep_p05_m")),
         "score_v0_mean": _mean_or_none(scores),
         "score_v0_worst": _max_or_none(scores),
-        "planner_ms_p95_max": _max_or_none(_finite_values(result_rows, "planner_ms_per_tick_per_agent_p95")),
+        "planner_ms_p95_max": _max_or_none(_finite_values(completed_rows, "planner_ms_per_tick_per_agent_p95")),
+        "planner_timeout_count": int(planner_timeout_count),
+        "planner_error_count": int(planner_error_count),
+        "planner_fallback_count": int(planner_fallback_count),
         "results_csv": _rel(results_csv, out_dir),
         "summary_csv": _rel(summary_csv, out_dir),
         "scored_summary_rows": scored_rows,
@@ -344,6 +519,9 @@ def _pairwise_deltas(
                     "min_sep_p05_row_min_m_delta": _delta(learned, reference, "min_sep_p05_row_min_m"),
                     "score_v0_mean_delta": _delta(learned, reference, "score_v0_mean"),
                     "planner_ms_p95_max_delta": _delta(learned, reference, "planner_ms_p95_max"),
+                    "planner_timeout_count_delta": _delta(learned, reference, "planner_timeout_count"),
+                    "planner_error_count_delta": _delta(learned, reference, "planner_error_count"),
+                    "planner_fallback_count_delta": _delta(learned, reference, "planner_fallback_count"),
                 }
             )
     return rows
@@ -381,6 +559,11 @@ def _checks(
             "details": {"labels": [str(row["label"]) for row in rows]},
         },
         {
+            "name": "no_planner_timeouts",
+            "ok": all(int(row.get("planner_timeout_count") or 0) == 0 for row in rows),
+            "details": {str(row["label"]): int(row.get("planner_timeout_count") or 0) for row in rows},
+        },
+        {
             "name": "learned_metrics_finite",
             "ok": all(
                 _finite_float(row.get("completion_rate_mean")) is not None
@@ -402,6 +585,9 @@ def run_learned_holdout_eval(
     comm_profiles: tuple[str, ...] | list[str] | None = None,
     n_agents: int = 6,
     max_runs: int | None = None,
+    resume: bool = False,
+    run_timeout_s: float | None = None,
+    max_timeouts_per_entry: int | None = None,
     require_no_collision: bool = False,
     overwrite: bool = False,
 ) -> dict[str, Any]:
@@ -411,7 +597,7 @@ def run_learned_holdout_eval(
     if out.exists():
         if bool(overwrite):
             shutil.rmtree(out)
-        elif any(out.iterdir()):
+        elif any(out.iterdir()) and not bool(resume):
             raise RuntimeError(f"learned holdout output directory already exists and is not empty: {out}")
     out.mkdir(parents=True, exist_ok=True)
     learned_entries = parse_learned_policy_spec_entries(policy_specs)
@@ -423,6 +609,8 @@ def run_learned_holdout_eval(
     comm_values = [str(comm).strip() for comm in (comm_profiles if comm_profiles is not None else ["ideal_50hz", "degraded_20hz"]) if str(comm).strip()]
     if int(n_agents) < 2:
         raise ValueError("learned holdout n_agents must be >= 2")
+    if max_timeouts_per_entry is not None and int(max_timeouts_per_entry) < 1:
+        raise ValueError("max_timeouts_per_entry must be >= 1 when provided")
     if not scenario_ids:
         raise ValueError("learned holdout scenarios must not be empty")
     if not seed_values:
@@ -445,6 +633,7 @@ def run_learned_holdout_eval(
     expected_runs = len(expected_specs)
 
     learned_rows: list[dict[str, Any]] = []
+    execution: dict[str, Any] = {}
     for entry in learned_entries:
         run_dir = out / "learned" / entry.label
         specs = _run_specs(
@@ -458,7 +647,13 @@ def run_learned_holdout_eval(
             max_runs=max_runs,
             policy_spec=entry.policy_spec,
         )
-        _run_specs_to_csv(specs, run_dir)
+        execution[entry.label] = _run_specs_to_csv_checked(
+            specs,
+            run_dir,
+            resume=bool(resume),
+            run_timeout_s=run_timeout_s,
+            max_timeouts_per_entry=max_timeouts_per_entry,
+        )
         report_path = run_dir / "baseline_report.json"
         baseline_report = build_baseline_report(
             summary_csv=run_dir / "summary.csv",
@@ -493,7 +688,13 @@ def run_learned_holdout_eval(
             comm_profiles=comm_values,
             max_runs=max_runs,
         )
-        _run_specs_to_csv(specs, run_dir)
+        execution[method] = _run_specs_to_csv_checked(
+            specs,
+            run_dir,
+            resume=bool(resume),
+            run_timeout_s=run_timeout_s,
+            max_timeouts_per_entry=max_timeouts_per_entry,
+        )
         report_path = run_dir / "baseline_report.json"
         baseline_report = build_baseline_report(
             summary_csv=run_dir / "summary.csv",
@@ -547,7 +748,12 @@ def run_learned_holdout_eval(
         "comm_profiles": comm_values,
         "n_agents": int(n_agents),
         "max_runs": None if max_runs is None else int(max_runs),
+        "resume": bool(resume),
+        "run_timeout_s": None if run_timeout_s is None else float(run_timeout_s),
+        "max_timeouts_per_entry": None if max_timeouts_per_entry is None else int(max_timeouts_per_entry),
+        "run_timeout_supported": _hard_timeout_supported(),
         "expected_runs_per_entry": int(expected_runs),
+        "execution": execution,
         "learned_policies": [entry.summary for entry in learned_entries],
         "reference_methods": references,
         "rows": all_rows,

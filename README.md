@@ -136,7 +136,7 @@ python -m microbench.cli validate-learned-bundle --bundle runs_learned_bundle --
 python -m microbench.cli review-learned-bundle --bundle runs_learned_bundle --require-pass
 python -m microbench.cli learned-leaderboard --bundle runs_learned_bundle --bundle runs_external_learned_bundle --out runs_learned_leaderboard/learned_policy_leaderboard.json --require-pass
 python -m microbench.cli learned-diagnostics --bundle runs_learned_bundle --bundle runs_external_learned_bundle --out runs_learned_diagnostics/learned_policy_diagnostics.json --require-pass
-python -m microbench.cli learned-holdout-eval --out-dir runs_learned_holdout_eval --policy-spec temporal=runs_hard_lane_loop/training/policy_spec.json --reference-methods dynamic_tube_dmpc,ego_swarm_opt --scenarios sphere_swap_3d_medium,dense_swarm_3d_hard,merge_3d_hard,sensor_volume_3d_hard,noncooperative_intruder_3d_hard --seeds 0:2 --comm ideal_50hz,degraded_20hz --n 6
+python -m microbench.cli learned-holdout-eval --out-dir runs_learned_holdout_eval --policy-spec temporal=runs_hard_lane_loop/training/policy_spec.json --reference-methods dynamic_tube_dmpc,ego_swarm_opt --scenarios sphere_swap_3d_medium,dense_swarm_3d_hard,merge_3d_hard,sensor_volume_3d_hard,noncooperative_intruder_3d_hard --seeds 0:2 --comm ideal_50hz,degraded_20hz --n 6 --run-timeout-s 180 --max-timeouts-per-entry 1 --resume
 ```
 
 You can also inspect `microbench/planners/` (each planner module maps to a method name in the planner registry).
@@ -1174,10 +1174,13 @@ python -m microbench.cli learned-holdout-eval \
   --scenarios sphere_swap_3d_medium,dense_swarm_3d_hard,merge_3d_hard,sensor_volume_3d_hard,noncooperative_intruder_3d_hard \
   --seeds 0:2 \
   --comm ideal_50hz,degraded_20hz \
-  --n 6
+  --n 6 \
+  --run-timeout-s 180 \
+  --max-timeouts-per-entry 1 \
+  --resume
 ```
 
-This writes `learned_holdout_eval.json`, `learned_holdout_table.csv`, and `learned_holdout_deltas.csv`, plus per-entry `results.csv`, `summary.csv`, and `baseline_report.json`. Pairwise deltas are learned minus reference, so lower `score_v0` deltas and higher clearance/completion deltas are better. This is a comparison aid for learned-policy development, not a promotion gate by itself.
+This writes `learned_holdout_eval.json`, `learned_holdout_table.csv`, and `learned_holdout_deltas.csv`, plus per-entry `results.csv`, `summary.csv`, and `baseline_report.json`. Pairwise deltas are learned minus reference, so lower `score_v0` deltas and higher clearance/completion deltas are better. `--run-timeout-s` records slow rows, and `--max-timeouts-per-entry` prevents one slow reference family from blocking the whole comparison. This is a comparison aid for learned-policy development, not a promotion gate by itself.
 
 ## 11.4) Closed-Loop Learned Fine-Tuning
 
