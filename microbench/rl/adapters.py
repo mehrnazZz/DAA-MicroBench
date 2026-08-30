@@ -79,8 +79,13 @@ class ModelPredictPolicyAdapter:
                 return
 
     def action(self, agent: str, observation: np.ndarray, action_space: Any, info: dict[str, Any]) -> np.ndarray:
-        _ = agent, info
-        if hasattr(self.model, "compute_single_action"):
+        _ = info
+        if hasattr(self.model, "predict_for_agent"):
+            try:
+                raw = self.model.predict_for_agent(agent, observation, deterministic=bool(self.deterministic))
+            except TypeError:
+                raw = self.model.predict_for_agent(agent, observation)
+        elif hasattr(self.model, "compute_single_action"):
             raw = self.model.compute_single_action(observation)
         elif hasattr(self.model, "predict"):
             try:

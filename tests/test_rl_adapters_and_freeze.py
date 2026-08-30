@@ -52,6 +52,29 @@ def test_model_predict_policy_adapter_accepts_tuple_predict_output() -> None:
     assert np.allclose(action, np.asarray([0.0, 0.0, 1.0], dtype=np.float32))
 
 
+def test_model_predict_policy_adapter_prefers_agent_aware_predict() -> None:
+    class AgentAwareModel:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def predict_for_agent(self, agent: str, observation: np.ndarray, deterministic: bool = True):
+            assert deterministic is True
+            self.calls.append(agent)
+            return np.asarray([0.25, 0.0, 0.0], dtype=np.float32), None
+
+        def predict(self, observation: np.ndarray, deterministic: bool = True):
+            raise AssertionError("agent-aware temporal models should receive predict_for_agent calls")
+
+    obs = np.zeros(32, dtype=np.float32)
+    model = AgentAwareModel()
+    adapter = ModelPredictPolicyAdapter(model)
+
+    action = adapter.action("agent_7", obs, box(low=-1.0, high=1.0, shape=(3,)), {})
+
+    assert model.calls == ["agent_7"]
+    assert np.allclose(action, np.asarray([0.25, 0.0, 0.0], dtype=np.float32))
+
+
 def test_normalize_action_rejects_bad_external_outputs() -> None:
     with pytest.raises(ValueError, match="shape"):
         normalize_action([0.0, 1.0])

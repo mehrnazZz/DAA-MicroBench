@@ -9,14 +9,20 @@ from typing import Any
 import numpy as np
 
 from microbench.learned import (
+    DEFAULT_TEMPORAL_MLP_HISTORY_LEN,
     LEARNED_BASELINE_SCHEMA_VERSION,
     MLP_LEARNED_COMPACT_FEATURE_SET,
     MLP_LEARNED_FEATURE_SET_CHOICES,
     MLP_LEARNED_PUBLIC_OBS_FEATURE_SET,
     MLP_LEARNED_PUBLIC_OBS_TOP_K,
+    TEMPORAL_MLP_LEARNED_MODEL_ID,
+    TEMPORAL_MLP_MODEL_TYPE,
+    TEMPORAL_MLP_POLICY_ADAPTER,
     mlp_feature_names,
     mlp_model_id_for_feature_set,
     observation_to_mlp_features,
+    stack_temporal_feature_rows,
+    temporal_mlp_feature_names,
 )
 from microbench.rl.envs import DaaParallelEnv
 from microbench.rl.policy_spec import RL_POLICY_SPEC_SCHEMA_VERSION
@@ -32,6 +38,9 @@ BC_TRAINING_SCHEMA_VERSION = "0.1"
 BC_EVIDENCE_SCHEMA_VERSION = "0.1"
 BC_POLICY_NAME = "bc_mlp_learned"
 BC_TEACHER_NAME = "local_lateral_avoidance_teacher_v0"
+BC_MLP_ARCHITECTURE = "mlp"
+BC_TEMPORAL_MLP_ARCHITECTURE = "temporal_mlp"
+BC_MODEL_ARCHITECTURE_CHOICES = (BC_MLP_ARCHITECTURE, BC_TEMPORAL_MLP_ARCHITECTURE)
 DEFAULT_BC_LANES = (
     "head_on",
     "crossing",
@@ -52,6 +61,13 @@ def _mlp_feature_set(value: str) -> str:
     normalized = str(value or MLP_LEARNED_COMPACT_FEATURE_SET).strip()
     if normalized not in MLP_LEARNED_FEATURE_SET_CHOICES:
         raise ValueError(f"mlp_feature_set must be one of {','.join(MLP_LEARNED_FEATURE_SET_CHOICES)}")
+    return normalized
+
+
+def _model_architecture(value: str | None) -> str:
+    normalized = str(value or BC_MLP_ARCHITECTURE).strip()
+    if normalized not in BC_MODEL_ARCHITECTURE_CHOICES:
+        raise ValueError(f"model_architecture must be one of {','.join(BC_MODEL_ARCHITECTURE_CHOICES)}")
     return normalized
 
 
@@ -219,8 +235,13 @@ def _rollout_training_lane(
     max_steps: int,
     rollout_noise_std: float,
     feature_set: str,
+    model_architecture: str = BC_MLP_ARCHITECTURE,
+    history_len: int = DEFAULT_TEMPORAL_MLP_HISTORY_LEN,
 ) -> tuple[list[np.ndarray], list[np.ndarray], dict[str, Any]]:
     rng = np.random.default_rng(int(seed) + 7301)
+    architecture = _model_architecture(model_architecture)
+    if architecture == BC_TEMPORAL_MLP_ARCHITECTURE and _mlp_feature_set(feature_set) != MLP_LEARNED_PUBLIC_OBS_FEATURE_SET:
+        raise ValueError("temporal_mlp training requires --mlp-feature-set public_obs_v1")
     env = DaaParallelEnv(
         scenario_path=str(scenario_path),
         n_agents=int(lane.n_agents),
@@ -229,6 +250,7 @@ def _rollout_training_lane(
     )
     features: list[np.ndarray] = []
     labels: list[np.ndarray] = []
+    history_by_agent: dict[str, list[np.ndarray]] = {}
     steps = 0
     try:
         observations, infos = env.reset(seed=int(seed))
@@ -237,7 +259,16 @@ def _rollout_training_lane(
             actions: dict[str, np.ndarray] = {}
             for agent in env.agents:
                 x, label = _teacher_action_from_observation(observations[agent], feature_set=str(feature_set))
-                features.append(x)
+                if architecture == BC_TEMPORAL_MLP_ARCHITECTURE:
+                    previous = list(history_by_agent.get(agent, []))
+                    chunks = [x]
+                    chunks.extend(previous[: max(0, int(history_len) - 1)])
+                    while len(chunks) < int(history_len):
+                        chunks.append(x)
+                    features.append(np.concatenate(chunks, axis=0).astype(np.float32))
+                    history_by_agent[agent] = [x] + previous[: max(0, int(history_len) - 1)]
+                else:
+                    features.append(x)
                 labels.append(label)
                 action = label
                 if rollout_noise_std > 0.0:
@@ -263,6 +294,8 @@ def _rollout_training_lane(
         "steps": int(steps),
         "samples": int(len(features)),
         "feature_set": _mlp_feature_set(feature_set),
+        "model_architecture": architecture,
+        "history_len": int(history_len) if architecture == BC_TEMPORAL_MLP_ARCHITECTURE else 1,
     }
 
 
@@ -371,12 +404,110 @@ def _model_spec(
     }
 
 
-def _policy_spec(*, artifact_name: str, policy_name: str) -> dict[str, Any]:
+def _temporal_model_spec(
+    *,
+    w1: np.ndarray,
+    b1: np.ndarray,
+    w2: np.ndarray,
+    b2: np.ndarray,
+    hidden_dim: int,
+    ridge: float,
+    seed: int,
+    fit_rmse: float,
+    training_rows: list[dict[str, Any]],
+    lanes: list[ValidationLane],
+    seeds: list[int] | None,
+    max_steps: int,
+    rollout_noise_std: float,
+    sample_count: int,
+    history_len: int,
+    feature_normalization: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if int(history_len) < 1:
+        raise ValueError("temporal_mlp history_len must be at least 1")
+    base_feature_set = MLP_LEARNED_PUBLIC_OBS_FEATURE_SET
+    feature_top_k = MLP_LEARNED_PUBLIC_OBS_TOP_K
+    base_feature_names = mlp_feature_names(base_feature_set, top_k=feature_top_k)
+    feature_names = temporal_mlp_feature_names(
+        base_feature_set=base_feature_set,
+        top_k=feature_top_k,
+        history_len=int(history_len),
+    )
+    normalization_payload = feature_normalization or _feature_normalization_payload(
+        np.zeros((1, len(feature_names)), dtype=np.float32),
+        mode="none",
+    )
+    return {
+        "schema_version": LEARNED_BASELINE_SCHEMA_VERSION,
+        "model_id": TEMPORAL_MLP_LEARNED_MODEL_ID,
+        "display_name": "Behavior-cloned temporal MLP learned-policy baseline",
+        "model_type": TEMPORAL_MLP_MODEL_TYPE,
+        "model_architecture": BC_TEMPORAL_MLP_ARCHITECTURE,
+        "base_feature_set": base_feature_set,
+        "base_feature_top_k": feature_top_k,
+        "base_feature_dim": int(len(base_feature_names)),
+        "history_len": int(history_len),
+        "feature_top_k": feature_top_k,
+        "hidden_dim": int(hidden_dim),
+        "action_shape": [3],
+        "input_features": list(feature_names),
+        "feature_normalization": normalization_payload,
+        "hidden_activation": "tanh",
+        "output_activation": "tanh",
+        "postprocess": {
+            "goal_forward_floor": True,
+            "min_forward_base": 0.2,
+            "min_forward_free_boost": 0.25,
+            "normalize_max_norm": True,
+        },
+        "layer1_weights": np.asarray(w1).round(8).tolist(),
+        "layer1_bias": np.asarray(b1).round(8).tolist(),
+        "layer2_weights": np.asarray(w2).round(8).tolist(),
+        "layer2_bias": np.asarray(b2).round(8).tolist(),
+        "training": {
+            "schema_version": BC_TRAINING_SCHEMA_VERSION,
+            "recipe": "python -m microbench.cli train-learned-bc",
+            "source": "DAA Microbench RL validation-matrix rollouts",
+            "teacher_policy": BC_TEACHER_NAME,
+            "public_observations_only": True,
+            "privileged_global_state": False,
+            "training_lanes": [lane.lane_id for lane in lanes],
+            "training_scenarios": [lane.scenario for lane in lanes],
+            "training_seed_override": None if seeds is None else [int(seed_value) for seed_value in seeds],
+            "rollout_policy": "teacher_with_optional_clipped_action_noise",
+            "observation_normalization": normalization_payload.get("description"),
+            "action_post_processing": "goal-direction forward floor plus unit-norm clamp before action-space clipping",
+            "max_steps_per_episode": int(max_steps),
+            "rollout_noise_std": float(rollout_noise_std),
+            "random_feature_seed": int(seed),
+            "samples": int(sample_count),
+            "episodes": int(len(training_rows)),
+            "feature_set": base_feature_set,
+            "feature_top_k": feature_top_k,
+            "base_feature_dim": int(len(base_feature_names)),
+            "model_architecture": BC_TEMPORAL_MLP_ARCHITECTURE,
+            "history_len": int(history_len),
+            "feature_dim": int(len(feature_names)),
+            "hidden_dim": int(hidden_dim),
+            "ridge": float(ridge),
+            "fit_rmse": round(float(fit_rmse), 8),
+            "lane_rows": training_rows,
+        },
+    }
+
+
+def _policy_spec(
+    *,
+    artifact_name: str,
+    policy_name: str,
+    adapter: str = "mlp_json",
+    description: str | None = None,
+) -> dict[str, Any]:
     return {
         "schema_version": RL_POLICY_SPEC_SCHEMA_VERSION,
         "policy_name": str(policy_name),
-        "description": "Behavior-cloned MLP policy trained from DAA Microbench public RL observations.",
-        "adapter": "mlp_json",
+        "description": description or "Behavior-cloned MLP policy trained from DAA Microbench public RL observations.",
+        "adapter": str(adapter),
         "artifact_path": str(artifact_name),
         "deterministic": True,
         "clip": True,
@@ -448,6 +579,8 @@ def train_behavior_cloned_policy(
     rollout_noise_std: float = 0.03,
     feature_normalization: str = "standard",
     feature_set: str = MLP_LEARNED_COMPACT_FEATURE_SET,
+    model_architecture: str = BC_MLP_ARCHITECTURE,
+    history_len: int = DEFAULT_TEMPORAL_MLP_HISTORY_LEN,
     eval_lanes: tuple[str, ...] | list[str] | None = None,
     eval_max_steps: int | None = 12,
     policy_name: str = BC_POLICY_NAME,
@@ -478,6 +611,12 @@ def train_behavior_cloned_policy(
     selected = selected_validation_lanes(list(lanes) if lanes is not None else list(DEFAULT_BC_LANES))
     seed_override = None if seeds is None else [int(seed_value) for seed_value in seeds]
     feature_set = _mlp_feature_set(feature_set)
+    architecture = _model_architecture(model_architecture)
+    temporal_history_len = int(history_len)
+    if temporal_history_len < 1:
+        raise ValueError("history_len must be at least 1")
+    if architecture == BC_TEMPORAL_MLP_ARCHITECTURE and feature_set != MLP_LEARNED_PUBLIC_OBS_FEATURE_SET:
+        raise ValueError("temporal_mlp training requires --mlp-feature-set public_obs_v1")
     scenario_paths = prepare_validation_lane_scenarios(out_dir=out / "_bc_training_scenarios", lanes=selected)
 
     feature_rows: list[np.ndarray] = []
@@ -492,6 +631,8 @@ def train_behavior_cloned_policy(
                 max_steps=int(max_steps),
                 rollout_noise_std=float(rollout_noise_std),
                 feature_set=str(feature_set),
+                model_architecture=architecture,
+                history_len=temporal_history_len,
             )
             feature_rows.extend(lane_features)
             label_rows.extend(lane_labels)
@@ -511,25 +652,51 @@ def train_behavior_cloned_policy(
         hidden_dim=int(hidden_dim),
         ridge=float(ridge),
     )
-    model_payload = _model_spec(
-        w1=w1,
-        b1=b1,
-        w2=w2,
-        b2=b2,
-        hidden_dim=int(hidden_dim),
-        ridge=float(ridge),
-        seed=int(seed),
-        fit_rmse=fit_rmse,
-        training_rows=training_rows,
-        lanes=selected,
-        seeds=seed_override,
-        max_steps=int(max_steps),
-        rollout_noise_std=float(rollout_noise_std),
-        sample_count=int(features.shape[0]),
-        feature_set=str(feature_set),
-        feature_normalization=normalization_payload,
-    )
-    spec_payload = _policy_spec(artifact_name=model_path.name, policy_name=str(policy_name))
+    if architecture == BC_TEMPORAL_MLP_ARCHITECTURE:
+        model_payload = _temporal_model_spec(
+            w1=w1,
+            b1=b1,
+            w2=w2,
+            b2=b2,
+            hidden_dim=int(hidden_dim),
+            ridge=float(ridge),
+            seed=int(seed),
+            fit_rmse=fit_rmse,
+            training_rows=training_rows,
+            lanes=selected,
+            seeds=seed_override,
+            max_steps=int(max_steps),
+            rollout_noise_std=float(rollout_noise_std),
+            sample_count=int(features.shape[0]),
+            history_len=temporal_history_len,
+            feature_normalization=normalization_payload,
+        )
+        spec_payload = _policy_spec(
+            artifact_name=model_path.name,
+            policy_name=str(policy_name),
+            adapter=TEMPORAL_MLP_POLICY_ADAPTER,
+            description="Behavior-cloned temporal MLP policy trained from DAA Microbench public RL observations.",
+        )
+    else:
+        model_payload = _model_spec(
+            w1=w1,
+            b1=b1,
+            w2=w2,
+            b2=b2,
+            hidden_dim=int(hidden_dim),
+            ridge=float(ridge),
+            seed=int(seed),
+            fit_rmse=fit_rmse,
+            training_rows=training_rows,
+            lanes=selected,
+            seeds=seed_override,
+            max_steps=int(max_steps),
+            rollout_noise_std=float(rollout_noise_std),
+            sample_count=int(features.shape[0]),
+            feature_set=str(feature_set),
+            feature_normalization=normalization_payload,
+        )
+        spec_payload = _policy_spec(artifact_name=model_path.name, policy_name=str(policy_name))
     _write_json(model_path, model_payload)
     _write_json(spec_path, spec_payload)
 
@@ -595,6 +762,8 @@ def train_behavior_cloned_policy(
         "sample_count": int(features.shape[0]),
         "feature_dim": int(features.shape[1]),
         "feature_set": str(feature_set),
+        "model_architecture": architecture,
+        "history_len": temporal_history_len if architecture == BC_TEMPORAL_MLP_ARCHITECTURE else 1,
         "label_dim": int(labels.shape[1]),
         "hidden_dim": int(hidden_dim),
         "feature_normalization": normalization_payload,

@@ -21,7 +21,12 @@ from microbench.dataset import generate_dataset, expand_scenarios, expand_list, 
 from microbench.logging import wandb_logger
 from microbench.learned import MLP_LEARNED_FEATURE_SET_CHOICES
 from microbench.rl.calibration import run_rl_policy_calibration
-from microbench.rl.bc_training import BC_FEATURE_NORMALIZATION_CHOICES, build_behavior_cloned_policy_evidence, train_behavior_cloned_policy
+from microbench.rl.bc_training import (
+    BC_FEATURE_NORMALIZATION_CHOICES,
+    BC_MODEL_ARCHITECTURE_CHOICES,
+    build_behavior_cloned_policy_evidence,
+    train_behavior_cloned_policy,
+)
 from microbench.rl.closed_loop_training import (
     CLOSED_LOOP_ACCEPTANCE_MODE_CHOICES,
     CLOSED_LOOP_BROAD_3D_HOLDOUT_SCENARIOS,
@@ -1357,6 +1362,8 @@ def _train_learned_bc(args) -> None:
             ridge=float(args.ridge),
             feature_normalization=str(args.feature_normalization),
             feature_set=str(args.mlp_feature_set),
+            model_architecture=str(args.model_architecture),
+            history_len=int(args.history_len),
             eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
             eval_max_steps=args.eval_max_steps,
             policy_name=str(args.policy_name),
@@ -1375,6 +1382,8 @@ def _train_learned_bc(args) -> None:
             rollout_noise_std=float(args.rollout_noise_std),
             feature_normalization=str(args.feature_normalization),
             feature_set=str(args.mlp_feature_set),
+            model_architecture=str(args.model_architecture),
+            history_len=int(args.history_len),
             eval_lanes=_parse_str_list(args.eval_lanes) if args.eval_lanes else None,
             eval_max_steps=args.eval_max_steps,
             policy_name=str(args.policy_name),
@@ -1391,7 +1400,8 @@ def _train_learned_bc(args) -> None:
         print(
             f"train-learned-bc: {status} policy={report['policy_name']} "
             f"samples={report['sample_count']} hidden_dim={report['hidden_dim']} "
-            f"feature_set={report.get('feature_set')} fit_rmse={report['fit_rmse']}"
+            f"feature_set={report.get('feature_set')} model_architecture={report.get('model_architecture')} "
+            f"fit_rmse={report['fit_rmse']}"
         )
         print(f"  policy_spec: {report['policy_spec']}")
         print(f"  model_artifact: {report['model_artifact']}")
@@ -1475,6 +1485,8 @@ def _learned_hard_lane_loop(args) -> None:
         ridge=float(args.ridge),
         feature_normalization=str(args.feature_normalization),
         feature_set=str(args.mlp_feature_set),
+        model_architecture=str(args.model_architecture),
+        history_len=int(args.history_len),
         sample_weighting=str(args.sample_weighting),
         collision_sample_weight=float(args.collision_sample_weight),
         near_miss_sample_weight=float(args.near_miss_sample_weight),
@@ -1509,13 +1521,15 @@ def _learned_hard_lane_loop(args) -> None:
         print(
             f"learned-hard-lane-loop: {status} lanes={','.join(selection.get('selected_lanes', []))} "
             f"samples={dataset.get('sample_count')} feature_set={training.get('feature_set')} "
-            f"fit_rmse={training.get('fit_rmse')} "
+            f"model_architecture={training.get('model_architecture')} fit_rmse={training.get('fit_rmse')} "
             f"bundles={leaderboard.get('bundle_count')}"
         )
         if report.get("dataset_lanes"):
             print(f"  dataset_lanes: {','.join(report.get('dataset_lanes', []))}")
         if report.get("dataset_seeds"):
             print(f"  dataset_seeds: {','.join(str(seed) for seed in report.get('dataset_seeds', []))}")
+        if training.get("model_architecture") == "temporal_mlp":
+            print(f"  history_len: {training.get('history_len')}")
         if training.get("sample_weighting"):
             print(f"  sample_weighting: {training.get('sample_weighting')}")
         if training.get("sample_selection"):
@@ -2813,6 +2827,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="MLP feature contract stored in the portable artifact; public_obs_v1 uses the full public RL observation",
     )
     p_bc.add_argument(
+        "--model-architecture",
+        choices=BC_MODEL_ARCHITECTURE_CHOICES,
+        default="mlp",
+        help="Learned BC model architecture; temporal_mlp stacks recent public observations per agent",
+    )
+    p_bc.add_argument("--history-len", type=int, default=3, help="Observation history length for --model-architecture temporal_mlp")
+    p_bc.add_argument(
         "--rollout-noise-std",
         type=float,
         default=0.03,
@@ -2940,6 +2961,13 @@ def build_parser() -> argparse.ArgumentParser:
         default="compact_v0",
         help="MLP feature contract stored in the portable artifact; public_obs_v1 uses the full public RL observation",
     )
+    p_hlt.add_argument(
+        "--model-architecture",
+        choices=BC_MODEL_ARCHITECTURE_CHOICES,
+        default="mlp",
+        help="Learned BC model architecture; temporal_mlp stacks recent public observations per agent",
+    )
+    p_hlt.add_argument("--history-len", type=int, default=3, help="Observation history length for --model-architecture temporal_mlp")
     p_hlt.add_argument(
         "--sample-weighting",
         choices=BC_SAMPLE_WEIGHTING_CHOICES,

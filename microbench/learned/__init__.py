@@ -29,10 +29,22 @@ from microbench.learned.mlp_policy import (
     observation_to_mlp_features,
     planner_input_to_mlp_features,
 )
+from microbench.learned.temporal_mlp_policy import (
+    DEFAULT_TEMPORAL_MLP_HISTORY_LEN,
+    FrozenTemporalMlpPolicyModel,
+    TEMPORAL_MLP_LEARNED_MODEL_ID,
+    TEMPORAL_MLP_MODEL_TYPE,
+    TEMPORAL_MLP_POLICY_ADAPTER,
+    load_temporal_mlp_learned_spec,
+    stack_temporal_feature_rows,
+    temporal_mlp_feature_names,
+)
 
 __all__ = [
     "LEARNED_BASELINE_SCHEMA_VERSION",
     "FrozenMlpPolicyModel",
+    "FrozenTemporalMlpPolicyModel",
+    "DEFAULT_TEMPORAL_MLP_HISTORY_LEN",
     "MLP_LEARNED_COMPACT_FEATURE_SET",
     "MLP_LEARNED_FEATURE_NAMES",
     "MLP_LEARNED_FEATURE_SET_CHOICES",
@@ -43,11 +55,15 @@ __all__ = [
     "MLP_LEARNED_PUBLIC_OBS_FEATURE_SET",
     "MLP_LEARNED_PUBLIC_OBS_MODEL_ID",
     "MLP_LEARNED_PUBLIC_OBS_TOP_K",
+    "TEMPORAL_MLP_LEARNED_MODEL_ID",
+    "TEMPORAL_MLP_MODEL_TYPE",
+    "TEMPORAL_MLP_POLICY_ADAPTER",
     "TINY_LEARNED_FEATURE_NAMES",
     "TINY_LEARNED_MODEL_ID",
     "TINY_LEARNED_POLICY_NAME",
     "TinyLinearPolicyModel",
     "load_mlp_learned_spec",
+    "load_temporal_mlp_learned_spec",
     "load_tiny_learned_spec",
     "mlp_feature_names",
     "mlp_feature_set_from_spec",
@@ -57,5 +73,7 @@ __all__ = [
     "observation_to_tiny_features",
     "planner_input_to_mlp_features",
     "planner_input_to_tiny_features",
+    "stack_temporal_feature_rows",
+    "temporal_mlp_feature_names",
     "tiny_learned_model_path",
 ]

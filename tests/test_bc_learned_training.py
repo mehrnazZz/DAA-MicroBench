@@ -8,10 +8,14 @@ import sys
 import numpy as np
 
 from microbench.learned import (
+    TEMPORAL_MLP_LEARNED_MODEL_ID,
+    TEMPORAL_MLP_POLICY_ADAPTER,
     MLP_LEARNED_MODEL_ID,
     MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES,
     MLP_LEARNED_PUBLIC_OBS_FEATURE_SET,
     MLP_LEARNED_PUBLIC_OBS_MODEL_ID,
+    stack_temporal_feature_rows,
+    temporal_mlp_feature_names,
 )
 from microbench.rl import build_behavior_cloned_policy_evidence, load_policy_from_spec, train_behavior_cloned_policy
 from microbench.rl.schema import OBS_A_MAX_INDEX, OBS_GOAL_DIR_SLICE, OBS_RADIUS_INDEX, OBS_V_MAX_INDEX
@@ -30,6 +34,31 @@ def _observation() -> np.ndarray:
     obs[OBS_V_MAX_INDEX] = 3.0
     obs[OBS_A_MAX_INDEX] = 2.0
     return obs
+
+
+def test_temporal_feature_stacking_uses_agent_episode_history() -> None:
+    features = np.asarray(
+        [
+            [1.0, 10.0],
+            [2.0, 20.0],
+            [3.0, 30.0],
+            [4.0, 40.0],
+        ],
+        dtype=np.float32,
+    )
+    stacked = stack_temporal_feature_rows(
+        features,
+        episode_ids=np.asarray([0, 0, 0, 0], dtype=np.int32),
+        agent_ids=np.asarray([0, 1, 0, 0], dtype=np.int32),
+        steps=np.asarray([0, 0, 1, 2], dtype=np.int32),
+        history_len=3,
+    )
+
+    assert stacked.shape == (4, 6)
+    assert stacked[0].tolist() == [1.0, 10.0, 1.0, 10.0, 1.0, 10.0]
+    assert stacked[1].tolist() == [2.0, 20.0, 2.0, 20.0, 2.0, 20.0]
+    assert stacked[2].tolist() == [3.0, 30.0, 1.0, 10.0, 3.0, 30.0]
+    assert stacked[3].tolist() == [4.0, 40.0, 3.0, 30.0, 1.0, 10.0]
 
 
 def test_behavior_cloned_training_writes_portable_policy_spec(tmp_path: Path) -> None:
@@ -111,6 +140,10 @@ def test_train_learned_bc_cli_smoke(tmp_path: Path) -> None:
             "none",
             "--mlp-feature-set",
             MLP_LEARNED_PUBLIC_OBS_FEATURE_SET,
+            "--model-architecture",
+            "temporal_mlp",
+            "--history-len",
+            "2",
             "--require-pass",
             "--json",
         ],
@@ -124,10 +157,14 @@ def test_train_learned_bc_cli_smoke(tmp_path: Path) -> None:
     assert report["ok"] is True
     assert report["sample_count"] == 8
     assert report["feature_set"] == MLP_LEARNED_PUBLIC_OBS_FEATURE_SET
-    assert report["feature_dim"] == len(MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES)
+    assert report["model_architecture"] == "temporal_mlp"
+    assert report["history_len"] == 2
+    assert report["feature_dim"] == len(temporal_mlp_feature_names(history_len=2))
     assert report["feature_normalization"]["mode"] == "none"
     assert Path(report["policy_spec"]).exists()
     assert Path(report["model_artifact"]).exists()
+    spec = json.loads((out_dir / "policy_spec.json").read_text(encoding="utf-8"))
+    assert spec["adapter"] == TEMPORAL_MLP_POLICY_ADAPTER
     assert (out_dir / "bc_training_report.json").exists()
 
 
@@ -161,6 +198,44 @@ def test_behavior_cloned_training_can_use_public_obs_mlp_feature_set(tmp_path: P
     assert loaded.summary["adapter"] == "mlp_json"
     assert action.shape == (3,)
     assert np.all(np.isfinite(action))
+
+
+def test_behavior_cloned_training_can_write_temporal_public_obs_policy(tmp_path: Path) -> None:
+    report = train_behavior_cloned_policy(
+        out_dir=tmp_path / "bc_train_temporal",
+        lanes=["head_on"],
+        max_steps=2,
+        hidden_dim=8,
+        rollout_noise_std=0.0,
+        feature_set=MLP_LEARNED_PUBLIC_OBS_FEATURE_SET,
+        model_architecture="temporal_mlp",
+        history_len=3,
+        eval_lanes=["head_on"],
+        eval_max_steps=2,
+    )
+
+    assert report["ok"] is True
+    assert report["feature_set"] == MLP_LEARNED_PUBLIC_OBS_FEATURE_SET
+    assert report["model_architecture"] == "temporal_mlp"
+    assert report["history_len"] == 3
+    assert report["feature_dim"] == len(temporal_mlp_feature_names(history_len=3))
+    assert report["validation_matrix"]["ok"] is True
+
+    spec = json.loads(Path(report["policy_spec"]).read_text(encoding="utf-8"))
+    model_payload = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
+    assert spec["adapter"] == TEMPORAL_MLP_POLICY_ADAPTER
+    assert model_payload["model_id"] == TEMPORAL_MLP_LEARNED_MODEL_ID
+    assert model_payload["history_len"] == 3
+    assert tuple(model_payload["input_features"]) == temporal_mlp_feature_names(history_len=3)
+
+    loaded = load_policy_from_spec(report["policy_spec"], seed=3)
+    action0 = loaded.policy.action("agent_0", _observation(), None, {})
+    action1 = loaded.policy.action("agent_0", _observation(), None, {})
+    assert loaded.summary["adapter"] == TEMPORAL_MLP_POLICY_ADAPTER
+    assert action0.shape == (3,)
+    assert action1.shape == (3,)
+    assert np.all(np.isfinite(action0))
+    assert np.all(np.isfinite(action1))
 
 
 def test_behavior_cloned_evidence_builds_bundles_and_leaderboard(tmp_path: Path) -> None:

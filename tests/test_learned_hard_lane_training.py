@@ -11,6 +11,9 @@ from microbench.learned import (
     MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES,
     MLP_LEARNED_PUBLIC_OBS_FEATURE_SET,
     MLP_LEARNED_PUBLIC_OBS_MODEL_ID,
+    TEMPORAL_MLP_LEARNED_MODEL_ID,
+    TEMPORAL_MLP_POLICY_ADAPTER,
+    temporal_mlp_feature_names,
 )
 from microbench.rl import (
     LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID,
@@ -21,6 +24,7 @@ from microbench.rl import (
     select_hard_lanes_from_diagnostics,
     train_behavior_cloned_policy_from_dataset,
 )
+from microbench.rl import hard_lane_training as hard_lane_training_module
 from microbench.rl.hard_lane_training import (
     _sample_mask_from_diagnostics,
     _sample_selection_config,
@@ -289,6 +293,129 @@ def test_dataset_shard_training_can_use_public_obs_feature_set(tmp_path: Path) -
     assert model["training"]["feature_set"] == MLP_LEARNED_PUBLIC_OBS_FEATURE_SET
 
 
+def test_dataset_shard_training_can_write_temporal_public_obs_policy(tmp_path: Path) -> None:
+    dataset = export_learned_policy_dataset(
+        out_dir=tmp_path / "temporal_dataset",
+        lanes=["head_on"],
+        max_steps=2,
+        shard_size=4,
+    )
+
+    report = train_behavior_cloned_policy_from_dataset(
+        out_dir=tmp_path / "temporal_training",
+        dataset_manifest=dataset["manifest"],
+        hidden_dim=8,
+        feature_set=MLP_LEARNED_PUBLIC_OBS_FEATURE_SET,
+        model_architecture="temporal_mlp",
+        history_len=2,
+        eval_lanes=["head_on"],
+        eval_max_steps=2,
+    )
+
+    assert report["ok"] is True
+    assert report["feature_set"] == MLP_LEARNED_PUBLIC_OBS_FEATURE_SET
+    assert report["model_architecture"] == "temporal_mlp"
+    assert report["history_len"] == 2
+    assert report["base_feature_dim"] == len(MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES)
+    assert report["feature_dim"] == len(temporal_mlp_feature_names(history_len=2))
+    model = json.loads(Path(report["model_artifact"]).read_text(encoding="utf-8"))
+    policy_spec = json.loads(Path(report["policy_spec"]).read_text(encoding="utf-8"))
+    assert model["model_id"] == TEMPORAL_MLP_LEARNED_MODEL_ID
+    assert model["history_len"] == 2
+    assert model["training"]["model_architecture"] == "temporal_mlp"
+    assert policy_spec["adapter"] == TEMPORAL_MLP_POLICY_ADAPTER
+
+
+def test_temporal_dataset_training_stacks_history_before_sample_selection(tmp_path: Path, monkeypatch) -> None:
+    feature_dim = len(MLP_LEARNED_PUBLIC_OBS_FEATURE_NAMES)
+    base_features = np.zeros((4, feature_dim), dtype=np.float32)
+    base_features[:, 0] = np.asarray([1.0, 2.0, 3.0, 4.0], dtype=np.float32)
+    labels = np.zeros((4, 3), dtype=np.float32)
+    rows = [
+        {
+            "lane_id": "head_on",
+            "category": "unit",
+            "scenario": "synthetic.yaml",
+            "seed": 0,
+            "n_agents": 1,
+            "comm_profile": "ideal_50hz",
+            "episode_id": 0,
+            "step": step,
+            "agent_id": 0,
+        }
+        for step in range(4)
+    ]
+    diagnostics = {
+        "collision": np.asarray([False, False, False, False], dtype=bool),
+        "near_miss": np.asarray([False, False, False, False], dtype=bool),
+        "min_sep_m": np.asarray([10.0, 10.0, 0.1, 10.0], dtype=np.float32),
+        "episode_id": np.asarray([0, 0, 0, 0], dtype=np.int32),
+        "step": np.asarray([0, 1, 2, 3], dtype=np.int32),
+        "agent_id": np.asarray([0, 0, 0, 0], dtype=np.int32),
+        "lane_id": np.asarray(["head_on", "head_on", "head_on", "head_on"], dtype="U64"),
+        "category": np.asarray(["unit", "unit", "unit", "unit"], dtype="U64"),
+        "scenario": np.asarray(["synthetic.yaml"] * 4, dtype="U128"),
+        "seed": np.asarray([0, 0, 0, 0], dtype=np.int32),
+        "n_agents": np.asarray([1, 1, 1, 1], dtype=np.int32),
+        "comm_profile": np.asarray(["ideal_50hz"] * 4, dtype="U64"),
+    }
+    captured: dict[str, np.ndarray] = {}
+
+    monkeypatch.setattr(
+        hard_lane_training_module,
+        "_load_dataset_manifest",
+        lambda dataset_manifest: (
+            {
+                "schema_version": "0.1",
+                "ok": True,
+                "out_dir": str(tmp_path),
+                "manifest": None,
+                "sample_count": 4,
+                "action_source": "planner_expert",
+                "lanes": [{"lane_id": "head_on"}],
+            },
+            None,
+            tmp_path,
+        ),
+    )
+    monkeypatch.setattr(
+        hard_lane_training_module,
+        "_load_shard_features_and_labels",
+        lambda report, root, feature_set: (base_features, labels, rows, [tmp_path / "synthetic.npz"], diagnostics),
+    )
+
+    def fake_fit(features, labels, *, seed, hidden_dim, ridge, sample_weights=None):
+        captured["features"] = np.asarray(features, dtype=np.float32)
+        return (
+            np.zeros((hidden_dim, features.shape[1]), dtype=np.float32),
+            np.zeros((hidden_dim,), dtype=np.float32),
+            np.zeros((3, hidden_dim), dtype=np.float32),
+            np.zeros((3,), dtype=np.float32),
+            0.0,
+        )
+
+    monkeypatch.setattr(hard_lane_training_module, "_fit_random_feature_mlp", fake_fit)
+
+    report = train_behavior_cloned_policy_from_dataset(
+        out_dir=tmp_path / "temporal_selected",
+        dataset_manifest={"manifest": None},
+        hidden_dim=4,
+        feature_set=MLP_LEARNED_PUBLIC_OBS_FEATURE_SET,
+        model_architecture="temporal_mlp",
+        history_len=2,
+        feature_normalization="none",
+        sample_selection="hard_negative_windows",
+        sample_selection_hard_lanes=["head_on"],
+        sample_selection_context_steps=0,
+        run_validation=False,
+    )
+
+    assert report["sample_count"] == 1
+    assert captured["features"].shape == (1, feature_dim * 2)
+    assert float(captured["features"][0, 0]) == 3.0
+    assert float(captured["features"][0, feature_dim]) == 2.0
+
+
 def test_dataset_shard_training_records_safety_sample_weighting(tmp_path: Path) -> None:
     dataset = export_learned_policy_dataset(
         out_dir=tmp_path / "dataset",
@@ -388,6 +515,7 @@ def test_learned_hard_lane_loop_smoke_without_fixtures(tmp_path: Path) -> None:
     assert report["mix_lanes"] == ["crossing", LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID]
     assert report["dataset"]["sample_count"] == 44
     assert report["training"]["training_source"] == LEARNED_DATASET_BC_TRAINING_SOURCE
+    assert report["training"]["feature_dim"] is not None
     assert report["training"]["feature_normalization"] == "standard"
     assert report["training"]["sample_selection"] == "all"
     assert report["training"]["sample_weighting"] == "safety"

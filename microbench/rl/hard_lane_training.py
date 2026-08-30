@@ -9,21 +9,30 @@ from typing import Any
 import numpy as np
 
 from microbench.learned import (
+    DEFAULT_TEMPORAL_MLP_HISTORY_LEN,
     MLP_LEARNED_COMPACT_FEATURE_SET,
     MLP_LEARNED_FEATURE_SET_CHOICES,
+    MLP_LEARNED_PUBLIC_OBS_FEATURE_SET,
+    TEMPORAL_MLP_POLICY_ADAPTER,
     observation_to_mlp_features,
+    stack_temporal_feature_rows,
 )
 from microbench.learned.tiny_linear import OBS_BASE_DIM, OBS_NEIGHBOR_DIM
 from microbench.rl.bc_training import (
+    BC_MLP_ARCHITECTURE,
+    BC_MODEL_ARCHITECTURE_CHOICES,
     BC_FIXTURE_BUNDLE_CONFIGS,
     BC_POLICY_NAME,
+    BC_TEMPORAL_MLP_ARCHITECTURE,
     BC_TEACHER_NAME,
     BC_TRAINING_SCHEMA_VERSION,
     _apply_feature_normalization,
     _fit_random_feature_mlp,
     _feature_normalization_payload,
+    _model_architecture,
     _model_spec,
     _policy_spec,
+    _temporal_model_spec,
 )
 from microbench.rl.learned_dataset import (
     LEARNED_DENSE_SWARM_HARD_NEGATIVE_LANE_ID,
@@ -822,6 +831,8 @@ def train_behavior_cloned_policy_from_dataset(
     ridge: float = 1e-4,
     feature_normalization: str = "standard",
     feature_set: str = MLP_LEARNED_COMPACT_FEATURE_SET,
+    model_architecture: str = BC_MLP_ARCHITECTURE,
+    history_len: int = DEFAULT_TEMPORAL_MLP_HISTORY_LEN,
     sample_weighting: str = "none",
     collision_sample_weight: float = DEFAULT_COLLISION_SAMPLE_WEIGHT,
     near_miss_sample_weight: float = DEFAULT_NEAR_MISS_SAMPLE_WEIGHT,
@@ -861,12 +872,27 @@ def train_behavior_cloned_policy_from_dataset(
 
     report, manifest_path, dataset_root = _load_dataset_manifest(dataset_manifest)
     feature_set = _mlp_feature_set(feature_set)
+    architecture = _model_architecture(model_architecture)
+    temporal_history_len = int(history_len)
+    if temporal_history_len < 1:
+        raise ValueError("history_len must be at least 1")
+    if architecture == BC_TEMPORAL_MLP_ARCHITECTURE and feature_set != MLP_LEARNED_PUBLIC_OBS_FEATURE_SET:
+        raise ValueError("temporal_mlp training requires --mlp-feature-set public_obs_v1")
     features, labels, sample_rows, loaded_shards, sample_diagnostics = _load_shard_features_and_labels(
         report,
         root=dataset_root,
         feature_set=str(feature_set),
     )
     loaded_sample_count = int(features.shape[0])
+    base_feature_dim = int(features.shape[1])
+    if architecture == BC_TEMPORAL_MLP_ARCHITECTURE:
+        features = stack_temporal_feature_rows(
+            features,
+            episode_ids=np.asarray(sample_diagnostics["episode_id"], dtype=np.int32),
+            agent_ids=np.asarray(sample_diagnostics["agent_id"], dtype=np.int32),
+            steps=np.asarray(sample_diagnostics["step"], dtype=np.int32),
+            history_len=temporal_history_len,
+        )
     sample_selection_config = _sample_selection_config(
         mode=str(sample_selection),
         hard_lane_ids=sample_selection_hard_lanes,
@@ -911,24 +937,44 @@ def train_behavior_cloned_policy_from_dataset(
     max_steps = report.get("max_steps")
     if max_steps is None:
         max_steps = max((int(row.get("steps", 0) or 0) for row in training_rows), default=0)
-    model_payload = _model_spec(
-        w1=w1,
-        b1=b1,
-        w2=w2,
-        b2=b2,
-        hidden_dim=int(hidden_dim),
-        ridge=float(ridge),
-        seed=int(seed),
-        fit_rmse=fit_rmse,
-        training_rows=training_rows,
-        lanes=selected_lanes,
-        seeds=seed_override,
-        max_steps=int(max_steps),
-        rollout_noise_std=0.0,
-        sample_count=int(features.shape[0]),
-        feature_set=str(feature_set),
-        feature_normalization=normalization_payload,
-    )
+    if architecture == BC_TEMPORAL_MLP_ARCHITECTURE:
+        model_payload = _temporal_model_spec(
+            w1=w1,
+            b1=b1,
+            w2=w2,
+            b2=b2,
+            hidden_dim=int(hidden_dim),
+            ridge=float(ridge),
+            seed=int(seed),
+            fit_rmse=fit_rmse,
+            training_rows=training_rows,
+            lanes=selected_lanes,
+            seeds=seed_override,
+            max_steps=int(max_steps),
+            rollout_noise_std=0.0,
+            sample_count=int(features.shape[0]),
+            history_len=temporal_history_len,
+            feature_normalization=normalization_payload,
+        )
+    else:
+        model_payload = _model_spec(
+            w1=w1,
+            b1=b1,
+            w2=w2,
+            b2=b2,
+            hidden_dim=int(hidden_dim),
+            ridge=float(ridge),
+            seed=int(seed),
+            fit_rmse=fit_rmse,
+            training_rows=training_rows,
+            lanes=selected_lanes,
+            seeds=seed_override,
+            max_steps=int(max_steps),
+            rollout_noise_std=0.0,
+            sample_count=int(features.shape[0]),
+            feature_set=str(feature_set),
+            feature_normalization=normalization_payload,
+        )
     training_block = model_payload["training"]
     training_block.update(
         {
@@ -945,9 +991,21 @@ def train_behavior_cloned_policy_from_dataset(
             "rollout_noise_std": 0.0,
             "sample_selection": sample_selection_summary,
             "sample_weighting": sample_weight_summary,
+            "model_architecture": architecture,
+            "history_len": temporal_history_len if architecture == BC_TEMPORAL_MLP_ARCHITECTURE else 1,
+            "base_feature_dim": base_feature_dim,
         }
     )
-    spec_payload = _policy_spec(artifact_name=model_path.name, policy_name=str(policy_name))
+    spec_payload = _policy_spec(
+        artifact_name=model_path.name,
+        policy_name=str(policy_name),
+        adapter=TEMPORAL_MLP_POLICY_ADAPTER if architecture == BC_TEMPORAL_MLP_ARCHITECTURE else "mlp_json",
+        description=(
+            "Behavior-cloned temporal MLP policy trained from DAA Microbench public RL observations."
+            if architecture == BC_TEMPORAL_MLP_ARCHITECTURE
+            else None
+        ),
+    )
     _write_json(model_path, model_payload)
     _write_json(spec_path, spec_payload)
 
@@ -1034,6 +1092,9 @@ def train_behavior_cloned_policy_from_dataset(
         "loaded_sample_count": loaded_sample_count,
         "feature_dim": int(features.shape[1]),
         "feature_set": str(feature_set),
+        "model_architecture": architecture,
+        "history_len": temporal_history_len if architecture == BC_TEMPORAL_MLP_ARCHITECTURE else 1,
+        "base_feature_dim": base_feature_dim,
         "label_dim": int(labels.shape[1]),
         "hidden_dim": int(hidden_dim),
         "feature_normalization": normalization_payload,
@@ -1070,6 +1131,8 @@ def run_learned_hard_lane_loop(
     ridge: float = 1e-4,
     feature_normalization: str = "standard",
     feature_set: str = MLP_LEARNED_COMPACT_FEATURE_SET,
+    model_architecture: str = BC_MLP_ARCHITECTURE,
+    history_len: int = DEFAULT_TEMPORAL_MLP_HISTORY_LEN,
     sample_weighting: str = "none",
     collision_sample_weight: float = DEFAULT_COLLISION_SAMPLE_WEIGHT,
     near_miss_sample_weight: float = DEFAULT_NEAR_MISS_SAMPLE_WEIGHT,
@@ -1145,6 +1208,8 @@ def run_learned_hard_lane_loop(
         ridge=float(ridge),
         feature_normalization=str(feature_normalization),
         feature_set=str(feature_set),
+        model_architecture=str(model_architecture),
+        history_len=int(history_len),
         sample_weighting=str(sample_weighting),
         collision_sample_weight=float(collision_sample_weight),
         near_miss_sample_weight=float(near_miss_sample_weight),
@@ -1244,9 +1309,13 @@ def run_learned_hard_lane_loop(
             "policy_spec": training.get("policy_spec"),
             "model_artifact": training.get("model_artifact"),
             "sample_count": training.get("sample_count"),
+            "feature_dim": training.get("feature_dim"),
+            "base_feature_dim": training.get("base_feature_dim"),
             "fit_rmse": training.get("fit_rmse"),
             "training_source": training.get("training_source"),
             "feature_set": training.get("feature_set"),
+            "model_architecture": training.get("model_architecture"),
+            "history_len": training.get("history_len"),
             "feature_normalization": training.get("feature_normalization", {}).get("mode"),
             "sample_selection": training.get("sample_selection", {}).get("mode"),
             "sample_weighting": training.get("sample_weighting", {}).get("mode"),

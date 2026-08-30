@@ -49,6 +49,8 @@ def test_release_readiness_script_runs_expected_checks() -> None:
     assert "learned-dataset-export --out-dir" in script
     assert "learned-closed-loop-finetune --out-dir" in script
     assert "learned-closed-loop-study --out-dir" in script
+    assert "--model-architecture temporal_mlp" in script
+    assert "--history-len 2" in script
     assert "--lane-profile validation_plus_broad_3d" in script
     assert "--holdout-profile broad_3d_stress" in script
     assert "--require-promotion" in script
@@ -81,6 +83,7 @@ def test_docs_index_and_checklist_reference_alpha_notes_and_dry_run() -> None:
     assert "learned-dataset-export --out-dir" in docs_index
     assert "learned-closed-loop-finetune --out-dir" in docs_index
     assert "learned-closed-loop-study --out-dir" in docs_index
+    assert "--model-architecture temporal_mlp" in docs_index
     assert "--lane-profile validation_plus_broad_3d" in docs_index
     assert "--holdout-profile broad_3d_stress" in docs_index
     assert "--require-promotion" in docs_index
@@ -105,6 +108,7 @@ def test_docs_index_and_checklist_reference_alpha_notes_and_dry_run() -> None:
     assert "learned-dataset-export --out-dir" in checklist
     assert "learned-closed-loop-finetune --out-dir" in checklist
     assert "learned-closed-loop-study --out-dir" in checklist
+    assert "--model-architecture temporal_mlp" in checklist
     assert "--lane-profile validation_plus_broad_3d" in checklist
     assert "--holdout-profile broad_3d_stress" in checklist
     assert "--require-promotion" in checklist
